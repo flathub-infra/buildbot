@@ -22,6 +22,7 @@ from twisted.internet import defer
 from buildbot.data import base
 from buildbot.data import types
 from buildbot.data.resultspec import ResultSpec
+from buildbot.process.properties import Properties
 
 
 class Db2DataMixin(object):
@@ -139,6 +140,55 @@ class BuildEndpoint(Db2DataMixin, base.BuildNestingMixin, base.Endpoint):
         buildrequest = yield self.master.data.get(('buildrequests', build['buildrequestid']))
         res = yield self.master.data.updates.rebuildBuildrequest(buildrequest)
         defer.returnValue(res)
+
+    @defer.inlineCallbacks
+    def actionPublish(self, args, kwargs):
+        build = yield self.get(ResultSpec(), kwargs)
+        repo_id=build.get('flathub_repo_id', None)
+        if not repo_id:
+            raise ValueError("No repo manager id for build")
+        official_build=build.get('flathub_build_type', 0) == 1
+        if not official_build:
+            raise ValueError("Not official build, can't publish")
+        sch = self.master.scheduler_manager.namedServices['publish']
+        trigger_properties = Properties()
+        trigger_properties.setProperty('flathub_repo_id', repo_id, 'publish', runtime=True)
+        trigger_properties.setProperty('flathub_orig_buildid', build['buildid'], 'publish', runtime=True)
+        name = build['flathub_name']
+        if name:
+            s = name.split("/",1)
+            trigger_properties.setProperty('flathub_id', s[0], 'publish', runtime=True)
+            if len(s) > 1:
+                trigger_properties.setProperty('flathub_branch', s[1], 'publish', runtime=True)
+        idsDeferred, resultsDeferred = sch.trigger(waited_for=False,
+                                                   set_props=trigger_properties,
+                                                   parent_buildid=build['buildid'],
+                                                   parent_relationship="Published from")
+        bsid, brids = yield idsDeferred
+        defer.returnValue((bsid, brids))
+
+    @defer.inlineCallbacks
+    def actionDelete(self, args, kwargs):
+        build = yield self.get(ResultSpec(), kwargs)
+        repo_id=build.get('flathub_repo_id', None)
+        if not repo_id:
+            raise ValueError("No repo manager id for build")
+        sch = self.master.scheduler_manager.namedServices['purge']
+        trigger_properties = Properties()
+        trigger_properties.setProperty('flathub_repo_id', repo_id, 'delete', runtime=True)
+        trigger_properties.setProperty('flathub_orig_buildid', build['buildid'], 'delete', runtime=True)
+        name = build['flathub_name']
+        if name:
+            s = name.split("/",1)
+            trigger_properties.setProperty('flathub_id', s[0], 'delete', runtime=True)
+            if len(s) > 1:
+                trigger_properties.setProperty('flathub_branch', s[1], 'delete', runtime=True)
+        idsDeferred, resultsDeferred = sch.trigger(waited_for=False,
+                                                   set_props=trigger_properties,
+                                                   parent_buildid=build['buildid'],
+                                                   parent_relationship="Deleted from")
+        bsid, brids = yield idsDeferred
+        defer.returnValue((bsid, brids))
 
 
 class BuildsEndpoint(Db2DataMixin, base.BuildNestingMixin, base.Endpoint):
