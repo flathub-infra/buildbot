@@ -101,7 +101,22 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
     def getBuilds(self, builderid=None, buildrequestid=None, workerid=None, complete=None, resultSpec=None):
         def thd(conn):
             tbl = self.db.model.builds
-            q = tbl.select()
+
+            unique_apps = False
+            if resultSpec is not None:
+                for p in resultSpec.properties:
+                    if p.field == b'property' and p.op == 'eq':
+                        unique_apps =  u'unique-apps' in p.values
+                        break
+            if unique_apps:
+                if resultSpec.order:
+                    resultSpec.order=["flathub_name"] + list(resultSpec.order)
+                else:
+                    resultSpec.order=["flathub_name"]
+                q = sa.select([tbl], distinct=[tbl.c.flathub_name])
+            else:
+                q = tbl.select()
+
             if builderid is not None:
                 q = q.where(tbl.c.builderid == builderid)
             if buildrequestid is not None:
