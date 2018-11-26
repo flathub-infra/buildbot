@@ -48,3 +48,7 @@
               rawdata(data="buildrequest")
               h4 Buildset:
               rawdata(data="buildset")
+  .row(ng-if="flatpakref_url")
+      | The build succeeded, to test this build, install it from the testing repository:
+      pre
+        | flatpak install {{ flatpakref_url }}

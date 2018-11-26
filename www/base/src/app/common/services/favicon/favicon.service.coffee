@@ -8,7 +8,7 @@ class FaviconService extends Factory('common')
             setFavIcon: (build_or_step)->
                 if not build_or_step?
                     # by default, we take the original icon
-                    document.getElementById('bbicon').href = "img/icon.png"
+                    document.getElementById('bbicon').href = "https://flathub.org/assets/themes/flathub/favicon-32x32.png"
                     return
 
                 $http.get("img/icon16.svg").then (data) ->

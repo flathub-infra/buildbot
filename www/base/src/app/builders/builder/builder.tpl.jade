@@ -25,6 +25,7 @@
           td
             span {{br.properties.owner[0]}}
           td
+  h4 Builds:
   builds-table(builder="builder", builds="builds")
   a.btn.btn-default(ui-sref='builder({builder: builder.builderid, numbuilds: numbuilds + 100})', ng-if="builds.length>=numbuilds")
       | more
