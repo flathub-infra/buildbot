@@ -10,6 +10,29 @@ class Build extends Controller
         $scope.last_build = true
         $scope.is_stopping = false
         $scope.is_rebuilding = false
+        $scope.flatpakref_url = ""
+
+        doPublish = ->
+            success = (res) ->
+                brid = _.values(res.result[1])[0]
+                $state.go "buildrequest",
+                    buildrequest: brid
+                    redirect_to_build: true
+
+            failure = (why) ->
+                $scope.error = "Cannot publish: " + why.error.message
+            $scope.build.control('publish').then(success, failure)
+
+        doDelete = ->
+            success = (res) ->
+                brid = _.values(res.result[1])[0]
+                $state.go "buildrequest",
+                    buildrequest: brid
+                    redirect_to_build: true
+
+            failure = (why) ->
+                $scope.error = "Cannot delete: " + why.error.message
+            $scope.build.control('delete').then(success, failure)
 
         doRebuild = ->
             $scope.is_rebuilding = true
@@ -52,10 +75,24 @@ class Build extends Controller
                         icon: "spinner fa-spin"
                         action: doRebuild
                 else
-                    actions.push
-                        caption: "Rebuild"
-                        extra_class: "btn-default"
-                        action: doRebuild
+                    if $scope.builder.name == "Builds"
+                        actions.push
+                            caption: "Rebuild"
+                            extra_class: "btn-default"
+                            action: doRebuild
+            repo_status = $scope.build.flathub_repo_status
+            build_type = $scope.build.flathub_build_type
+            if $scope.build.complete
+                    if repo_status == 1 && build_type == 1
+                            actions.push
+                                caption: "Publish"
+                                extra_class: "btn-default"
+                                action: doPublish
+                    if repo_status == 0 || repo_status == 1
+                            actions.push
+                                caption: "Delete"
+                                extra_class: "btn-default"
+                                action: doDelete
             else
                 if $scope.is_stopping
                     actions.push
@@ -73,13 +110,11 @@ class Build extends Controller
         data = dataService.open().closeOnDestroy($scope)
         data.getBuilders(builderid).onChange = (builders) ->
             $scope.builder = builder = builders[0]
-            $window.document.title = $state.current.data.pageTitle
-                builder: builder['name'], build: buildnumber
 
             # get the build plus the previous and next
             # note that this registers to the updates for all the builds for that builder
             # need to see how that scales
-            builder.getBuilds(number__lt: buildnumber + 2, limit: 3, order: '-number').onChange = (builds) ->
+            builder.getBuilds(property: ['flathub_flatpakref_url'], number__lt: buildnumber + 2, limit: 3, order: '-number').onChange = (builds) ->
                 $scope.prevbuild = null
                 $scope.nextbuild = null
                 build = null
@@ -95,6 +130,11 @@ class Build extends Controller
                 if not build
                     $state.go('build', builder: builderid, build: builds[0].number)
                     return
+                if build.flathub_name?
+                    $window.document.title = build.flathub_name + if build.flathub_build_type != 1 then "(test)" else ""
+
+                if build.flathub_repo_status == 1 and build.properties.flathub_flatpakref_url?
+                        $scope.flatpakref_url = build.properties.flathub_flatpakref_url[0]
 
                 breadcrumb = [
                         caption: "Builders"
@@ -115,6 +155,8 @@ class Build extends Controller
                         unwatch()
 
                 build.getProperties().onNew = (properties) ->
+                   if build.flathub_repo_status == 1 and properties.flathub_flatpakref_url?
+                           $scope.flatpakref_url = properties.flathub_flatpakref_url[0]
                     $scope.properties = properties
                 $scope.changes = build.getChanges()
                 $scope.responsibles = {}

@@ -1,23 +1,57 @@
 class Home extends Controller
-    constructor: ($scope, dataService, config, $location) ->
+    constructor: ($scope, dataService, config, $location, $state, glTopbarContextualActionsService) ->
         $scope.baseurl = $location.absUrl().split("#")[0]
         $scope.config = config
 
         data = dataService.open().closeOnDestroy($scope)
-        $scope.buildsRunning = data.getBuilds(order: '-started_at', complete: false)
-        $scope.recentBuilds = data.getBuilds(order: '-buildid', complete: true, limit:20)
-        $scope.builders = data.getBuilders()
-        $scope.hasBuilds = (b) -> b.builds?.length > 0
+        data.getBuilders('Builds').onNew = (builder) ->
+            $scope.mainBuilder = builder
+            refreshContextMenu = ->
+                if $scope.$$destroyed
+                    return
+                actions = []
+                _.forEach $scope.forceschedulers, (sch) ->
+                    actions.push
+                        caption: sch.button_name
+                        extra_class: "btn-primary"
+                        action: ->
+                            $state.go("builder.forcebuilder",
+                                scheduler:sch.name, builder:$scope.mainBuilder.builderid)
+                glTopbarContextualActionsService.setContextualActions(actions)
 
-        updateBuilds = ->
-            byNumber = (a, b) -> return a.number - b.number
-            $scope.recentBuilds.forEach (build) ->
-                builder = $scope.builders.get(build.builderid)
-                if builder?
-                    builder.builds ?= []
-                    if builder.builds.indexOf(build) < 0
-                        builder.builds.push(build)
-                        builder.builds.sort(byNumber)
+            $scope.mainRunningBuilds = builder.getBuilds
+                complete: false
+                property: ["owners"]
+                order: '-number'
+            $scope.mainUpublishedBuilds = builder.getBuilds
+                complete: true
+                flathub_repo_status__le: 1
+                property: ["owners"]
+                order: '-number'
+            $scope.mainRecentBuilds = builder.getBuilds
+                complete: true
+                flathub_repo_status__gt: 1
+                property: ["owners"]
+                limit: $scope.numbuilds
+                order: '-number'
 
-        $scope.recentBuilds.onChange = updateBuilds
-        $scope.builders.onChange = updateBuilds
+             builder.getForceschedulers().onChange = (forceschedulers) ->
+                $scope.forceschedulers = forceschedulers
+                refreshContextMenu()
+                # reinstall contextual actions when coming back from forcesched
+                $scope.$on '$stateChangeSuccess', ->
+                    refreshContextMenu()
+
+        data.getBuilders('publish').onNew = (builder) ->
+            $scope.publishBuilder = builder
+            $scope.publishBuilds = builder.getBuilds
+                complete: false
+                property: ["owners"]
+                order: '-number'
+
+        data.getBuilders('purge').onNew = (builder) ->
+            $scope.purgeBuilder = builder
+            $scope.purgeBuilds = builder.getBuilds
+                complete: false
+                property: ["owners"]
+                order: '-number'

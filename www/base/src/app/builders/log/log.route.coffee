@@ -7,7 +7,7 @@ class State extends Config
         # Configuration
         cfg =
             tabid: 'builders'
-            pageTitle: _.template("Buildbot: log: <%= log %>")
+            pageTitle: _.template("Flahub: log: <%= log %>")
 
         # Register new state
         state =

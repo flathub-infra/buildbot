@@ -1,24 +1,45 @@
 .row
-    h4 Builds:
     span(ng-hide='builds.length>0')
       | None
     table.table.table-hover.table-striped.table-condensed(ng-show='builds.length>0')
       tr
         td(width='200px', ng-show="builders") Builder
         td(width='100px') #
+        td(width='150px') ID
+        td(width='60px') Type
+        td(width='60px') Repo
         td(width='150px') Started At
         td(width='150px') Duration
-        td(width='200px') Owner
-        td(width='150px') Worker
+        td(width='300px') Users
         td Status
       tr(ng-repeat='build in builds | orderBy:"-started_at"')
           td(ng-show="builders") {{ builders.get(build.builderid).name }}
           td
             a(ui-sref="build({builder:build.builderid, build:build.number})")
               span.badge-status(ng-class="results2class(build, 'pulse')")
-                  span.badge-inactive 
+                  span.badge-inactive
                     | {{build.number}}
                   span.badge-active {{results2text(build)}}
+          td
+              | {{build.flathub_name }}
+          td(ng-switch="", on="build.flathub_build_type")
+              span(ng-switch-when=1)
+                | Official
+              span(ng-switch-when=0)
+                | Test
+              span(ng-switch-default)
+                | ?
+          td(ng-switch="", on="build.flathub_repo_status")
+              span(ng-switch-when=0)
+                | Created
+              span(ng-switch-when=1)
+                | Comitted
+              span(ng-switch-when=2)
+                | Published
+              span(ng-switch-when=3)
+                | Deleted
+              span(ng-switch-default)
+                | ?
           td
             span(title="{{build.started_at | dateformat:'LLL'}}")
               | {{build.started_at | timeago }}
@@ -26,11 +47,8 @@
             span(ng-show="build.complete", title="{{(build.complete_at - build.started_at)| durationformat:'LLL' }}")
               | {{(build.complete_at - build.started_at)| duration }}
           td
-            span(title="{{build.properties.owner[0]}}")
-              | {{ build.properties.owner[0] }}
-          td
-            a(ui-sref='worker({worker: build.workerid})')
-              | {{build.properties.workername[0]}}
+            span(title="{{build.properties.owners[0]}}")
+              | {{ build.properties.owners[0].join(",") }}
           td
             ul.list-inline
               li

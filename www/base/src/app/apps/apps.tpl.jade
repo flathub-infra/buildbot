@@ -1,0 +1,10 @@
+.container
+  h4 Apps:
+  table.table.table-hover.table-striped.table-condensed(ng-show='builds.length>0')
+    tr
+      td(width='200px', ng-show="builders") App
+    tr(ng-repeat='build in builds')
+     td
+       a(ui-sref="app({app:build.flathub_name})")
+         | {{build.flathub_name }}
+

@@ -1,0 +1,14 @@
+.container
+  .row
+    h4 Build times:
+    line-plot(data="successful_builds", xattr="started_at", yattr="duration", xunit="timestamp", yunit="seconds", width=800, height=200)
+  span(ng-show='runningBuilds.length>0')
+    h4 Current builds:
+    builds-table(builder="builder", builds="runningBuilds")
+  span(ng-show='unpublishedBuilds.length>0')
+    h4 Unpublished builds:
+    builds-table(builder="builder", builds="unpublishedBuilds")
+  h4 Recent builds:
+  builds-table(builder="builder", builds="recentBuilds")
+  a.btn.btn-default(ui-sref='app({app: appname, numbuilds: numbuilds + 100})', ng-if="recentBuilds.length>=numbuilds")
+      | more

@@ -11,7 +11,7 @@ class State extends Config
             name: name
             url: '/builders/:builder/builds/:build'
             data:
-                pageTitle: _.template("Buildbot: builder <%= builder %> build <%= build %>")
+                pageTitle: _.template("flathub build")
 
         $stateProvider.state(state)
         bbSettingsServiceProvider.addSettingsGroup

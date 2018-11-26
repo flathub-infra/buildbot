@@ -7,7 +7,7 @@ class State extends Config
         # Menu configuration
         glMenuServiceProvider.addGroup
             name: name
-            caption: 'Home'
+            caption: 'Flathub'
             icon: 'home'
             order: 1
 

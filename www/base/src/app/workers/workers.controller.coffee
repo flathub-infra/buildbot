@@ -72,6 +72,7 @@ class Workers extends Controller
             $scope.numbuilds = +$stateParams.numbuilds
         if $stateParams.worker?
             $scope.builds = builds = data.getBuilds(
+                property: ["owners"]
                 limit: $scope.numbuilds, workerid: +$stateParams.worker, order: '-started_at')
         else
             builds = data.getBuilds(limit: $scope.numbuilds, order: '-started_at')

@@ -26,6 +26,7 @@
         line-plot(data="successful_builds", xattr="started_at", yattr="duration", xunit="timestamp", yunit="seconds", width=800, height=200)
       uib-tab(heading="Success Rate")
         line-plot(data="success_ratio", xattr="date", yattr="success_ratio", xunit="timestamp", yunit="percent", width=800, height=200)
+  h4 Builds:
   builds-table(builder="builder", builds="builds")
   a.btn.btn-default(ui-sref='builder({builder: builder.builderid, numbuilds: numbuilds + 100})', ng-if="builds.length>=numbuilds")
       | more
