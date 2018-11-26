@@ -57,6 +57,10 @@ class Db2DataMixin(object):
             'complete': dbdict['complete_at'] is not None,
             'state_string': dbdict['state_string'],
             'results': dbdict['results'],
+            'flathub_name': dbdict['flathub_name'],
+            'flathub_repo_id': dbdict['flathub_repo_id'],
+            'flathub_repo_status': dbdict['flathub_repo_status'],
+            'flathub_build_type': dbdict['flathub_build_type'],
             'properties': {}
         }
         return defer.succeed(data)
@@ -71,6 +75,10 @@ class Db2DataMixin(object):
         'complete_at': 'builds.complete_at',
         'state_string': 'builds.state_string',
         'results': 'builds.results',
+        'flathub_name': 'builds.flathub_name',
+        'flathub_repo_id': 'builds.flathub_repo_id',
+        'flathub_repo_status': 'builds.flathub_repo_status',
+        'flathub_build_type': 'builds.flathub_build_type',
     }
 
 
@@ -204,6 +212,10 @@ class Build(base.ResourceType):
         results = types.NoneOk(types.Integer())
         state_string = types.String()
         properties = types.NoneOk(types.SourcedProperties())
+        flathub_name = types.NoneOk(types.String())
+        flathub_repo_id = types.NoneOk(types.String())
+        flathub_repo_status = types.NoneOk(types.Integer())
+        flathub_build_type = types.NoneOk(types.Integer())
     entityType = EntityType(name)
 
     @defer.inlineCallbacks
@@ -214,12 +226,16 @@ class Build(base.ResourceType):
 
     @base.updateMethod
     @defer.inlineCallbacks
-    def addBuild(self, builderid, buildrequestid, workerid):
+    def addBuild(self, builderid, buildrequestid, workerid,
+                 flathub_name=None,
+                 flathub_build_type=None):
         res = yield self.master.db.builds.addBuild(
             builderid=builderid,
             buildrequestid=buildrequestid,
             workerid=workerid,
             masterid=self.master.masterid,
+            flathub_name=flathub_name,
+            flathub_build_type=flathub_build_type,
             state_string=u'created')
         defer.returnValue(res)
 
@@ -232,6 +248,38 @@ class Build(base.ResourceType):
     def setBuildStateString(self, buildid, state_string):
         res = yield self.master.db.builds.setBuildStateString(
             buildid=buildid, state_string=state_string)
+        yield self.generateEvent(buildid, "update")
+        defer.returnValue(res)
+
+    @base.updateMethod
+    @defer.inlineCallbacks
+    def setBuildFlathubName(self, buildid, name):
+        res = yield self.master.db.builds.setBuildFlathubName(
+            buildid=buildid, name=name)
+        yield self.generateEvent(buildid, "update")
+        defer.returnValue(res)
+
+    @base.updateMethod
+    @defer.inlineCallbacks
+    def setBuildFlathubRepoId(self, buildid, repo_id):
+        res = yield self.master.db.builds.setBuildFlathubRepoId(
+            buildid=buildid, repo_id=repo_id)
+        yield self.generateEvent(buildid, "update")
+        defer.returnValue(res)
+
+    @base.updateMethod
+    @defer.inlineCallbacks
+    def setBuildFlathubRepoStatus(self, buildid, repo_status):
+        res = yield self.master.db.builds.setBuildFlathubRepoStatus(
+            buildid=buildid, repo_status=repo_status)
+        yield self.generateEvent(buildid, "update")
+        defer.returnValue(res)
+
+    @base.updateMethod
+    @defer.inlineCallbacks
+    def setBuildFlathubBuildType(self, buildid, build_type):
+        res = yield self.master.db.builds.setBuildFlathubBuildType(
+            buildid=buildid, build_type=build_type)
         yield self.generateEvent(buildid, "update")
         defer.returnValue(res)
 
