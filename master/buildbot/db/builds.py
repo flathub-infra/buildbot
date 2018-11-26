@@ -125,7 +125,9 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
 
     # returns a Deferred that returns a value
     def addBuild(self, builderid, buildrequestid, workerid, masterid,
-                 state_string, _reactor=reactor, _race_hook=None):
+                 state_string, _reactor=reactor, _race_hook=None,
+                 flathub_name=None,
+                 flathub_build_type=None):
         started_at = _reactor.seconds()
 
         def thd(conn):
@@ -146,7 +148,10 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
                                           buildrequestid=buildrequestid,
                                           workerid=workerid, masterid=masterid,
                                           started_at=started_at, complete_at=None,
-                                          state_string=state_string))
+                                          flathub_name=flathub_name,
+                                          flathub_build_type=flathub_build_type,
+                                          state_string=state_string
+                                     ))
                 except (sa.exc.IntegrityError, sa.exc.ProgrammingError) as e:
                     # pg 9.5 gives this error which makes it pass some build
                     # numbers
@@ -163,6 +168,38 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
 
             q = tbl.update(whereclause=(tbl.c.id == buildid))
             conn.execute(q, state_string=state_string)
+        return self.db.pool.do(thd)
+
+    def setBuildFlathubName(self, buildid, name):
+        def thd(conn):
+            tbl = self.db.model.builds
+
+            q = tbl.update(whereclause=(tbl.c.id == buildid))
+            conn.execute(q, flathub_name=name)
+        return self.db.pool.do(thd)
+
+    def setBuildFlathubRepoId(self, buildid, repo_id):
+        def thd(conn):
+            tbl = self.db.model.builds
+
+            q = tbl.update(whereclause=(tbl.c.id == buildid))
+            conn.execute(q, flathub_repo_id=repo_id)
+        return self.db.pool.do(thd)
+
+    def setBuildFlathubRepoStatus(self, buildid, repo_status):
+        def thd(conn):
+            tbl = self.db.model.builds
+
+            q = tbl.update(whereclause=(tbl.c.id == buildid))
+            conn.execute(q, flathub_repo_status=repo_status)
+        return self.db.pool.do(thd)
+
+    def setBuildFlathubBuildType(self, buildid, build_type):
+        def thd(conn):
+            tbl = self.db.model.builds
+
+            q = tbl.update(whereclause=(tbl.c.id == buildid))
+            conn.execute(q, flathub_build_type=build_type)
         return self.db.pool.do(thd)
 
     # returns a Deferred that returns None
@@ -228,4 +265,9 @@ class BuildsConnectorComponent(base.DBConnectorComponent):
             started_at=mkdt(row.started_at),
             complete_at=mkdt(row.complete_at),
             state_string=row.state_string,
-            results=row.results)
+            results=row.results,
+            flathub_name=row.flathub_name,
+            flathub_repo_id=row.flathub_repo_id,
+            flathub_repo_status=row.flathub_repo_status,
+            flathub_build_type=row.flathub_build_type,
+        )

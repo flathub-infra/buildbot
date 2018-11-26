@@ -160,6 +160,11 @@ class Model(base.DBConnectorComponent):
         sa.Column('complete_at', sa.Integer),
         sa.Column('state_string', sa.Text, nullable=False),
         sa.Column('results', sa.Integer),
+        # flathub custom data
+        sa.Column('flathub_name', sa.Text), # i.e. org.gnome.gedit or org.freedesktop.Sdk//18.08
+        sa.Column('flathub_repo_id', sa.Text), # The id on the repo manager
+        sa.Column('flathub_repo_status', sa.SmallInteger), # 0 == created, 1 == commited, 2 == published, 3 == deleted
+        sa.Column('flathub_build_type', sa.SmallInteger), # 0 == test, 1 == official
     )
 
     # steps

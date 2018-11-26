@@ -292,11 +292,26 @@ class Build(properties.PropertiesMixin):
         # then we just assign the build to the first buildrequest
         brid = self.requests[0].id
         builderid = yield self.getBuilderId()
+
+        # Extract some flathub properties (from changes)
+        props = self.getProperties()
+        flathub_name = props.getProperty('flathub_id', None)
+        flathub_branch = props.getProperty('flathub_branch', None)
+        if flathub_name and flathub_branch:
+            flathub_name = flathub_name + "/" + flathub_branch
+        flathub_build_type = None
+        official_build = props.getProperty('flathub_official_build', None)
+        if official_build != None:
+            flathub_build_type = 1 if official_build == True else 0
+
         self.buildid, self.number = \
             yield self.master.data.updates.addBuild(
                 builderid=builderid,
                 buildrequestid=brid,
-                workerid=worker.workerid)
+                workerid=worker.workerid,
+                flathub_name=flathub_name,
+                flathub_build_type=flathub_build_type,
+            )
 
         self.stopBuildConsumer = yield self.master.mq.startConsuming(self.controlStopBuild,
                                                                      ("control", "builds",
