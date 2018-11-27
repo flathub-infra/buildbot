@@ -8,7 +8,10 @@
             span.nomobile &nbsp;Previous
         span(ng-if="build.number == 1") &larr;
             span.nomobile &nbsp;Previous
-      li(ng-if="build.complete" title="{{ build.complete_at | dateformat:'LLL' }}") Finished {{ build.complete_at | timeago }}
+      li
+        | Build of {{ build.flathub_name }}
+        i(ng-if="properties['flathub_arch']")
+          |  on {{ properties['flathub_arch'][0] }}
       li.next(ng-class="{'disabled': last_build}")
         a(ng-if="!last_build", ui-sref="build({build:nextbuild.number})")
             span.nomobile Next&nbsp;

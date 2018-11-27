@@ -131,7 +131,7 @@ class Build extends Controller
                     $state.go('build', builder: builderid, build: builds[0].number)
                     return
                 if build.flathub_name?
-                    $window.document.title = build.flathub_name + if build.flathub_build_type != 1 then "(test)" else ""
+                    $window.document.title = "Build of " + build.flathub_name + if build.flathub_build_type != 1 then "(test)" else ""
 
                 if build.flathub_repo_status == 1 and build.properties.flathub_flatpakref_url?
                         $scope.flatpakref_url = build.properties.flathub_flatpakref_url[0]
