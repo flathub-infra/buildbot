@@ -78,7 +78,7 @@ class FlathubConfig():
         self.github_auth_secret = getConfig(config_data, 'github-auth-secret')
         self.github_change_secret = getConfig(config_data, 'github-change-secret')
         self.gitlab_change_secret = getConfig(config_data, 'gitlab-change-secret')
-        self.github_status_token = getConfig(config_data, 'github-status-token')
+        self.github_api_token = getConfig(config_data, 'github-api-token')
         self.db_uri = getConfig(config_data, 'db-uri', "sqlite:///state.sqlite")
         self.keep_test_build_days = getConfig(config_data, 'keep-test-build-days', 5)
 
@@ -1170,8 +1170,8 @@ c['builders'].append(
 
 c['services'] = []
 
-if config.github_status_token != '':
-    c['services'].append(reporters.GitHubStatusPush(token=config.github_status_token,
+if config.github_api_token != '':
+    c['services'].append(reporters.GitHubStatusPush(token=config.github_api_token,
                                                     verbose=True,
                                                     context=util.Interpolate("buildbot/%(prop:buildername)s"),
                                                     startDescription='Build started.',
