@@ -529,6 +529,16 @@ class FlathubAuthz(authz.Authz):
             yield self.assertUserMaintainsBuild(ep[1], userDetails)
             defer.returnValue(None)
 
+        if len(ep) == 2 and ep[0] == 'forceschedulers' and ep[1] == 'build-app' and action == u'force':
+            git_repo_uri = options[u'Main repository_repository']
+            git_branch = options[u'Main repository_branch']
+            buildname = options[u'buildname']
+            data = builds.lookup_by_git_and_name(git_repo_uri, git_branch, buildname)
+            flathub_git_repo = data.get_flathub_repo_uri()
+            yield githubApiAssertUserMaintainsRepo(flathub_git_repo, userDetails)
+            defer.returnValue(None)
+
+
         print("fallback to Authz")
         yield authz.Authz.assertUserAllowed(self, ep, action, options, userDetails)
 

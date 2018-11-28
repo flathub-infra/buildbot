@@ -67,6 +67,12 @@ class BuildData:
             return self.id + "/" + self.fp_branch
         return self.id
 
+    # This might not be the same as the on in the data, as it may be
+    # e.g. a test build from another repo. But, this is the official
+    # location for this build and can be used for permission checks.
+    def get_flathub_repo_uri(self):
+        return "https://github.com/flathub/%s.git" % (self.id)
+
     def get_change(self, force_test=False, force_arches=None):
         properties = {
             'flathub_id': self.id,
