@@ -1,5 +1,5 @@
 class forceDialog extends Controller
-    constructor: ($scope, config, $state, modal, schedulerid, $rootScope, builderid, dataService) ->
+    constructor: ($scope, config, $state, modal, schedulerid, $rootScope, builderid, buildname, dataService) ->
         dataService.getForceschedulers(schedulerid, subscribe: false).onChange = (schedulers) ->
             scheduler = schedulers[0]
             all_fields_by_name = {}
@@ -7,6 +7,13 @@ class forceDialog extends Controller
             # prepare default values
             prepareFields = (fields) ->
                 for field in fields
+                    if field.fullName == "buildname"
+                        if buildname
+                                field.hide=true
+                                field.default=buildname
+                        else
+                                field.hide=false
+                                field.default=null
                     all_fields_by_name[field.fullName] = field
                     # give a reference of other fields to easily implement
                     # autopopulate
@@ -26,6 +33,9 @@ class forceDialog extends Controller
                                 field.type = "text"
                                 field.hide = true
             prepareFields(scheduler.all_fields)
+            label = scheduler.label
+            if buildname
+                label = label + " for " + buildname
             angular.extend $scope,
                 rootfield:
                     type: 'nested'
@@ -33,6 +43,7 @@ class forceDialog extends Controller
                     fields: scheduler.all_fields
                     columns: 1
                 sch: scheduler
+                sch_label: label
                 ok: ->
                     params =
                         builderid: builderid

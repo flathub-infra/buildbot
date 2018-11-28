@@ -16,6 +16,25 @@ class App extends Controller
                     sref: "app({app:'" + appname + "'})"
             ]
             glBreadcrumbService.setBreadcrumb(breadcrumb)
+            refreshContextMenu = ->
+                if $scope.$$destroyed
+                    return
+                actions = []
+                _.forEach $scope.forceschedulers, (sch) ->
+                    actions.push
+                        caption: sch.button_name
+                        extra_class: "btn-primary"
+                        action: ->
+                            $state.go("builder.forcebuilder",
+                                scheduler:sch.name, builder:$scope.builder.builderid, buildname:$scope.appname)
+                glTopbarContextualActionsService.setContextualActions(actions)
+
+             builder.getForceschedulers().onChange = (forceschedulers) ->
+                $scope.forceschedulers = forceschedulers
+                refreshContextMenu()
+                # reinstall contextual actions when coming back from forcesched
+                $scope.$on '$stateChangeSuccess', ->
+                    refreshContextMenu()
 
             $scope.numbuilds = 100
             if $stateParams.numbuilds?

@@ -20,6 +20,7 @@ describe 'buildrequest controller', ->
                 builderid: 1
                 schedulerid: 'forcesched'
                 modal: modal
+                buildname: null
     beforeEach(inject(injected))
 
     it 'should query for forcecheduler', ->

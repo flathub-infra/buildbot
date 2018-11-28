@@ -1,7 +1,7 @@
 class State extends Config
     constructor: ($stateProvider) ->
         $stateProvider.state "builder.forcebuilder",
-            url: "/force/:scheduler",
+            url: "/force/:scheduler?buildname",
             ### @ngInject ###
             onEnter: ($stateParams, $state, $uibModal) ->
                 modal = {}
@@ -12,6 +12,7 @@ class State extends Config
                     resolve:
                         builderid: -> $stateParams.builder
                         schedulerid: -> $stateParams.scheduler
+                        buildname: -> $stateParams.buildname
                         modal: -> modal
 
                 # We exit the state if the dialog is closed or dismissed
