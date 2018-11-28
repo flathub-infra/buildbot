@@ -632,23 +632,7 @@ class AppParameter(util.CodebaseParameter):
         force_arches = kwargs.get('force-arches', None)[0]
         force_test = kwargs.get('force-test-build', None)[0]
         repo_uri = cb['repository']
-        if repo_uri:
-            if '/' in buildname:
-                raise Exception("Can't specify non-empty version and custom git repo at the same time.")
-            # Here, buildname is now always just an id
-            data = builds.lookup_by_git(repo_uri, branch if branch else u'master', buildname)
-            # If we specified a custom git uri then the git module name might not be the
-            # app id, so in this case we need to remember the actual app id that
-            # the user specified
-        elif buildname:
-            data = builds.lookup_by_name(buildname)
-            if branch:
-                data.git_branch = branch
-                # We're overriding the branch, so we loose officialness
-                data.official = False
-        else:
-            raise Exception("Must specify either repo uri or buildname")
-
+        data = builds.lookup_by_git_and_name(repo_uri, branch, buildname)
         change = data.get_change(force_test=force_test, force_arches=force_arches)
         properties.update(change['properties'])
         return {
