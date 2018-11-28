@@ -29,6 +29,7 @@ from datetime import datetime
 from dateutil.parser import parse as dateparse
 from zope.interface import implementer
 from buildbot.interfaces import IConfigured
+from buildbot.www.hooks import gitlab as gitlabhooks
 
 import requests
 import txrequests
@@ -1381,6 +1382,61 @@ if config.github_change_secret != "":
         'secret': config.github_change_secret,
         'strict': True
     }
+
+class MyGitLabHandler(gitlabhooks.GitLabHandler):
+    def __init__(self, master, options):
+        gitlabhooks.GitLabHandler.__init__(self, master, options)
+
+    def _process_merge_request_change(self, payload, event, codebase=None):
+        log.msg('Ignoring gitlab merge request')
+        return []
+
+    def _process_change(self, payload, user, repo, repo_url, event,
+                        codebase=None):
+        changes = []
+        ref = payload['ref']
+        # project name from http headers is empty for me, so get it from repository/name
+        project = payload['repository']['name']
+
+        if not ref.startswith("refs/heads/"):
+            log.msg("Ignoring refname `{}': Not a branch".format(ref))
+            return changes
+        branch = ref[len("refs/heads/"):]
+        if payload.get('deleted'):
+            log.msg("Branch `{}' deleted, ignoring".format(branch))
+            return changes
+
+        data = builds.lookup_by_git(repo_url, branch)
+
+        for commit in payload['commits']:
+            if not commit.get('distinct', True):
+                log.msg('Commit `%s` is a non-distinct commit, ignoring...' %
+                        (commit['id'],))
+                continue
+
+            files = []
+            for kind in ('added', 'modified', 'removed'):
+                files.extend(commit.get(kind, []))
+
+            when_timestamp = dateparse(commit['timestamp'])
+
+            log.msg("New revision: %s" % commit['id'][:8])
+
+            change = data.get_change()
+            change['author'] = '%s <%s>' % (commit['author']['name'], commit['author']['email'])
+            change['files'] = files
+            change['comments'] = commit['message']
+            change['revision'] = commit['id']
+            change['when_timestamp'] = when_timestamp
+            change['revlink'] = commit['url']
+            change['category'] = u'push'
+            change['properties']['event'] = event
+
+            changes.append(change)
+
+        return changes
+
+gitlabhooks.gitlab=MyGitLabHandler
 
 if config.gitlab_change_secret and config.gitlab_change_secret != "":
     c['www']['change_hook_dialects']['gitlab'] = {
