@@ -12,6 +12,7 @@ from buildbot.process.buildstep import SUCCESS
 from buildbot.process.buildstep import BuildStep
 from buildbot.data import resultspec
 from buildbot.util import epoch2datetime
+from buildbot.util import unicode2bytes
 from buildbot import locks
 from twisted.python import log
 from twisted.internet import defer
@@ -22,9 +23,12 @@ import os.path
 from buildbot.steps.worker import CompositeStepMixin
 from buildbot.steps.http import getSession
 from buildbot.www.hooks.github import GitHubEventHandler
+from buildbot.www import authz
 from datetime import timedelta
 from datetime import datetime
 from dateutil.parser import parse as dateparse
+from zope.interface import implementer
+from buildbot.interfaces import IConfigured
 
 import requests
 import txrequests
@@ -463,17 +467,72 @@ c['protocols'] = {}
 auth = None
 roleMatchers=[]
 adminsRole="admins"
+adminsGithubGroup='flathub'
 
 if config.admin_password != '':
     auth = util.UserPasswordAuth({"admin": config.admin_password})
     roleMatchers.append(util.RolesFromEmails(admins=["admin"]))
 
 if config.github_auth_client != '':
-    auth = util.GitHubAuth(config.github_auth_client, config.github_auth_secret)
+    auth = util.GitHubAuth(config.github_auth_client, config.github_auth_secret,apiVersion=4,getTeamsMembership=True)
     roleMatchers.append(util.RolesFromGroups())
-    adminsRole = 'flathub'
+    adminsRole = adminsGithubGroup
 
-authz = util.Authz(
+GITHUB_API_BASE="https://api.github.com"
+
+@defer.inlineCallbacks
+def githubApiRequest(path):
+    session = requests.Session()
+    res = yield session.get(GITHUB_API_BASE + path,
+                            headers={
+                                "Authorization": "token  " + config.github_api_token
+                            })
+    defer.returnValue(res)
+
+@defer.inlineCallbacks
+def githubApiAssertUserMaintainsRepo(repo_url, userDetails):
+    allowed = adminsGithubGroup in userDetails['groups']
+    if not allowed and config.github_api_token != "" and repo_url.startswith("https://github.com/flathub/"):
+        basename = os.path.basename(repo_url)
+        if basename.endswith(".git"):
+            basename = basename[:-4]
+        response = yield githubApiRequest("/repos/flathub/%s/collaborators/%s" % (basename, userDetails['username']))
+        if response.ok:
+            allowed = True
+        elif response.status_code != 404:
+            log.msg("WARNING: Unexpected repsonse from %s: %d" % (url, response.status_code))
+    if not allowed:
+        error_msg = unicode2bytes(
+            "You need commit permissions to %s or flathub admin status" % repo_url)
+        raise authz.Forbidden(error_msg)
+    defer.returnValue(None)
+
+@implementer(IConfigured)
+class FlathubAuthz(authz.Authz):
+    def __init__(self, allowRules=None, roleMatchers=None, stringsMatcher=authz.fnmatchStrMatcher):
+        authz.Authz.__init__(self, allowRules=allowRules, roleMatchers=roleMatchers, stringsMatcher=stringsMatcher)
+
+    @defer.inlineCallbacks
+    def assertUserMaintainsBuild(self, build_id, userDetails):
+        build = yield self.master.data.get(("builds", build_id))
+        buildrequest = yield self.master.data.get(('buildrequests', build['buildrequestid']))
+        buildset = yield self.master.data.get(("buildsets", buildrequest['buildsetid']))
+        repo = buildset['sourcestamps'][0]['repository']
+        yield githubApiAssertUserMaintainsRepo(repo, userDetails)
+        defer.returnValue(None)
+
+    @defer.inlineCallbacks
+    def assertUserAllowed(self, ep, action, options, userDetails):
+        print("assertUserAllowed", self, ep, action, options, userDetails)
+
+        if len(ep) == 2 and ep[0] == 'builds' and (action == u'publish' or action == u'delete' or action == u'rebuild' or action == u'stop'):
+            yield self.assertUserMaintainsBuild(ep[1], userDetails)
+            defer.returnValue(None)
+
+        print("fallback to Authz")
+        yield authz.Authz.assertUserAllowed(self, ep, action, options, userDetails)
+
+my_authz = FlathubAuthz(
     # TODO: Allow publish/delete to commiter to repo
     allowRules=[
         util.AnyControlEndpointMatcher(role=adminsRole)
@@ -1194,7 +1253,7 @@ c['titleURL'] = 'https://flathub.org'
 c['buildbotURL'] = config.buildbot_uri
 
 c['www'] = dict(port=config.buildbot_port,
-                authz=authz)
+                authz=my_authz)
 if auth:
     c['www']['auth'] = auth
 
