@@ -1032,6 +1032,17 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
                 arches = arches - set(flathub_config["skip-arches"])
             flathub_arches_prop = list(arches)
 
+        for arch in flathub_arches_prop:
+            if arch not in flathub_arches:
+                self.descriptionDone = ["Unsupported arch: %s" % arch]
+                defer.returnValue(FAILURE)
+                return
+
+        if len(flathub_arches_prop) == 0:
+            self.descriptionDone = ["No build arch specified"]
+            defer.returnValue(FAILURE)
+            return
+
         # This works around the fact that we can't pass on an empty dict
         if not flathub_config:
             flathub_config["empty"] = True
@@ -1075,6 +1086,7 @@ build_app_factory.addSteps([
                                  property="git-subject", logEnviron=False,
                                  hideStepIf=hide_on_success),
     FlathubPropertiesStep(name="Set flathub properties",
+                          haltOnFailure=True,
                           hideStepIf=hide_on_success),
     CreateRepoBuildStep(name='Creating build on repo manager'),
     CreateUploadToken(name='Creating upload token',
