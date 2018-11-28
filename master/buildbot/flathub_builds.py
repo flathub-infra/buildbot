@@ -141,6 +141,25 @@ class Builds:
             res.append(self.lookup_by_name(id))
         return res
 
+    def lookup_by_git_and_name(self, repo_uri, git_branch, buildname):
+        if repo_uri:
+            if '/' in buildname:
+                raise Exception("Can't specify non-empty version and custom git repo at the same time.")
+            # Here, buildname is now always just an id
+            data = self.lookup_by_git(repo_uri, git_branch if git_branch else u'master', buildname)
+            # If we specified a custom git uri then the git module name might not be the
+            # app id, so in this case we need to remember the actual app id that
+            # the user specified
+        elif buildname:
+            data = self.lookup_by_name(buildname)
+            if git_branch:
+                data.git_branch = git_branch
+                # We're overriding the branch, so we loose officialness
+                data.official = False
+        else:
+            raise Exception("Must specify either repo uri or buildname")
+        return data
+
     def lookup_by_name(self, buildname):
         split = buildname.split("/", 1)
         id = split[0]
