@@ -523,8 +523,6 @@ class FlathubAuthz(authz.Authz):
 
     @defer.inlineCallbacks
     def assertUserAllowed(self, ep, action, options, userDetails):
-        print("assertUserAllowed", self, ep, action, options, userDetails)
-
         if len(ep) == 2 and ep[0] == 'builds' and (action == u'publish' or action == u'delete' or action == u'rebuild' or action == u'stop'):
             yield self.assertUserMaintainsBuild(ep[1], userDetails)
             defer.returnValue(None)
@@ -538,8 +536,6 @@ class FlathubAuthz(authz.Authz):
             yield githubApiAssertUserMaintainsRepo(flathub_git_repo, userDetails)
             defer.returnValue(None)
 
-
-        print("fallback to Authz")
         yield authz.Authz.assertUserAllowed(self, ep, action, options, userDetails)
 
 my_authz = FlathubAuthz(
