@@ -530,8 +530,8 @@ class FlathubAuthz(authz.Authz):
             defer.returnValue(None)
 
         if len(ep) == 2 and ep[0] == 'forceschedulers' and ep[1] == 'build-app' and action == u'force':
-            git_repo_uri = options[u'Main repository_repository']
-            git_branch = options[u'Main repository_branch']
+            git_repo_uri = options[u'Override git repo_repository']
+            git_branch = options[u'Override git repo_branch']
             buildname = options[u'buildname']
             data = builds.lookup_by_git_and_name(git_repo_uri, git_branch, buildname)
             flathub_git_repo = data.get_flathub_repo_uri()
@@ -660,15 +660,15 @@ force = schedulers.ForceScheduler(
     codebases=[
         AppParameter(
             "",
-            name="Main repository",
+            name="Override git repo",
         ),
     ],
     reason=util.StringParameter(name="reason",
                                 label="reason:",
-                                required=True, default="force build", size=80),
+                                required=True, default="Manual build", size=80),
     properties=[
         util.StringParameter(name="buildname",
-                             label="Buildname:",
+                             label="App ID:",
                              required=False),
         util.StringParameter(name="force-arches",
                              label="Arches: (comma separated)",
