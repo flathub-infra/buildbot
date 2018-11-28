@@ -85,6 +85,7 @@ class FlathubConfig():
         self.github_api_token = getConfig(config_data, 'github-api-token')
         self.db_uri = getConfig(config_data, 'db-uri', "sqlite:///state.sqlite")
         self.keep_test_build_days = getConfig(config_data, 'keep-test-build-days', 5)
+        self.publish_default_delay_hours = getConfig(config_data, 'publish-default-delay-hours', 24)
 
 config = FlathubConfig()
 
@@ -437,6 +438,7 @@ class PeriodicPurgeStep(steps.BuildStep):
                                                      resultspec.Filter('builderid', 'eq', [builderid]),
                                                      resultspec.Filter('flathub_repo_status', 'le', [1]) ])
         max_test_age = timedelta(config.keep_test_build_days)
+        published={}
         for b in builds:
             age=epoch2datetime(self.master.reactor.seconds()) - b['complete_at']
             if b['flathub_build_type'] == 0:
@@ -445,7 +447,7 @@ class PeriodicPurgeStep(steps.BuildStep):
                     self.build.addStepsAfterCurrentStep([
                         steps.Trigger(name='Deleting old test build',
                                       schedulerNames=['purge'],
-                                      waitForFinish=False,
+                                      waitForFinish=True,
                                       set_properties={
                                           'flathub_repo_id' : b['flathub_repo_id'],
                                           'flathub_orig_buildid': b['buildid'],
@@ -453,7 +455,31 @@ class PeriodicPurgeStep(steps.BuildStep):
                     ])
             if b['flathub_build_type'] == 1:
                 # Official build
-                pass # TODO: Handle
+                name = b['flathub_name']
+                if not name in published:
+                    props = yield self.master.db.builds.getBuildProperties(b['buildid'])
+                    fh_config = props.get(u'flathub_config', ({}))[0]
+                    max_age_hours = fh_config.get(u'publish-delay-hours', config.publish_default_delay_hours)
+                    max_age = timedelta(0, max_age_hours*60*60)
+                    if age > max_age:
+                        if b['flathub_repo_status'] == 1:
+                            published[name] = True # Don't publish earlier version, the will be purged by the publish
+                            step = steps.Trigger(name='Auto-publishing old build %d' % b['number'],
+                                                 schedulerNames=['publish'],
+                                                 waitForFinish=True,
+                                                 set_properties={
+                                                     'flathub_repo_id' : b['flathub_repo_id'],
+                                                     'flathub_orig_buildid': b['buildid'],
+                                                 })
+                        else: # Some leftover non-commited job? error?
+                            steps.Trigger(name='Deleting old broken build %d' % b['number'],
+                                          schedulerNames=['purge'],
+                                          waitForFinish=True,
+                                          set_properties={
+                                              'flathub_repo_id' : b['flathub_repo_id'],
+                                              'flathub_orig_buildid': b['buildid'],
+                                          })
+                        self.build.addStepsAfterCurrentStep([step])
         self.finished(SUCCESS)
 
 ###### Init
@@ -554,6 +580,19 @@ flathub_arches = []
 flathub_arch_workers = {}
 flathub_download_sources_workers = []
 
+####### LOCKS
+
+flatpak_update_lock = util.WorkerLock("flatpak-update")
+# This lock is taken in a shared mode for builds, but in exclusive mode when doing
+# global worker operations like cleanup
+flatpak_worker_lock = util.WorkerLock("flatpak-worker-lock", maxCount=1000)
+
+# Certain repo manager jobs are serialized anyway (commit, publish), so we
+# only work on one at a time
+repo_manager_lock = util.MasterLock("repo-manager")
+
+# We only want to run one periodic job at a time
+periodic_lock = util.MasterLock("periodic-lock")
 
 ####### WORKERS
 
@@ -608,7 +647,7 @@ purge = schedulers.Triggerable(name="purge",
                                      builderNames=["purge"])
 periodic_purge = schedulers.Periodic(name="PeriodicPurge",
                                      builderNames=["periodic-purge"],
-                                     periodicBuildTimer=12*60*60,
+                                     periodicBuildTimer=3*60*60,
 )
 
 class AppParameter(util.CodebaseParameter):
@@ -679,15 +718,6 @@ c['schedulers'] = [checkin, build, publish, purge, periodic_purge, download_sour
 c['collapseRequests'] = False
 
 ####### BUILDERS
-
-flatpak_update_lock = util.WorkerLock("flatpak-update")
-# This lock is taken in a shared mode for builds, but in exclusive mode when doing
-# global worker operations like cleanup
-flatpak_worker_lock = util.WorkerLock("flatpak-worker-lock", maxCount=1000)
-
-# Certain repo manager jobs are serialized anyway (commit, publish), so we
-# only work on one at a time
-repo_manager_lock = util.MasterLock("repo-manager")
 
 # The 'builders' list defines the Builders, which tell Buildbot how to perform a build:
 # what steps, and which workers can execute them.  Note that any particular build will
@@ -1129,6 +1159,7 @@ c['builders'].append(
                        factory=purge_factory))
 c['builders'].append(
     util.BuilderConfig(name='periodic-purge',
+                       locks=[periodic_lock.access('exclusive')],
                        workernames=local_workers,
                        factory=periodic_purge_factory))
 status_builders.append('download-sources')
