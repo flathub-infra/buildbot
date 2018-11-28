@@ -1310,14 +1310,14 @@ class FlathubGithubHandler(GitHubEventHandler):
             return [], 'git'
 
         repo_uri = payload['repository']['html_url']
-        branch = 'refs/pull/{}/head'.format(issue_nr),
+        branch = 'refs/pull/{}/head'.format(issue_nr)
         try:
             data = builds.lookup_by_git(repo_uri, branch)
         except:
             log.msg("WARNING: Ignoring build test request due lookup error")
             return [], 'git'
 
-        change = d.get_change()
+        change = data.get_change()
         change['category'] = 'bot-build'
         change['comments'] = u'GitHub Pull Request #%d test build\n' % (issue_nr)
         change['author'] = payload['sender']['login']
