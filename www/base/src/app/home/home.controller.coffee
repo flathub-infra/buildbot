@@ -25,12 +25,12 @@ class Home extends Controller
                 order: '-number'
             $scope.mainUpublishedBuilds = builder.getBuilds
                 complete: true
-                flathub_repo_status__le: 1
+                flathub_repo_status__eq: 1 # Official
+                flathub_build_type__eq: 1 # Commited
                 property: ["owners"]
                 order: '-number'
             $scope.mainRecentBuilds = builder.getBuilds
                 complete: true
-                flathub_repo_status__gt: 1
                 property: ["owners"]
                 limit: $scope.numbuilds
                 order: '-number'
