@@ -9,6 +9,7 @@ from buildbot.process import logobserver
 from buildbot.process import remotecommand
 from buildbot.process.buildstep import FAILURE
 from buildbot.process.buildstep import SUCCESS
+from buildbot.process.buildstep import CANCELLED
 from buildbot.process.buildstep import BuildStep
 from buildbot.data import resultspec
 from buildbot.util import epoch2datetime
@@ -125,6 +126,7 @@ inherited_properties=[
     'flathub_manifest',         # Filename of the manifest to build
     'flathub_config',           # parsed version of flathub.json
     # Other
+    'flathub_issue_url',        # Set if from isssue/pr
     'reason'
     ]
 # Other properties
@@ -514,6 +516,18 @@ def githubApiRequest(path):
                             headers={
                                 "Authorization": "token  " + config.github_api_token
                             })
+    defer.returnValue(res)
+
+@defer.inlineCallbacks
+def githubApiPostComment(issue_url, comment):
+    session = requests.Session()
+    res = yield session.post(issue_url + "/comments",
+                             headers={
+                                 "Authorization": "token  " + config.github_api_token
+                             },
+                             json= {
+                                 'body': comment
+                             })
     defer.returnValue(res)
 
 @defer.inlineCallbacks
@@ -1071,13 +1085,59 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
         for k, v in iteritems(p):
             self.setProperty(k, v, self.name, runtime=True)
 
-        #yield self.master.data.updates.setBuildFlathubName(self.build.buildid, flathub_name)
-        #yield self.master.data.updates.setBuildFlathubBuildType(self.build.buildid, 1 if official_build else 0)
+        defer.returnValue(SUCCESS)
+
+class FlathubStartCommentStep(steps.BuildStep, CompositeStepMixin):
+    def __init__(self, **kwargs):
+        steps.BuildStep.__init__(self, **kwargs)
+        self.logEnviron = False
+
+    @defer.inlineCallbacks
+    def run(self):
+        build = self.build
+        props = build.properties
+        flathub_issue_url = props.getProperty('flathub_issue_url', None)
+        if flathub_issue_url:
+            builderid = yield build.getBuilderId()
+            if flathub_issue_url and config.github_api_token:
+                githubApiPostComment(flathub_issue_url, "Started build at %s#/builders/%d/builds/%d" % (config.buildbot_uri, builderid, build.buildid))
+
+        defer.returnValue(buildbot.process.results.SUCCESS)
+
+class FlathubEndCommentStep(steps.BuildStep, CompositeStepMixin):
+    def __init__(self, **kwargs):
+        steps.BuildStep.__init__(self, **kwargs)
+        self.logEnviron = False
+
+    @defer.inlineCallbacks
+    def run(self):
+        build = self.build
+        props = build.properties
+        flathub_issue_url = props.getProperty('flathub_issue_url', None)
+        if flathub_issue_url:
+            builderid = yield build.getBuilderId()
+            if flathub_issue_url and config.github_api_token:
+                if build.results == SUCCESS:
+                    flatpakref_url = props.getProperty('flathub_flatpakref_url', None)
+                    comment = (
+                        "Build successful: %s#/builders/%d/builds/%d\n" % (config.buildbot_uri, builderid, build.buildid) +
+                        "To test this build, install it from the testing repository:\n" +
+                        "```\n" +
+                        "flatpak install --user %s\n" % flatpakref_url +
+                        "```\n"
+                    )
+                elif build.results == CANCELLED:
+                    comment = "Build cancelled: %s#/builders/%d/builds/%d" % (config.buildbot_uri, builderid, build.buildid)
+                else:
+                    comment = "Build failed: %s#/builders/%d/builds/%d" % (config.buildbot_uri, builderid, build.buildid)
+                githubApiPostComment(flathub_issue_url, comment)
 
         defer.returnValue(buildbot.process.results.SUCCESS)
 
 build_app_factory = util.BuildFactory()
 build_app_factory.addSteps([
+    FlathubStartCommentStep(name="Send start commend",
+                            hideStepIf=hide_on_success),
     steps.Git(name="checkout manifest",
               repourl=util.Property('repository'),
               mode='incremental', branch='master', submodules=False, logEnviron=False),
@@ -1137,6 +1197,9 @@ build_app_factory.addSteps([
     ClearUploadToken(name='Cleanup upload token',
                      hideStepIf=hide_on_success,
                      alwaysRun=True),
+    FlathubEndCommentStep(name="Send end command",
+                          hideStepIf=hide_on_success,
+                          alwaysRun=True),
 ])
 
 c['builders'] = []
@@ -1293,6 +1356,11 @@ if auth:
 
 ####### CHANGESOURCES
 
+# Nothing else listens to these async comments, so log on error
+def githubCommentDone(response):
+    if not response.ok:
+        log.msg("WARNING: unable to send github comment: got status %d", response_status_code)
+
 # the 'change_source' setting tells the buildmaster how it should find out
 # about source code changes.  Here we point to the buildbot clone of pyflakes.
 
@@ -1302,37 +1370,47 @@ class FlathubGithubHandler(GitHubEventHandler):
         body = payload["comment"]["body"]
         assoc = payload["comment"]["author_association"]
         issue_nr = payload["issue"]["number"]
+        issue_url = payload["comment"]["issue_url"]
 
-        offset = body.find("bot, build");
-        if offset == -1:
+        bot_re = r"(?:^|\s)bot,"
+        just_bot_re = re.compile(bot_re)
+        if just_bot_re.search(body) == None:
+            # No bot command, ignore
             return [], 'git'
 
-        build_id = None
-        rest = body[offset+len("bot, build"):]
-        lines = rest.splitlines()
-        if len(lines) > 0:
-            words = lines[0].split()
-            if len(words) > 0:
-                build_id = words[0]
+        id_re = r"[0-9A-Za-z_\-]+\.[0-9A-Za-z_\-.]+"
+        arch_re = r"[0-9A-Za-z_]+"
+        bot_build_re = re.compile(r"%s build(?: (%s))?(?: on (%s))?" % (bot_re, id_re, arch_re))
+
+        match = bot_build_re.search(body)
+        if not match:
+            githubApiPostComment(issue_url, "I'm sorry, i did not understand that command.").addCallback(githubCommentDone)
+            return [], 'git'
+
+        (build_id, arch) = match.groups()
 
         log.msg("Detected build test request in %s PR %d (id %s)" % (payload['repository']['html_url'], issue_nr, build_id))
 
         if not assoc in ["COLLABORATOR", "CONTRIBUTOR", "MEMBER", "OWNER"]:
-            log.msg("WARNING: Ignoring build test request due to lack of perms")
+            githubApiPostComment(issue_url, "Ignoring build request due to lack of permissions.").addCallback(githubCommentDone)
             return [], 'git'
 
         repo_uri = payload['repository']['html_url']
         branch = 'refs/pull/{}/head'.format(issue_nr)
         try:
-            data = builds.lookup_by_git(repo_uri, branch)
+            data = builds.lookup_by_git(repo_uri, branch, build_id)
         except:
-            log.msg("WARNING: Ignoring build test request due lookup error")
+            log.msg("WARNING: Ignoring build test request due lookup error: %s" % (sys.exc_info()))
+            githubApiPostComment(issue_url, "Ignoring bot build request due to repo lookup error: %s." % (sys.exc_info())).addCallback(githubCommentDone)
             return [], 'git'
 
         change = data.get_change()
         change['category'] = 'bot-build'
         change['comments'] = u'GitHub Pull Request #%d test build\n' % (issue_nr)
         change['author'] = payload['sender']['login']
+        change['properties']['flathub_issue_url'] = issue_url
+        if arch:
+            change['properties']['flathub_arches'] = [arch]
         return [change], 'git'
 
     def handle_push(self, payload, event):
