@@ -127,6 +127,7 @@ inherited_properties=[
     'flathub_config',           # parsed version of flathub.json
     # Other
     'flathub_issue_url',        # Set if from isssue/pr
+    'flathub_untrusted',          # Set if from isssue/pr
     'reason'
     ]
 # Other properties
@@ -623,6 +624,10 @@ for i in range(1,config.num_master_workers+1):
     name = 'MasterWorker%d' % i
     c['workers'].append (worker.LocalWorker(name))
     local_workers.append(name)
+# We have only a single worker for untrusted builds so we can serialize them
+untrusted_workername = 'MasterWorkerUntrusted'
+c['workers'].append (worker.LocalWorker(untrusted_workername))
+local_workers.append(untrusted_workername)
 
 build_workers = []
 
@@ -1239,11 +1244,23 @@ c['builders'].append(
                        workernames=local_workers,
                        factory=periodic_purge_factory))
 status_builders.append('download-sources')
+
+# We use this to rate limit the untrusted builds. There ar N normal master
+# workers used for trusted builds, but only one for untrusted builds, which
+# means they are serialized.
+def canStartMainBuild(builder, workerforbuilder, request):
+    untrusted = request.properties.getProperty('flathub_untrusted', False)
+    if untrusted:
+        return workerforbuilder.worker.workername == untrusted_workername
+    else:
+        return workerforbuilder.worker.workername != untrusted_workername
+
 c['builders'].append(
     util.BuilderConfig(name='Builds',
                        collapseRequests=True,
                        workernames=local_workers,
-                       factory=build_app_factory))
+                       factory=build_app_factory,
+                       canStartBuild=canStartMainBuild))
 
 ##########################
 # Builder cleanup support
