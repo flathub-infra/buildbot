@@ -34,6 +34,7 @@ from buildbot.www.hooks import gitlab as gitlabhooks
 
 import requests
 import txrequests
+import logging
 from buildbot.flathub_builds import Builds
 import sys
 
@@ -1383,6 +1384,44 @@ def githubCommentDone(response):
 
 class FlathubGithubHandler(GitHubEventHandler):
 
+    def handle_pull_request(self, payload, event):
+        changes = []
+        issue_nr = payload['number']
+        commits = payload['pull_request']['commits']
+        title = payload['pull_request']['title']
+        comments = payload['pull_request']['body']
+        repo_full_name = payload['repository']['full_name']
+        head_sha = payload['pull_request']['head']['sha']
+        repo_uri = payload['repository']['html_url']
+        assoc = payload["pull_request"]["author_association"]
+        issue_url = payload["pull_request"]["issue_url"]
+
+        branch = 'refs/pull/{}/head'.format(issue_nr)
+
+        log.msg('Processing GitHub PR #{}'.format(issue_nr),
+                logLevel=logging.DEBUG)
+
+        action = payload.get('action')
+        if action not in ('opened', 'reopened', 'synchronize'):
+            log.msg("GitHub PR #{} {}, ignoring".format(issue_nr, action))
+            defer.returnValue((changes, 'git'))
+
+        try:
+            data = builds.lookup_by_git(repo_uri, branch)
+        except:
+            msg = str(sys.exc_info()[1])
+            log.msg("WARNING: Ignoring GitHub PR request due lookup error: %s" % (msg))
+            return [], 'git'
+
+        trusted = assoc in ["COLLABORATOR", "CONTRIBUTOR", "MEMBER", "OWNER"]
+
+        change = data.get_change(untrusted=not trusted)
+        change['category'] = 'pull-request'
+        change['comments'] = u'GitHub Pull Request #%d test build\n' % (issue_nr)
+        change['author'] = payload['sender']['login']
+        change['properties']['flathub_issue_url'] = issue_url
+        return [change], 'git'
+
     def handle_issue_comment(self, payload, event):
         body = payload["comment"]["body"]
         assoc = payload["comment"]["author_association"]
@@ -1408,26 +1447,26 @@ class FlathubGithubHandler(GitHubEventHandler):
 
         log.msg("Detected build test request in %s PR %d (id %s)" % (payload['repository']['html_url'], issue_nr, build_id))
 
-        if not assoc in ["COLLABORATOR", "CONTRIBUTOR", "MEMBER", "OWNER"]:
-            githubApiPostComment(issue_url, "Ignoring build request due to lack of permissions.").addCallback(githubCommentDone)
-            return [], 'git'
+        trusted = assoc in ["COLLABORATOR", "CONTRIBUTOR", "MEMBER", "OWNER"]
 
         repo_uri = payload['repository']['html_url']
         branch = 'refs/pull/{}/head'.format(issue_nr)
         try:
             data = builds.lookup_by_git(repo_uri, branch, build_id)
         except:
-            log.msg("WARNING: Ignoring build test request due lookup error: %s" % (sys.exc_info()))
-            githubApiPostComment(issue_url, "Ignoring bot build request due to repo lookup error: %s." % (sys.exc_info())).addCallback(githubCommentDone)
+            msg = str(sys.exc_info()[1])
+            log.msg("WARNING: Ignoring build test request due lookup error: %s" % (msg))
+            githubApiPostComment(issue_url, "Ignoring bot build request due to repo lookup error: %s." % (msg)).addCallback(githubCommentDone)
             return [], 'git'
 
-        change = data.get_change()
+        force_arches=None
+        if arch:
+            force_arches=[arch]
+        change = data.get_change(force_arches=force_arches, untrusted=not trusted)
         change['category'] = 'bot-build'
         change['comments'] = u'GitHub Pull Request #%d test build\n' % (issue_nr)
         change['author'] = payload['sender']['login']
         change['properties']['flathub_issue_url'] = issue_url
-        if arch:
-            change['properties']['flathub_arches'] = [arch]
         return [change], 'git'
 
     def handle_push(self, payload, event):
