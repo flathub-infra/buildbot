@@ -1106,7 +1106,7 @@ class FlathubStartCommentStep(steps.BuildStep, CompositeStepMixin):
         if flathub_issue_url:
             builderid = yield build.getBuilderId()
             if flathub_issue_url and config.github_api_token:
-                githubApiPostComment(flathub_issue_url, "Started build at %s#/builders/%d/builds/%d" % (config.buildbot_uri, builderid, build.buildid))
+                githubApiPostComment(flathub_issue_url, "Started [test build %d](%s#/builders/%d/builds/%d)" % (build.buildid, config.buildbot_uri, builderid, build.buildid))
 
         defer.returnValue(buildbot.process.results.SUCCESS)
 
@@ -1126,16 +1126,16 @@ class FlathubEndCommentStep(steps.BuildStep, CompositeStepMixin):
                 if build.results == SUCCESS:
                     flatpakref_url = props.getProperty('flathub_flatpakref_url', None)
                     comment = (
-                        "Build successful: %s#/builders/%d/builds/%d\n" % (config.buildbot_uri, builderid, build.buildid) +
+                        "Build [%d successful](%s#/builders/%d/builds/%d)\n" % (build.buildid, config.buildbot_uri, builderid, build.buildid) +
                         "To test this build, install it from the testing repository:\n" +
                         "```\n" +
                         "flatpak install --user %s\n" % flatpakref_url +
                         "```\n"
                     )
                 elif build.results == CANCELLED:
-                    comment = "Build cancelled: %s#/builders/%d/builds/%d" % (config.buildbot_uri, builderid, build.buildid)
+                    comment = "Build [%d was cancelled](%s#/builders/%d/builds/%d)\n" % (build.buildid, config.buildbot_uri, builderid, build.buildid)
                 else:
-                    comment = "Build failed: %s#/builders/%d/builds/%d" % (config.buildbot_uri, builderid, build.buildid)
+                    comment = "Build [%d failed](%s#/builders/%d/builds/%d)\n" % (build.buildid, config.buildbot_uri, builderid, build.buildid)
                 githubApiPostComment(flathub_issue_url, comment)
 
         defer.returnValue(buildbot.process.results.SUCCESS)
@@ -1385,7 +1385,6 @@ def githubCommentDone(response):
 class FlathubGithubHandler(GitHubEventHandler):
 
     def handle_pull_request(self, payload, event):
-        changes = []
         issue_nr = payload['number']
         commits = payload['pull_request']['commits']
         title = payload['pull_request']['title']
@@ -1404,7 +1403,7 @@ class FlathubGithubHandler(GitHubEventHandler):
         action = payload.get('action')
         if action not in ('opened', 'reopened', 'synchronize'):
             log.msg("GitHub PR #{} {}, ignoring".format(issue_nr, action))
-            defer.returnValue((changes, 'git'))
+            return [], 'git'
 
         try:
             data = builds.lookup_by_git(repo_uri, branch)
@@ -1467,6 +1466,9 @@ class FlathubGithubHandler(GitHubEventHandler):
         change['comments'] = u'GitHub Pull Request #%d test build\n' % (issue_nr)
         change['author'] = payload['sender']['login']
         change['properties']['flathub_issue_url'] = issue_url
+
+        githubApiPostComment(issue_url, "Queued test build for %s." % (data.get_name())).addCallback(githubCommentDone)
+
         return [change], 'git'
 
     def handle_push(self, payload, event):
