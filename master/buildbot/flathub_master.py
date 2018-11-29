@@ -90,6 +90,7 @@ class FlathubConfig():
         self.keep_test_build_days = getConfig(config_data, 'keep-test-build-days', 5)
         self.publish_default_delay_hours = getConfig(config_data, 'publish-default-delay-hours', 24)
         self.comment_prefix_text = getConfig(config_data, 'comment-prefix-test', None)
+        self.disable_status_updates = getConfig(config_data, 'disable-status-updates', False)
 
 config = FlathubConfig()
 
@@ -1347,7 +1348,7 @@ c['builders'].append(
 
 c['services'] = []
 
-if config.github_api_token != '':
+if config.github_api_token != '' and not config.disable_status_updates:
     c['services'].append(reporters.GitHubStatusPush(token=config.github_api_token,
                                                     verbose=True,
                                                     context=util.Interpolate("buildbot/%(prop:buildername)s"),
