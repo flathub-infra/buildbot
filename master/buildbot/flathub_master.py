@@ -89,6 +89,7 @@ class FlathubConfig():
         self.db_uri = getConfig(config_data, 'db-uri', "sqlite:///state.sqlite")
         self.keep_test_build_days = getConfig(config_data, 'keep-test-build-days', 5)
         self.publish_default_delay_hours = getConfig(config_data, 'publish-default-delay-hours', 24)
+        self.comment_prefix_text = getConfig(config_data, 'comment-prefix-test', None)
 
 config = FlathubConfig()
 
@@ -523,6 +524,8 @@ def githubApiRequest(path):
 @defer.inlineCallbacks
 def githubApiPostComment(issue_url, comment):
     session = requests.Session()
+    if config.comment_prefix_text:
+        comment = config.comment_prefix_text + "\n\n" + comment
     res = yield session.post(issue_url + "/comments",
                              headers={
                                  "Authorization": "token  " + config.github_api_token
