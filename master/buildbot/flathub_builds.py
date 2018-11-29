@@ -73,7 +73,7 @@ class BuildData:
     def get_flathub_repo_uri(self):
         return "https://github.com/flathub/%s.git" % (self.id)
 
-    def get_change(self, force_test=False, force_arches=None):
+    def get_change(self, force_test=False, force_arches=None, untrusted=False):
         properties = {
             'flathub_id': self.id,
             'flathub_branch': self.fp_branch,
@@ -85,6 +85,8 @@ class BuildData:
             properties['flathub_arches'] = self.force_arches
         elif self.only_arches:
             properties['flathub_arches'] = self.only_arches
+        if untrusted:
+            properties['flathub_untrusted'] = True
 
         return {'repository': self.url,
                 'branch': self.git_branch,
