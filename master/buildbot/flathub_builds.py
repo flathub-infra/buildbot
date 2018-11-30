@@ -4,7 +4,6 @@ from future.utils import string_types
 
 import subprocess, re, json
 import os.path
-import utils
 
 def id_is_valid(possible_id):
     return len(possible_id.split('.')) >= 3
@@ -115,7 +114,7 @@ class Builds:
         self.reverse_repo_base = {}
 
         f = open(filename, 'r')
-        config = utils.json_to_ascii(json.loads(f.read ()))
+        config = json.loads(f.read ())
         for k in config["repos"]:
             r = BuildDataRepo(k, config["repos"][k])
             self.repos[k] = r

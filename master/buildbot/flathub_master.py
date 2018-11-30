@@ -38,33 +38,12 @@ import logging
 from buildbot.flathub_builds import Builds
 import sys
 
-PY2 = sys.version_info[0] == 2
-def asciiize(str):
-    if PY2 and isinstance (str, unicode):
-        return str.encode('ascii', 'ignore')
-    return str
-
-# This makes things work with python2
-def json_to_ascii(value):
-    if isinstance(value, dict):
-        d = {}
-        for key, dict_value in value.items():
-            d[json_to_ascii(key)] = json_to_ascii(dict_value)
-        return d
-    elif isinstance (value, list):
-        l = []
-        for list_value in value:
-            l.append(json_to_ascii(list_value))
-        return l
-    else:
-        return asciiize(value)
-
 builds = Builds('builds.json')
 
 class FlathubConfig():
     def __init__(self):
         f = open('config.json', 'r')
-        config_data = json_to_ascii(json.loads(f.read ()))
+        config_data = json.loads(f.read ())
 
         def getConfig(config_data, name, default=""):
             return config_data.get(name, default)
@@ -102,7 +81,7 @@ num_builders_per_arch = config.num_master_workers
 flathub_repoclient_path = os.getcwd() + '/scripts/repoclient'
 
 f = open('builders.json', 'r')
-worker_config = json_to_ascii(json.loads(f.read ()))
+worker_config = json.loads(f.read ())
 
 # These keeps track of subset tokens for uploads by the workers
 flathub_upload_tokens = {}
@@ -171,7 +150,7 @@ def getArchBuilderName(arch, buildnr):
 @util.renderer
 def computeBuildArches(props):
     buildnr = props.getProperty ('flathub_buildnumber', 0)
-    return map(lambda arch: getArchBuilderName(arch, buildnr), props.getProperty("flathub_arches", []))
+    return list(map(lambda arch: getArchBuilderName(arch, buildnr), props.getProperty("flathub_arches", [])))
 
 def hide_on_success(results, s):
     return results==buildbot.process.results.SUCCESS
@@ -538,7 +517,7 @@ def githubApiPostComment(issue_url, comment):
 
 @defer.inlineCallbacks
 def githubApiAssertUserMaintainsRepo(repo_url, userDetails):
-    allowed = adminsGithubGroup in userDetails['groups']
+    allowed = 'groups' in userDetails and adminsGithubGroup in userDetails['groups']
     if not allowed and config.github_api_token != "" and repo_url.startswith("https://github.com/flathub/"):
         basename = os.path.basename(repo_url)
         if basename.endswith(".git"):
@@ -636,25 +615,25 @@ local_workers.append(untrusted_workername)
 
 build_workers = []
 
-for w in worker_config.iterkeys():
+for w in worker_config.keys():
     wc = worker_config[w]
     passwd = wc['password']
     max_builds = 1
-    if wc.has_key('max-builds'):
+    if 'max-builds' in wc:
         max_builds = wc['max-builds']
     wk = worker.Worker(w, passwd, max_builds=max_builds)
     wk.flathub_classes = []
-    if wc.has_key('classes'):
+    if 'classes' in wc:
         wk.flathub_classes = wc['classes']
     c['workers'].append (wk)
-    if wc.has_key('arches'):
+    if 'arches' in wc:
         build_workers.append(w)
         for a in wc['arches']:
             if not a in flathub_arches:
                 flathub_arches.append(a)
                 flathub_arch_workers[a] = []
             flathub_arch_workers[a].append(w)
-    if wc.has_key('download-sources'):
+    if 'download-sources' in wc:
         flathub_download_sources_workers.append(w)
 
 ####### SCHEDULERS
@@ -824,13 +803,13 @@ def create_build_factory():
         steps.FileDownload(name='downloading repoclient',
                            haltOnFailure=True,
                            hideStepIf=hide_on_success,
-                           mode=0755,
+                           mode=0o755,
                            mastersrc="scripts/repoclient",
                            workerdest="repoclient"),
         steps.FileDownload(name='downloading merge-sources.sh',
                            haltOnFailure=True,
                            hideStepIf=hide_on_success,
-                           mode=0755,
+                           mode=0o755,
                            mastersrc="scripts/merge-sources.sh",
                            workerdest="merge-sources.sh"),
         steps.ShellSequence(
@@ -1049,10 +1028,10 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
         flathub_arches_prop = props.getProperty('flathub_arches', None)
         if not flathub_arches_prop:
             arches = set(flathub_arches)
-            if flathub_config.has_key("only-arches"):
+            if "only-arches" in flathub_config:
                 arches = arches & set(flathub_config["only-arches"])
 
-            if flathub_config.has_key("skip-arches"):
+            if "skip-arches" in flathub_config:
                 arches = arches - set(flathub_config["skip-arches"])
             flathub_arches_prop = list(arches)
 
@@ -1092,7 +1071,7 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
             "flathub_config": flathub_config
         }
 
-        for k, v in iteritems(p):
+        for k, v in p.items():
             self.setProperty(k, v, self.name, runtime=True)
 
         defer.returnValue(SUCCESS)
@@ -1307,7 +1286,7 @@ cleanup_factory.addSteps([
     steps.FileDownload(name='downloading cleanup.sh',
                        haltOnFailure=True,
                        hideStepIf=hide_on_success,
-                       mode=0755,
+                       mode=0o755,
                        mastersrc="scripts/cleanup.sh",
                        workerdest="cleanup.sh"),
     steps.ShellCommand(
