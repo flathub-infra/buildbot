@@ -70,6 +70,7 @@ class FlathubConfig():
         self.publish_default_delay_hours = getConfig(config_data, 'publish-default-delay-hours', 24)
         self.comment_prefix_text = getConfig(config_data, 'comment-prefix-test', None)
         self.disable_status_updates = getConfig(config_data, 'disable-status-updates', False)
+        self.bot_name = getConfig(config_data, 'bot-name', 'bot')
 
 config = FlathubConfig()
 
@@ -109,7 +110,7 @@ inherited_properties=[
     'flathub_config',           # parsed version of flathub.json
     # Other
     'flathub_issue_url',        # Set if from isssue/pr
-    'flathub_untrusted',          # Set if from isssue/pr
+    'flathub_untrusted',        # Set if from isssue/pr
     'reason'
     ]
 # Other properties
@@ -1410,7 +1411,7 @@ class FlathubGithubHandler(GitHubEventHandler):
         issue_nr = payload["issue"]["number"]
         issue_url = payload["comment"]["issue_url"]
 
-        bot_re = r"(?:^|\s)bot,"
+        bot_re = r"(?:^|\s)%s," % config.bot_name
         just_bot_re = re.compile(bot_re)
         if just_bot_re.search(body) == None:
             # No bot command, ignore
