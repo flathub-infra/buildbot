@@ -178,7 +178,7 @@ class Builds:
         custom_buildcmd = False
         only_arches = None
 
-        if self.builds.has_key(buildname):
+        if buildname in self.builds:
             info = self.builds[buildname]
             repo = info.repo
             module = info.get_git_module()
