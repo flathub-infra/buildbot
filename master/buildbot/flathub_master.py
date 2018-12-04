@@ -317,11 +317,15 @@ class RepoRequestStep(steps.BuildStep):
         d = self.doRequest()
         d.addErrback(self.failed)
 
+    def _sleep(self, delay):
+        d = defer.Deferred()
+        reactor.callLater(delay, d.callback, 1)
+        return d
+
     @defer.inlineCallbacks
     def doRequest(self):
         # We use a new session each time, to isolate the requests. This avoids
         # e.g. getting ECONNRESET if the server shut down the session.
-        session = txrequests.Session()
 
         requestkwargs = {
             'method': self.method,
@@ -331,20 +335,31 @@ class RepoRequestStep(steps.BuildStep):
         }
 
         log = self.addLog('log')
-
-        log.addHeader('Performing %s request to %s\n' %
-                      (self.method, self.url))
-        data = requestkwargs.get("data", None)
-        try:
-            response = yield session.request(**requestkwargs)
-        except requests.exceptions.ConnectionError as e:
+        retries = 0
+        while True:
+            log.addHeader('Performing %s request to %s\n' %
+                          (self.method, self.url))
+            session = txrequests.Session()
+            try:
+                response = yield session.request(**requestkwargs)
+            except requests.exceptions.ConnectionError as e:
+                session.close()
+                log.addStderr(
+                    'An exception occurred while performing the request: %s' % e)
+                self.finished(FAILURE)
+                return
             session.close()
-            log.addStderr(
-                'An exception occurred while performing the request: %s' % e)
-            self.finished(FAILURE)
-            return
 
-        session.close()
+            if response.status_code == requests.codes.service_unavailable:
+                retries = retries + 1
+                if retries < 5:
+                    log.addStderr('Got 503, retrying in 10 sec...')
+                    yield self._sleep(self.mirror_sync_sleep)
+                    continue
+                else:
+                    log.addStderr('Got 503 again, giving up...')
+
+            break
 
         if response.status_code == requests.codes.ok:
             resp = json.loads(response.text)
