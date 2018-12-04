@@ -1052,7 +1052,7 @@ class FlathubStartCommentStep(steps.BuildStep, CompositeStepMixin):
         if flathub_issue_url:
             builderid = yield build.getBuilderId()
             if flathub_issue_url and config.github_api_token:
-                githubApiPostComment(flathub_issue_url, "Started [test build %d](%s#/builders/%d/builds/%d)" % (build.buildid, config.buildbot_uri, builderid, build.buildid))
+                githubApiPostComment(flathub_issue_url, "Started [test build %d](%s#/builders/%d/builds/%d)" % (build.number, config.buildbot_uri, builderid, build.number))
 
         defer.returnValue(buildbot.process.results.SUCCESS)
 
@@ -1072,16 +1072,16 @@ class FlathubEndCommentStep(steps.BuildStep, CompositeStepMixin):
                 if build.results == SUCCESS:
                     flatpakref_url = props.getProperty('flathub_flatpakref_url', None)
                     comment = (
-                        "Build [%d successful](%s#/builders/%d/builds/%d)\n" % (build.buildid, config.buildbot_uri, builderid, build.buildid) +
+                        "Build [%d successful](%s#/builders/%d/builds/%d)\n" % (build.number, config.buildbot_uri, builderid, build.number) +
                         "To test this build, install it from the testing repository:\n" +
                         "```\n" +
                         "flatpak install --user %s\n" % flatpakref_url +
                         "```\n"
                     )
                 elif build.results == CANCELLED:
-                    comment = "Build [%d was cancelled](%s#/builders/%d/builds/%d)\n" % (build.buildid, config.buildbot_uri, builderid, build.buildid)
+                    comment = "Build [%d was cancelled](%s#/builders/%d/builds/%d)\n" % (build.number, config.buildbot_uri, builderid, build.number)
                 else:
-                    comment = "Build [%d failed](%s#/builders/%d/builds/%d)\n" % (build.buildid, config.buildbot_uri, builderid, build.buildid)
+                    comment = "Build [%d failed](%s#/builders/%d/builds/%d)\n" % (build.number, config.buildbot_uri, builderid, build.number)
                 githubApiPostComment(flathub_issue_url, comment)
 
         defer.returnValue(buildbot.process.results.SUCCESS)
