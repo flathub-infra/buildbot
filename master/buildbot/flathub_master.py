@@ -1276,7 +1276,7 @@ def computeCleanupWorkers(props):
     else:
         workers = build_workers
 
-    return map(lambda x: "cleanup-" + x, workers)
+    return list(map(lambda x: "cleanup-" + x, workers))
 
 cleanup = schedulers.Triggerable(name="cleanup-all-workers",
                                  builderNames=computeCleanupWorkers)
