@@ -31,6 +31,8 @@ from dateutil.parser import parse as dateparse
 from zope.interface import implementer
 from buildbot.interfaces import IConfigured
 from buildbot.www.hooks import gitlab as gitlabhooks
+from buildbot.worker.local import LocalWorker
+from buildbot.worker.base import Worker
 
 import requests
 import txrequests
@@ -38,54 +40,37 @@ import logging
 from buildbot.flathub_builds import Builds
 import sys
 
-builds = Builds('builds.json')
+# Global configuration
+config = None
 
-class FlathubConfig():
-    def __init__(self):
-        f = open('config.json', 'r')
-        config_data = json.loads(f.read ())
+# Global build config
+builds = None
 
-        def getConfig(config_data, name, default=""):
-            return config_data.get(name, default)
-
-        def getConfigv(config_data, name, default=[]):
-            return config_data.get(name, default)
-
-        self.repo_manager_token = getConfig(config_data, 'repo-manager-token')
-        self.repo_manager_uri = getConfig(config_data, 'repo-manager-uri')
-        self.buildbot_port = getConfig(config_data, 'buildbot-port', 8010)
-        self.num_master_workers = getConfig(config_data, 'num-master-workers', 4)
-        self.buildbot_uri = getConfig(config_data, 'buildbot-uri')
-        self.upstream_repo = getConfig(config_data, 'flathub-repo')
-        self.upstream_sources_uri = getConfig(config_data, 'flathub-sources-uri', os.path.join (self.upstream_repo, "sources" ))
-        self.upstream_sources_path = getConfig(config_data, 'flathub-sources-path')
-        self.admin_password = getConfig(config_data, 'admin-password')
-        self.github_auth_client = getConfig(config_data, 'github-auth-client')
-        self.github_auth_secret = getConfig(config_data, 'github-auth-secret')
-        self.github_change_secret = getConfig(config_data, 'github-change-secret')
-        self.gitlab_change_secret = getConfig(config_data, 'gitlab-change-secret')
-        self.github_api_token = getConfig(config_data, 'github-api-token')
-        self.db_uri = getConfig(config_data, 'db-uri', "sqlite:///state.sqlite")
-        self.keep_test_build_days = getConfig(config_data, 'keep-test-build-days', 5)
-        self.publish_default_delay_hours = getConfig(config_data, 'publish-default-delay-hours', 24)
-        self.comment_prefix_text = getConfig(config_data, 'comment-prefix-test', None)
-        self.disable_status_updates = getConfig(config_data, 'disable-status-updates', False)
-        self.bot_name = getConfig(config_data, 'bot-name', 'bot')
-
-config = FlathubConfig()
-
-# Buildbot does unique builds per build + worker, so if we want a single worker
-# to build multiple apps of the same arch, then we need to have multiple build
-# ids for each arch, so we append a number which we calculate from the build id
-num_builders_per_arch = config.num_master_workers
-
-flathub_repoclient_path = os.getcwd() + '/scripts/repoclient'
-
-f = open('builders.json', 'r')
-worker_config = json.loads(f.read ())
+# Worker config generated from builders.json
+flathub_workers = []                    # All workers configured
+flathub_worker_names = []               # All workers configured
+flathub_arches = []                     # Calculated from the arch key on the builders
+flathub_arch_workers = {}               # Map from arch to list of worker names from flathub_workers
+flathub_download_sources_workers = []   # Worker names for source downloaders
 
 # These keeps track of subset tokens for uploads by the workers
 flathub_upload_tokens = {}
+
+flathub_repoclient_path = os.getcwd() + '/scripts/repoclient'
+
+adminsGithubGroup='flathub'
+
+flatpak_update_lock = util.WorkerLock("flatpak-update")
+# This lock is taken in a shared mode for builds, but in exclusive mode when doing
+# global worker operations like cleanup
+flatpak_worker_lock = util.WorkerLock("flatpak-worker-lock", maxCount=1000)
+
+# Certain repo manager jobs are serialized anyway (commit, publish), so we
+# only work on one at a time
+repo_manager_lock = util.MasterLock("repo-manager")
+
+# We only want to run one periodic job at a time
+periodic_lock = util.MasterLock("periodic-lock")
 
 ##### Properties
 
@@ -125,7 +110,98 @@ inherited_properties=[
 #  flathub_repo_id
 #  flathub_repo_status (updated over time via triggered child builds)
 
+GITHUB_API_BASE="https://api.github.com"
+
+####### SETUP
+
+class FlathubConfig():
+    def __init__(self):
+        f = open('config.json', 'r')
+        config_data = json.loads(f.read ())
+
+        def getConfig(config_data, name, default=""):
+            return config_data.get(name, default)
+
+        def getConfigv(config_data, name, default=[]):
+            return config_data.get(name, default)
+
+        self.repo_manager_token = getConfig(config_data, 'repo-manager-token')
+        self.repo_manager_uri = getConfig(config_data, 'repo-manager-uri')
+        self.buildbot_port = getConfig(config_data, 'buildbot-port', 8010)
+        self.num_master_workers = getConfig(config_data, 'num-master-workers', 4)
+        self.buildbot_uri = getConfig(config_data, 'buildbot-uri')
+        self.upstream_repo = getConfig(config_data, 'flathub-repo')
+        self.upstream_sources_uri = getConfig(config_data, 'flathub-sources-uri', os.path.join (self.upstream_repo, "sources" ))
+        self.upstream_sources_path = getConfig(config_data, 'flathub-sources-path')
+        self.admin_password = getConfig(config_data, 'admin-password')
+        self.github_auth_client = getConfig(config_data, 'github-auth-client')
+        self.github_auth_secret = getConfig(config_data, 'github-auth-secret')
+        self.github_change_secret = getConfig(config_data, 'github-change-secret')
+        self.gitlab_change_secret = getConfig(config_data, 'gitlab-change-secret')
+        self.github_api_token = getConfig(config_data, 'github-api-token')
+        self.db_uri = getConfig(config_data, 'db-uri', "sqlite:///state.sqlite")
+        self.keep_test_build_days = getConfig(config_data, 'keep-test-build-days', 5)
+        self.publish_default_delay_hours = getConfig(config_data, 'publish-default-delay-hours', 24)
+        self.comment_prefix_text = getConfig(config_data, 'comment-prefix-test', None)
+        self.disable_status_updates = getConfig(config_data, 'disable-status-updates', False)
+        self.bot_name = getConfig(config_data, 'bot-name', 'bot')
+
+
+def load_config():
+    # First load all json file to catch any errors
+    # before we modify global state
+    new_config = FlathubConfig()
+    new_builds = Builds('builds.json')
+
+    f = open('builders.json', 'r')
+    worker_config = json.loads(f.read ())
+
+    # Json parsing succeeded, now change global config
+
+    global config
+    global builds
+    global flathub_workers
+    global flathub_worker_names
+    global flathub_arches
+    global flathub_arch_workers
+    global flathub_download_sources_workers
+
+    config = new_config
+    builds = new_builds
+    flathub_workers = []
+    flathub_worker_names = []
+    flathub_arches = []
+    flathub_arch_workers = {}
+    flathub_download_sources_workers = []
+
+    for w in worker_config.keys():
+        wc = worker_config[w]
+        passwd = wc['password']
+        max_builds = 1
+        if 'max-builds' in wc:
+            max_builds = wc['max-builds']
+        wk = Worker(w, passwd, max_builds=max_builds)
+        wk.flathub_classes = []
+        if 'classes' in wc:
+            wk.flathub_classes = wc['classes']
+        flathub_workers.append (wk)
+        flathub_worker_names.append(wk.name)
+        if 'arches' in wc:
+            for a in wc['arches']:
+                if not a in flathub_arches:
+                    flathub_arches.append(a)
+                    flathub_arch_workers[a] = []
+                flathub_arch_workers[a].append(w)
+        if 'download-sources' in wc:
+            flathub_download_sources_workers.append(w)
+
 ####### Custom renderers and helper functions
+
+# Buildbot does unique builds per build + worker, so if we want a single worker
+# to build multiple apps of the same arch, then we need to have multiple build
+# ids for each arch, so we append a number which we calculate from the build id
+def num_builders_per_arch():
+    return config.num_master_workers
 
 @util.renderer
 def computeUploadToken(props):
@@ -140,7 +216,7 @@ def computeBuildId(props):
 # on the various builders, or we would only ever build one at a time, because each named builder
 # is serialized
 def getArchBuilderName(arch, buildnr):
-    b = buildnr % num_builders_per_arch
+    b = buildnr % num_builders_per_arch()
     if b == 0:
         build_extra = ""
     else:
@@ -165,7 +241,6 @@ def hide_on_success_or_skipped(results, s):
 # Official builds are master branch on the canonical flathub git repo
 def build_is_official(step):
     return step.build.getProperty ('flathub_official_build', False)
-
 
 def shellArgOptional(commands):
     return util.ShellArg(logfile='stdio', command=commands)
@@ -469,30 +544,6 @@ class PeriodicPurgeStep(steps.BuildStep):
                         self.build.addStepsAfterCurrentStep([step])
         self.finished(SUCCESS)
 
-###### Init
-
-c = BuildmasterConfig = {}
-c['change_source'] = []
-c['protocols'] = {}
-
-####### Authentication
-
-auth = None
-roleMatchers=[]
-adminsRole="admins"
-adminsGithubGroup='flathub'
-
-if config.admin_password != '':
-    auth = util.UserPasswordAuth({"admin": config.admin_password})
-    roleMatchers.append(util.RolesFromEmails(admins=["admin"]))
-
-if config.github_auth_client != '':
-    auth = util.GitHubAuth(config.github_auth_client, config.github_auth_secret,apiVersion=4,getTeamsMembership=True)
-    roleMatchers.append(util.RolesFromGroups())
-    adminsRole = adminsGithubGroup
-
-GITHUB_API_BASE="https://api.github.com"
-
 @defer.inlineCallbacks
 def githubApiRequest(path):
     session = requests.Session()
@@ -567,96 +618,6 @@ class FlathubAuthz(authz.Authz):
 
         yield authz.Authz.assertUserAllowed(self, ep, action, options, userDetails)
 
-my_authz = FlathubAuthz(
-    # TODO: Allow publish/delete to commiter to repo
-    allowRules=[
-        util.AnyControlEndpointMatcher(role=adminsRole)
-    ],
-    roleMatchers=roleMatchers
-)
-
-c['protocols']['pb'] = {'port': 9989}
-
-####### SETUP
-
-flathub_arches = []
-flathub_arch_workers = {}
-flathub_download_sources_workers = []
-
-####### LOCKS
-
-flatpak_update_lock = util.WorkerLock("flatpak-update")
-# This lock is taken in a shared mode for builds, but in exclusive mode when doing
-# global worker operations like cleanup
-flatpak_worker_lock = util.WorkerLock("flatpak-worker-lock", maxCount=1000)
-
-# Certain repo manager jobs are serialized anyway (commit, publish), so we
-# only work on one at a time
-repo_manager_lock = util.MasterLock("repo-manager")
-
-# We only want to run one periodic job at a time
-periodic_lock = util.MasterLock("periodic-lock")
-
-####### WORKERS
-
-# The 'workers' list defines the set of recognized workers. Each element is
-# a Worker object, specifying a unique worker name and password.  The same
-# worker name and password must be configured on the worker.
-c['workers'] = []
-
-# For whatever reason, max-builds doesn't seem to work, so we only ever run one build.
-# To hack around this we create multiple master workers
-local_workers = []
-for i in range(1,config.num_master_workers+1):
-    name = 'MasterWorker%d' % i
-    c['workers'].append (worker.LocalWorker(name))
-    local_workers.append(name)
-# We have only a single worker for untrusted builds so we can serialize them
-untrusted_workername = 'MasterWorkerUntrusted'
-c['workers'].append (worker.LocalWorker(untrusted_workername))
-local_workers.append(untrusted_workername)
-
-build_workers = []
-
-for w in worker_config.keys():
-    wc = worker_config[w]
-    passwd = wc['password']
-    max_builds = 1
-    if 'max-builds' in wc:
-        max_builds = wc['max-builds']
-    wk = worker.Worker(w, passwd, max_builds=max_builds)
-    wk.flathub_classes = []
-    if 'classes' in wc:
-        wk.flathub_classes = wc['classes']
-    c['workers'].append (wk)
-    if 'arches' in wc:
-        build_workers.append(w)
-        for a in wc['arches']:
-            if not a in flathub_arches:
-                flathub_arches.append(a)
-                flathub_arch_workers[a] = []
-            flathub_arch_workers[a].append(w)
-    if 'download-sources' in wc:
-        flathub_download_sources_workers.append(w)
-
-####### SCHEDULERS
-checkin = schedulers.AnyBranchScheduler(name="checkin",
-                                        treeStableTimer=10,
-                                        builderNames=["Builds"])
-
-build = schedulers.Triggerable(name="build-all-platforms",
-                               builderNames=computeBuildArches)
-download_sources = schedulers.Triggerable(name="download-sources",
-                                     builderNames=["download-sources"])
-publish = schedulers.Triggerable(name="publish",
-                                     builderNames=["publish"])
-purge = schedulers.Triggerable(name="purge",
-                                     builderNames=["purge"])
-periodic_purge = schedulers.Periodic(name="PeriodicPurge",
-                                     builderNames=["periodic-purge"],
-                                     periodicBuildTimer=3*60*60,
-)
-
 class AppParameter(util.CodebaseParameter):
 
     """A parameter whose result is a codebase specification instead of a property"""
@@ -693,43 +654,34 @@ class AppParameter(util.CodebaseParameter):
             'revision': '',
         }
 
-force = schedulers.ForceScheduler(
-    name="build-app",
-    buttonName="Start build",
-    label="Start a build",
-    builderNames=["Builds"],
+def create_build_app_force_scheduler():
+    return schedulers.ForceScheduler(
+        name="build-app",
+        buttonName="Start build",
+        label="Start a build",
+        builderNames=["Builds"],
 
-    codebases=[
-        AppParameter(
-            "",
-            name="Override git repo",
-        ),
-    ],
-    reason=util.StringParameter(name="reason",
-                                label="reason:",
-                                required=True, default="Manual build", size=80),
-    properties=[
-        util.StringParameter(name="buildname",
-                             label="App ID:",
-                             required=False),
-        util.StringParameter(name="force-arches",
-                             label="Arches: (comma separated)",
-                             required=False),
-        util.BooleanParameter(name="force-test-build",
-                              label="Force a test build (even for normal location)",
-                              default=False)
-    ]
-)
-
-c['schedulers'] = [checkin, build, publish, purge, periodic_purge, download_sources, force]
-c['collapseRequests'] = False
-
-####### BUILDERS
-
-# The 'builders' list defines the Builders, which tell Buildbot how to perform a build:
-# what steps, and which workers can execute them.  Note that any particular build will
-# only take place on one worker.
-
+        codebases=[
+            AppParameter(
+                "",
+                name="Override git repo",
+            ),
+        ],
+        reason=util.StringParameter(name="reason",
+                                    label="reason:",
+                                    required=True, default="Manual build", size=80),
+        properties=[
+            util.StringParameter(name="buildname",
+                                 label="App ID:",
+                                 required=False),
+            util.StringParameter(name="force-arches",
+                                 label="Arches: (comma separated)",
+                                 required=False),
+            util.BooleanParameter(name="force-test-build",
+                                  label="Force a test build (even for normal location)",
+                                  default=False)
+        ]
+    )
 
 class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
     def __init__(self, **kwargs):
@@ -951,56 +903,64 @@ class FlatpakDownloadStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep
     def getResultSummary(self):
         return {u'step': self.result_title}
 
-download_sources_factory = util.BuildFactory()
-download_sources_factory.addSteps([
-    steps.Git(name="checkout manifest",
-              logEnviron=False,
-              repourl=util.Property('repository'),
-              mode='incremental', branch='master', submodules=True),
-    steps.ShellCommand(name='ensure source dir', logEnviron=False,
-                       command=['mkdir', '-p', config.upstream_sources_path]),
-    FlatpakDownloadStep(name='Download')
-])
+def create_download_sources_factory():
+    download_sources_factory = util.BuildFactory()
+    download_sources_factory.addSteps([
+        steps.Git(name="checkout manifest",
+                  logEnviron=False,
+                  repourl=util.Property('repository'),
+                  mode='incremental', branch='master', submodules=True),
+        steps.ShellCommand(name='ensure source dir', logEnviron=False,
+                           command=['mkdir', '-p', config.upstream_sources_path]),
+        FlatpakDownloadStep(name='Download')
+    ])
+    return download_sources_factory
 
-publish_factory = util.BuildFactory()
-publish_factory.addSteps([
-    steps.ShellSequence(name='Publishing builds',
-                        logEnviron=False,
-                        haltOnFailure=True,
-                        env={"REPO_TOKEN": config.repo_manager_token},
-                        commands=[
-                            shellArg([flathub_repoclient_path, 'publish', '--wait',
-                                      util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
-                        ]),
-    SetRepoStateStep(2, name='Marking build as published'),
-    steps.ShellSequence(name='Purging builds',
-                        logEnviron=False,
-                        haltOnFailure=False,
-                        env={"REPO_TOKEN": config.repo_manager_token},
-                        commands=[
-                            shellArg([flathub_repoclient_path, 'purge',
-                                      util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
-                        ]),
-    PurgeOldBuildsStep(name='Getting old builds'),
-])
+def create_publish_factory():
+    publish_factory = util.BuildFactory()
+    publish_factory.addSteps([
+        steps.ShellSequence(name='Publishing builds',
+                            logEnviron=False,
+                            haltOnFailure=True,
+                            env={"REPO_TOKEN": config.repo_manager_token},
+                            commands=[
+                                shellArg([flathub_repoclient_path, 'publish', '--wait',
+                                          util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
+                            ]),
+        SetRepoStateStep(2, name='Marking build as published'),
+        steps.ShellSequence(name='Purging builds',
+                            logEnviron=False,
+                            haltOnFailure=False,
+                            env={"REPO_TOKEN": config.repo_manager_token},
+                            commands=[
+                                shellArg([flathub_repoclient_path, 'purge',
+                                          util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
+                            ]),
+        PurgeOldBuildsStep(name='Getting old builds'),
+    ])
+    return publish_factory
 
-purge_factory = util.BuildFactory()
-purge_factory.addSteps([
-    steps.ShellSequence(name='Purging builds',
-                        logEnviron=False,
-                        haltOnFailure=False,
-                        env={"REPO_TOKEN": config.repo_manager_token},
-                        commands=[
-                            shellArg([flathub_repoclient_path, 'purge',
-                                      util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
-                        ]),
-    SetRepoStateStep(3, name='Marking build as deleted'),
-])
+def create_purge_factory():
+    purge_factory = util.BuildFactory()
+    purge_factory.addSteps([
+        steps.ShellSequence(name='Purging builds',
+                            logEnviron=False,
+                            haltOnFailure=False,
+                            env={"REPO_TOKEN": config.repo_manager_token},
+                            commands=[
+                                shellArg([flathub_repoclient_path, 'purge',
+                                          util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
+                            ]),
+        SetRepoStateStep(3, name='Marking build as deleted'),
+    ])
+    return purge_factory
 
-periodic_purge_factory = util.BuildFactory()
-periodic_purge_factory.addSteps([
-    PeriodicPurgeStep(name="Periodic build repo management")
-])
+def create_periodic_purge_factory():
+    periodic_purge_factory = util.BuildFactory()
+    periodic_purge_factory.addSteps([
+        PeriodicPurgeStep(name="Periodic build repo management")
+    ])
+    return periodic_purge_factory
 
 class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
     def __init__(self, **kwargs):
@@ -1126,56 +1086,57 @@ class FlathubEndCommentStep(steps.BuildStep, CompositeStepMixin):
 
         defer.returnValue(buildbot.process.results.SUCCESS)
 
-build_app_factory = util.BuildFactory()
-build_app_factory.addSteps([
-    FlathubStartCommentStep(name="Send start commend",
-                            hideStepIf=hide_on_success),
-    steps.Git(name="checkout manifest",
-              repourl=util.Property('repository'),
-              mode='incremental', branch='master', submodules=False, logEnviron=False),
-    steps.SetPropertyFromCommand(name="Getting git status for subject",
-                                 command="git show --format=%s -s $(git rev-list --no-merges -n 1 HEAD)",
-                                 property="git-subject", logEnviron=False,
-                                 hideStepIf=hide_on_success),
-    FlathubPropertiesStep(name="Set flathub properties",
-                          haltOnFailure=True,
+def create_build_app_factory():
+    build_app_factory = util.BuildFactory()
+    build_app_factory.addSteps([
+        FlathubStartCommentStep(name="Send start command",
+                                hideStepIf=hide_on_success),
+        steps.Git(name="checkout manifest",
+                  repourl=util.Property('repository'),
+                  mode='incremental', branch='master', submodules=False, logEnviron=False),
+        steps.SetPropertyFromCommand(name="Getting git status for subject",
+                                     command="git show --format=%s -s $(git rev-list --no-merges -n 1 HEAD)",
+                                     property="git-subject", logEnviron=False,
+                                     hideStepIf=hide_on_success),
+        FlathubPropertiesStep(name="Set flathub properties",
+                              haltOnFailure=True,
+                              hideStepIf=hide_on_success),
+        CreateRepoBuildStep(name='Creating build on repo manager'),
+        CreateUploadToken(name='Creating upload token',
                           hideStepIf=hide_on_success),
-    CreateRepoBuildStep(name='Creating build on repo manager'),
-    CreateUploadToken(name='Creating upload token',
-                      hideStepIf=hide_on_success),
-    steps.Trigger(name='Download sources',
-                  haltOnFailure=True,
-                  schedulerNames=['download-sources'],
-                  updateSourceStamp=True,
-                  waitForFinish=True,
-                  set_properties=inherit_properties(inherited_properties)),
-    steps.Trigger(name='Build all platforms',
-                  haltOnFailure=True,
-                  schedulerNames=['build-all-platforms'],
-                  updateSourceStamp=True,
-                  waitForFinish=True,
-                  set_properties=inherit_properties(inherited_properties)),
-    CheckNewerBuildStep(name='Check for newer published builds',
-                        doStepIf=build_is_official),
-    steps.ShellSequence(name='Commiting builds',
-                        logEnviron=False,
-                        haltOnFailure=True,
-                        locks=[repo_manager_lock.access('exclusive')],
-                        env={"REPO_TOKEN": config.repo_manager_token},
-                        commands=[
-                            shellArg([flathub_repoclient_path, 'commit', '--wait',
-                                      util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
-                        ]),
-    SetRepoStateStep(1, name='Marking build as commited',
-                     hideStepIf=hide_on_success),
-    steps.SetProperties(name="Set flatparef url",
-                        hideStepIf=hide_on_success,
-                        properties= {
-                            "flathub_flatpakref_url":
-                            util.Interpolate("%(kw:url)s/build-repo/%(prop:flathub_repo_id)s/%(prop:flathub_id)s.flatpakref", url=config.repo_manager_uri)
-                        }),
-    BuildDependenciesSteps(name='build dependencies'),
-    # If build failed, purge it
+        steps.Trigger(name='Download sources',
+                      haltOnFailure=True,
+                      schedulerNames=['download-sources'],
+                      updateSourceStamp=True,
+                      waitForFinish=True,
+                      set_properties=inherit_properties(inherited_properties)),
+        steps.Trigger(name='Build all platforms',
+                      haltOnFailure=True,
+                      schedulerNames=['build-all-platforms'],
+                      updateSourceStamp=True,
+                      waitForFinish=True,
+                      set_properties=inherit_properties(inherited_properties)),
+        CheckNewerBuildStep(name='Check for newer published builds',
+                            doStepIf=build_is_official),
+        steps.ShellSequence(name='Commiting builds',
+                            logEnviron=False,
+                            haltOnFailure=True,
+                            locks=[repo_manager_lock.access('exclusive')],
+                            env={"REPO_TOKEN": config.repo_manager_token},
+                            commands=[
+                                shellArg([flathub_repoclient_path, 'commit', '--wait',
+                                          util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
+                            ]),
+        SetRepoStateStep(1, name='Marking build as commited',
+                         hideStepIf=hide_on_success),
+        steps.SetProperties(name="Set flatparef url",
+                            hideStepIf=hide_on_success,
+                            properties= {
+                                "flathub_flatpakref_url":
+                                util.Interpolate("%(kw:url)s/build-repo/%(prop:flathub_repo_id)s/%(prop:flathub_id)s.flatpakref", url=config.repo_manager_uri)
+                            }),
+        BuildDependenciesSteps(name='build dependencies'),
+        # If build failed, purge it
     steps.Trigger(name='Deleting failed build',
                   schedulerNames=['purge'],
                   waitForFinish=True,
@@ -1186,51 +1147,14 @@ build_app_factory.addSteps([
                       'flathub_repo_id' : util.Property('flathub_repo_id'),
                       'flathub_orig_buildid': computeBuildId,
                   }),
-    ClearUploadToken(name='Cleanup upload token',
-                     hideStepIf=hide_on_success,
-                     alwaysRun=True),
-    FlathubEndCommentStep(name="Send end command",
-                          hideStepIf=hide_on_success,
-                          alwaysRun=True),
-])
-
-c['builders'] = []
-
-status_builders = []
-
-build_factory = create_build_factory()
-
-for arch in flathub_arches:
-    extra_fb_args = ['--arch', arch]
-    if arch == 'x86_64':
-        extra_fb_args = extra_fb_args + ['--bundle-sources']
-
-    for i in range(0, num_builders_per_arch):
-        c['builders'].append(
-            util.BuilderConfig(name=getArchBuilderName(arch, i),
-                               workernames=flathub_arch_workers[arch],
-                               properties={'flathub_arch': arch, 'extra_fb_args': extra_fb_args },
-                               factory=build_factory))
-    status_builders.append('build-' + arch)
-c['builders'].append(
-    util.BuilderConfig(name='download-sources',
-                       workernames=flathub_download_sources_workers,
-                       factory=download_sources_factory))
-status_builders.append('download-sources')
-c['builders'].append(
-    util.BuilderConfig(name='publish',
-                       workernames=local_workers,
-                       factory=publish_factory))
-c['builders'].append(
-    util.BuilderConfig(name='purge',
-                       workernames=local_workers,
-                       factory=purge_factory))
-c['builders'].append(
-    util.BuilderConfig(name='periodic-purge',
-                       locks=[periodic_lock.access('exclusive')],
-                       workernames=local_workers,
-                       factory=periodic_purge_factory))
-status_builders.append('download-sources')
+        ClearUploadToken(name='Cleanup upload token',
+                         hideStepIf=hide_on_success,
+                         alwaysRun=True),
+        FlathubEndCommentStep(name="Send end command",
+                              hideStepIf=hide_on_success,
+                              alwaysRun=True),
+    ])
+    return build_app_factory
 
 # We use this to rate limit the untrusted builds. There ar N normal master
 # workers used for trusted builds, but only one for untrusted builds, which
@@ -1238,127 +1162,47 @@ status_builders.append('download-sources')
 def canStartMainBuild(builder, workerforbuilder, request):
     untrusted = request.properties.getProperty('flathub_untrusted', False)
     if untrusted:
-        return workerforbuilder.worker.workername == untrusted_workername
+        return workerforbuilder.worker.workername.endswith("Untrusted")
     else:
-        return workerforbuilder.worker.workername != untrusted_workername
-
-c['builders'].append(
-    util.BuilderConfig(name='Builds',
-                       collapseRequests=True,
-                       workernames=local_workers,
-                       factory=build_app_factory,
-                       canStartBuild=canStartMainBuild))
-
-##########################
-# Builder cleanup support
-##########################
-
-force_cleanup = schedulers.ForceScheduler(
-    name="force-cleanup",
-    buttonName="Force cleanup",
-    label="Force a worker cleanup",
-    builderNames=["Cleanup Workers"],
-
-    codebases=[util.CodebaseParameter(codebase='', hide=True)],
-    reason=util.StringParameter(name="reason",
-                                label="reason:",
-                                required=True, default="force clean", size=80),
-    properties=[
-        util.StringParameter(name="cleanup-worker", label="Worker: (empty for all)", required=False),
-    ]
-)
+        return not workerforbuilder.worker.workername.endswith("Untrusted")
 
 @util.renderer
 def computeCleanupWorkers(props):
     clean_worker = props.getProperty ('cleanup-worker', None)
-    if clean_worker and clean_worker in build_workers:
-        workers = [clean_worker]
+    if clean_worker and clean_worker in flathub_worker_names:
+        worker_names = [clean_worker]
     else:
-        workers = build_workers
+        worker_names = flathub_worker_names
+    return list(map(lambda x: "cleanup-" + x, worker_names))
 
-    return list(map(lambda x: "cleanup-" + x, workers))
-
-cleanup = schedulers.Triggerable(name="cleanup-all-workers",
-                                 builderNames=computeCleanupWorkers)
-
-c['schedulers'].append(cleanup)
-c['schedulers'].append(force_cleanup)
-
-cleanup_factory = util.BuildFactory()
-cleanup_factory.addSteps([
-    steps.FileDownload(name='downloading cleanup.sh',
-                       haltOnFailure=True,
-                       hideStepIf=hide_on_success,
-                       mode=0o755,
-                       mastersrc="scripts/cleanup.sh",
-                       workerdest="cleanup.sh"),
-    steps.ShellCommand(
-        name='Status',
-        logEnviron=False,
-        command='./cleanup.sh')
+def create_cleanup_factory():
+    cleanup_factory = util.BuildFactory()
+    cleanup_factory.addSteps([
+        steps.FileDownload(name='downloading cleanup.sh',
+                           haltOnFailure=True,
+                           hideStepIf=hide_on_success,
+                           mode=0o755,
+                           mastersrc="scripts/cleanup.sh",
+                           workerdest="cleanup.sh"),
+        steps.ShellCommand(
+            name='Status',
+            logEnviron=False,
+            command='./cleanup.sh')
     ])
+    return cleanup_factory
 
-cleanup_all_factory = util.BuildFactory()
-cleanup_all_factory.addSteps([
-    steps.Trigger(name='Clean up all workers',
-                  schedulerNames=['cleanup-all-workers'],
-                  waitForFinish=True,
-                  set_properties={
-                      "cleanup-worker" : util.Property('cleanup-worker')
-                  })
-])
+def create_cleanup_all_factory():
+    cleanup_all_factory = util.BuildFactory()
+    cleanup_all_factory.addSteps([
+        steps.Trigger(name='Clean up all workers',
+                      schedulerNames=['cleanup-all-workers'],
+                      waitForFinish=True,
+                      set_properties={
+                          "cleanup-worker" : util.Property('cleanup-worker')
+                      })
+    ])
+    return cleanup_all_factory
 
-for worker in build_workers:
-    c['builders'].append(
-        util.BuilderConfig(name='cleanup-' + worker,
-                           workername=worker,
-                           locks=[flatpak_worker_lock.access('exclusive')],
-                           factory=cleanup_factory))
-    status_builders.append('build-' + arch)
-
-c['builders'].append(
-    util.BuilderConfig(name='Cleanup Workers',
-                       collapseRequests=True,
-                       workernames=local_workers,
-                       factory=cleanup_all_factory))
-
-####### BUILDBOT SERVICES
-
-# 'services' is a list of BuildbotService items like reporter targets. The
-# status of each build will be pushed to these targets. buildbot/reporters/*.py
-# has a variety to choose from, like IRC bots.
-
-c['services'] = []
-
-if config.github_api_token != '' and not config.disable_status_updates:
-    c['services'].append(reporters.GitHubStatusPush(token=config.github_api_token,
-                                                    verbose=True,
-                                                    context=util.Interpolate("buildbot/%(prop:buildername)s"),
-                                                    startDescription='Build started.',
-                                                    endDescription='Build done.',
-                                                    builders=status_builders))
-
-####### PROJECT IDENTITY
-
-# the 'title' string will appear at the top of this buildbot installation's
-# home pages (linked to the 'titleURL').
-
-c['title'] = 'Flathub'
-c['titleURL'] = 'https://flathub.org'
-
-# the 'buildbotURL' string should point to the location where the buildbot's
-# internal web server is visible. This typically uses the port number set in
-# the 'www' entry below, but with an externally-visible host name which the
-# buildbot cannot figure out without some help.
-
-c['buildbotURL'] = config.buildbot_uri
-
-c['www'] = dict(port=config.buildbot_port,
-                authz=my_authz)
-if auth:
-    c['www']['auth'] = auth
-
-####### CHANGESOURCES
 
 # Nothing else listens to these async comments, so log on error
 def githubCommentDone(response):
@@ -1507,16 +1351,6 @@ class FlathubGithubHandler(GitHubEventHandler):
 
         return changes, u'git'
 
-
-c['www']['change_hook_dialects'] = { }
-
-if config.github_change_secret != "":
-    c['www']['change_hook_dialects']['github'] = {
-        'class': FlathubGithubHandler,
-        'secret': config.github_change_secret,
-        'strict': True
-    }
-
 class MyGitLabHandler(gitlabhooks.GitLabHandler):
     def __init__(self, master, options):
         gitlabhooks.GitLabHandler.__init__(self, master, options)
@@ -1572,23 +1406,202 @@ class MyGitLabHandler(gitlabhooks.GitLabHandler):
 
 gitlabhooks.gitlab=MyGitLabHandler
 
-if config.gitlab_change_secret and config.gitlab_change_secret != "":
-    c['www']['change_hook_dialects']['gitlab'] = {
-        'secret': config.gitlab_change_secret
+def computeConfig():
+    load_config()
+
+    c = BuildmasterConfig = {}
+
+    c['title'] = 'Flathub'
+    c['titleURL'] = 'https://flathub.org'
+    c['buildbotURL'] = config.buildbot_uri
+    c['change_source'] = []
+    c['collapseRequests'] = False
+    c['protocols'] = {}
+    c['protocols']['pb'] = {'port': 9989}
+    c['db'] = {
+        'db_url' : config.db_uri,
     }
 
-####### DB URL
+    # configure a janitor which will delete all logs older than one month,
+    # and will run on sundays at noon
+    c['configurators'] = [util.JanitorConfigurator(
+        logHorizon=timedelta(weeks=4),
+        hour=12,
+        dayOfWeek=6
+    )]
 
-c['db'] = {
-    # This specifies what database buildbot uses to store its state.  You can leave
-    # this at its default for all but the largest installations.
-    'db_url' : config.db_uri,
-}
+    ####### Authentication
 
-# configure a janitor which will delete all logs older than one month,
-# and will run on sundays at noon
-c['configurators'] = [util.JanitorConfigurator(
-    logHorizon=timedelta(weeks=4),
-    hour=12,
-    dayOfWeek=6
-)]
+    auth = None
+    roleMatchers=[]
+    adminsRole="admins"
+
+    if config.github_auth_client != '':
+        auth = util.GitHubAuth(config.github_auth_client, config.github_auth_secret,apiVersion=4,getTeamsMembership=True)
+        roleMatchers.append(util.RolesFromGroups())
+        adminsRole = adminsGithubGroup
+    elif config.admin_password != '':
+        auth = util.UserPasswordAuth({"admin": config.admin_password})
+        roleMatchers.append(util.RolesFromEmails(admins=["admin"]))
+
+    my_authz = FlathubAuthz(
+        # TODO: Allow publish/delete to commiter to repo
+        allowRules=[
+            util.AnyControlEndpointMatcher(role=adminsRole)
+        ],
+        roleMatchers=roleMatchers
+    )
+
+    c['www'] = dict(port=config.buildbot_port,
+                    authz=my_authz)
+    if auth:
+        c['www']['auth'] = auth
+
+    ####### Workers
+
+    # Workers from builder.json
+    c['workers'] = flathub_workers
+
+    # We only have one "builder" for building apps ("Builds"), and one
+    # builder can only run at once per workers. So, to allow multiple
+    # parallel builds we create a bunch of workers on the master.
+    local_workers = []
+    for i in range(1,config.num_master_workers+1):
+        name = 'MasterWorker%d' % i
+        c['workers'].append (LocalWorker(name))
+        local_workers.append(name)
+
+    # We have also have a single worker for untrusted builds so that they
+    # are serialized
+    untrusted_workername = 'MasterWorkerUntrusted'
+    c['workers'].append (LocalWorker(untrusted_workername))
+    local_workers.append(untrusted_workername)
+
+    ####### Schedulers
+
+    checkin = schedulers.AnyBranchScheduler(name="checkin",
+                                            treeStableTimer=10,
+                                            builderNames=["Builds"])
+    build = schedulers.Triggerable(name="build-all-platforms",
+                                   builderNames=computeBuildArches)
+    download_sources = schedulers.Triggerable(name="download-sources",
+                                              builderNames=["download-sources"])
+    force_build = create_build_app_force_scheduler()
+    publish = schedulers.Triggerable(name="publish",
+                                     builderNames=["publish"])
+    purge = schedulers.Triggerable(name="purge",
+                                   builderNames=["purge"])
+    periodic_purge = schedulers.Periodic(name="PeriodicPurge",
+                                         builderNames=["periodic-purge"],
+                                         periodicBuildTimer=3*60*60)
+
+    force_cleanup = schedulers.ForceScheduler(
+        name="force-cleanup",
+        buttonName="Force cleanup",
+        label="Force a worker cleanup",
+        builderNames=["Cleanup Workers"],
+
+        codebases=[util.CodebaseParameter(codebase='', hide=True)],
+        reason=util.StringParameter(name="reason",
+                                    label="reason:",
+                                    required=True, default="force clean", size=80),
+        properties=[
+            util.StringParameter(name="cleanup-worker", label="Worker: (empty for all)", required=False),
+        ]
+    )
+
+    cleanup = schedulers.Triggerable(name="cleanup-all-workers",
+                                     builderNames=computeCleanupWorkers)
+
+    c['schedulers'] = [checkin, build, download_sources, force_build, publish, purge, periodic_purge, cleanup, force_cleanup]
+
+    ####### Builders
+
+    c['builders'] = []
+    status_builders = []
+
+    build_factory = create_build_factory()
+    for arch in flathub_arches:
+        extra_fb_args = ['--arch', arch]
+        if arch == 'x86_64':
+            extra_fb_args = extra_fb_args + ['--bundle-sources']
+
+        for i in range(0, num_builders_per_arch()):
+            builder_name = getArchBuilderName(arch, i)
+            status_builders.append(builder_name)
+            c['builders'].append(
+                util.BuilderConfig(name=builder_name,
+                                   workernames=flathub_arch_workers[arch],
+                                   properties={'flathub_arch': arch, 'extra_fb_args': extra_fb_args },
+                                   factory=build_factory))
+    c['builders'].append(
+        util.BuilderConfig(name='download-sources',
+                           workernames=flathub_download_sources_workers,
+                           factory=create_download_sources_factory()))
+    status_builders.append('download-sources')
+
+    c['builders'].append(
+        util.BuilderConfig(name='Builds',
+                           collapseRequests=True,
+                           workernames=local_workers,
+                           factory=create_build_app_factory(),
+                           canStartBuild=canStartMainBuild))
+
+    c['builders'].append(
+        util.BuilderConfig(name='publish',
+                           workernames=local_workers,
+                           factory=create_publish_factory()))
+
+    c['builders'].append(
+        util.BuilderConfig(name='purge',
+                           workernames=local_workers,
+                           factory=create_purge_factory()))
+
+    c['builders'].append(
+        util.BuilderConfig(name='periodic-purge',
+                           locks=[periodic_lock.access('exclusive')],
+                           workernames=local_workers,
+                           factory=create_periodic_purge_factory()))
+
+    for worker in flathub_workers:
+        c['builders'].append(
+            util.BuilderConfig(name='cleanup-' + worker.name,
+                               workername=worker.name,
+                               locks=[flatpak_worker_lock.access('exclusive')],
+                               factory=create_cleanup_factory()))
+
+    c['builders'].append(
+        util.BuilderConfig(name='Cleanup Workers',
+                           collapseRequests=True,
+                           workernames=local_workers,
+                           factory=create_cleanup_all_factory()))
+
+    ####### Services
+
+    c['services'] = []
+
+    if config.github_api_token != '' and not config.disable_status_updates:
+        c['services'].append(reporters.GitHubStatusPush(token=config.github_api_token,
+                                                        verbose=True,
+                                                        context=util.Interpolate("buildbot/%(prop:buildername)s"),
+                                                        startDescription='Build started.',
+                                                        endDescription='Build done.',
+                                                        builders=status_builders))
+
+    ####### Changes
+
+    c['www']['change_hook_dialects'] = { }
+
+    if config.github_change_secret != "":
+        c['www']['change_hook_dialects']['github'] = {
+            'class': FlathubGithubHandler,
+            'secret': config.github_change_secret,
+            'strict': True
+        }
+
+    if config.gitlab_change_secret and config.gitlab_change_secret != "":
+        c['www']['change_hook_dialects']['gitlab'] = {
+            'secret': config.gitlab_change_secret
+        }
+
+    return c
