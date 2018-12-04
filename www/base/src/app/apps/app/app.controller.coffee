@@ -70,7 +70,8 @@ class App extends Controller
                         $scope.successful_builds.push(b)
                 $scope.unpublishedBuilds.forEach addBuild
                 $scope.recentBuilds.forEach addBuild
-
+                $scope.successful_builds.sort (a,b) ->
+                        return if a.started_at >= b.started_at then 1 else -1
             $scope.recentBuilds.onChange= ->
                 refreshGraph()
             $scope.unpublishedBuilds.onChange= ->
