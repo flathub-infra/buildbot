@@ -22,7 +22,6 @@ import subprocess, re, json
 import os
 import os.path
 from buildbot.steps.worker import CompositeStepMixin
-from buildbot.steps.http import getSession
 from buildbot.www.hooks.github import GitHubEventHandler
 from buildbot.www import authz
 from datetime import timedelta
@@ -293,39 +292,42 @@ class MaybeAddSteps(steps.BuildStep):
             self.build.addStepsAfterCurrentStep(self.steps)
         return buildbot.process.results.SUCCESS
 
-class CreateRepoBuildStep(steps.BuildStep):
-    name = 'CreateRepoBuildStep'
+class RepoRequestStep(steps.BuildStep):
+    name = 'RepoRequestStep'
     description = 'Requesting'
     descriptionDone = 'Requested'
-    renderables = ["method", "url", "headers"]
-    session = None
+    renderables = ["method", "url", "headers", "json"]
 
-    def __init__(self, **kwargs):
+    def __init__(self, path, **kwargs):
         if txrequests is None:
             raise Exception(
                 "Need to install txrequest to use this step:\n\n pip install txrequests")
 
         self.method = 'POST'
-        self.url = config.repo_manager_uri + '/api/v1/build'
+        self.url = config.repo_manager_uri + '/api/v1' + path
+        self.json = None
         self.headers = {
             'Authorization': util.Interpolate('Bearer %s' % (config.repo_manager_token))
         }
 
-        steps.BuildStep.__init__(self, haltOnFailure=True, **kwargs)
+        steps.BuildStep.__init__(self, **kwargs)
 
     def start(self):
+        self.initRequest()
         d = self.doRequest()
         d.addErrback(self.failed)
 
     @defer.inlineCallbacks
     def doRequest(self):
-        # create a new session if it doesn't exist
-        self.session = getSession()
+        # We use a new session each time, to isolate the requests. This avoids
+        # e.g. getting ECONNRESET if the server shut down the session.
+        session = txrequests.Session()
 
         requestkwargs = {
             'method': self.method,
             'url': self.url,
-            'headers': self.headers
+            'headers': self.headers,
+            'json': self.json
         }
 
         log = self.addLog('log')
@@ -334,21 +336,19 @@ class CreateRepoBuildStep(steps.BuildStep):
                       (self.method, self.url))
         data = requestkwargs.get("data", None)
         try:
-            response = yield self.session.request(**requestkwargs)
+            response = yield session.request(**requestkwargs)
         except requests.exceptions.ConnectionError as e:
+            session.close()
             log.addStderr(
                 'An exception occurred while performing the request: %s' % e)
             self.finished(FAILURE)
             return
 
+        session.close()
+
         if response.status_code == requests.codes.ok:
             resp = json.loads(response.text)
-            log.addStdout("response: " + str(resp))
-            repo_id = resp['id'];
-            yield self.master.data.updates.setBuildFlathubRepoId(self.build.buildid, repo_id)
-            yield self.master.data.updates.setBuildFlathubRepoStatus(self.build.buildid, 0)
-            # We need this in the properties too, so we can easily read it out
-            self.build.setProperty('flathub_repo_id', repo_id , 'CreateRepoBuildStep', runtime=True)
+            yield self.gotOk(resp, log)
 
         log.finish()
 
@@ -357,6 +357,53 @@ class CreateRepoBuildStep(steps.BuildStep):
             self.finished(SUCCESS)
         else:
             self.finished(FAILURE)
+
+    def initRequest(self):
+        pass
+
+    def gotOk(self, response, log):
+        pass
+
+class CreateRepoBuildStep(RepoRequestStep):
+    name = 'CreateRepoBuildStep'
+
+    def __init__(self, **kwargs):
+        RepoRequestStep.__init__(self, '/build', haltOnFailure=True, **kwargs)
+
+    @defer.inlineCallbacks
+    def gotOk(self, response, log):
+        log.addStdout("response: " + str(response))
+        repo_id = response['id'];
+        yield self.master.data.updates.setBuildFlathubRepoId(self.build.buildid, repo_id)
+        yield self.master.data.updates.setBuildFlathubRepoStatus(self.build.buildid, 0)
+        # We need this in the properties too, so we can easily read it out
+        self.build.setProperty('flathub_repo_id', repo_id , 'CreateRepoBuildStep', runtime=True)
+
+
+class CreateUploadToken(RepoRequestStep):
+    name = 'CreateUploadToken'
+
+    def __init__(self, **kwargs):
+        RepoRequestStep.__init__(self, '/token_subset', haltOnFailure=True, **kwargs)
+
+    def initRequest(self):
+        props = self.build.properties
+        prefix = [props.getProperty("flathub_id")]
+        extra_properties = props.getProperty("flathub_extra_prefixes")
+        if extra_properties:
+            prefix.extend(extra_properties)
+
+        self.json = {
+            "name": "upload",
+            "sub": "build/%s" % props.getProperty("flathub_repo_id"),
+            "scope": ["upload"],
+            "prefix": prefix,
+            "duration": 60*60*24
+        }
+
+    def gotOk(self, response, log):
+        build_id = self.build.getProperty ('flathub_repo_id')
+        flathub_upload_tokens[build_id] = response['token']
 
 class SetRepoStateStep(steps.BuildStep):
     def __init__(self, value, buildid=None, **kwargs):
@@ -379,38 +426,6 @@ class SetRepoStateStep(steps.BuildStep):
         yield self.master.data.updates.setBuildFlathubRepoStatus(buildid, self.value)
         self.finished(SUCCESS)
 
-
-class CreateUploadToken(steps.POST):
-    def __init__(self, **kwargs):
-        steps.POST.__init__(self, config.repo_manager_uri + '/api/v1/token_subset',
-                            haltOnFailure=True,
-                            headers= {
-                                'Authorization': util.Interpolate('Bearer %s' % (config.repo_manager_token))
-                            },
-                            **kwargs)
-
-    def start(self):
-        props = self.build.properties
-        prefix = [props.getProperty("flathub_id")]
-        extra_properties = props.getProperty("flathub_extra_prefixes")
-        if extra_properties:
-            prefix.extend(extra_properties)
-
-        self.json = {
-            "name": "upload",
-            "sub": "build/%s" % props.getProperty("flathub_repo_id"),
-            "scope": ["upload"],
-            "prefix": prefix,
-            "duration": 60*60*24
-        }
-        return steps.POST.start(self)
-
-    def log_response(self, response):
-        log = self.getLog('log')
-        if response.status_code == requests.codes.ok:
-            resp = json.loads(response.text)
-            build_id = self.build.getProperty ('flathub_repo_id')
-            flathub_upload_tokens[build_id] = resp['token']
 
 class ClearUploadToken(steps.BuildStep):
     def __init__(self, **kwargs):
