@@ -518,12 +518,14 @@ def githubApiPostComment(issue_url, comment):
 
 @defer.inlineCallbacks
 def githubApiAssertUserMaintainsRepo(repo_url, userDetails):
-    allowed = 'groups' in userDetails and adminsGithubGroup in userDetails['groups']
-    if not allowed and config.github_api_token != "" and repo_url.startswith("https://github.com/flathub/"):
+    username = userDetails.get('username', None)
+    groups = userDetails.get('groups', [])
+    allowed = adminsGithubGroup in groups
+    if not allowed and username != None and config.github_api_token != "" and repo_url.startswith("https://github.com/flathub/"):
         basename = os.path.basename(repo_url)
         if basename.endswith(".git"):
             basename = basename[:-4]
-        response = yield githubApiRequest("/repos/flathub/%s/collaborators/%s" % (basename, userDetails['username']))
+        response = yield githubApiRequest("/repos/flathub/%s/collaborators/%s" % (basename, username))
         if response.ok:
             allowed = True
         elif response.status_code != 404:
