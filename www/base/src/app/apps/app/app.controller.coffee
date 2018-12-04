@@ -40,6 +40,7 @@ class App extends Controller
             if $stateParams.numbuilds?
                 $scope.numbuilds = +$stateParams.numbuilds
             $scope.runningBuilds = builder.getBuilds
+                flathub_name__eq: appname
                 complete: false
                 property: ["owners"]
                 order: '-number'
