@@ -1414,6 +1414,7 @@ def computeConfig():
     c['title'] = 'Flathub'
     c['titleURL'] = 'https://flathub.org'
     c['buildbotURL'] = config.buildbot_uri
+    c['buildbotNetUsageData'] = None
     c['change_source'] = []
     c['collapseRequests'] = False
     c['protocols'] = {}
