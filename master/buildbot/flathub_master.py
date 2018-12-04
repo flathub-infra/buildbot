@@ -238,6 +238,10 @@ def hide_on_skipped(results, s):
 def hide_on_success_or_skipped(results, s):
     return results==buildbot.process.results.SUCCESS or results==buildbot.process.results.SKIPPED
 
+# Triggers stop working on shutdown, so don't use them then
+def do_if_failed_except_shutdown(step):
+    return not step.master.botmaster.shuttingDown and not step.build.results == SUCCESS
+
 # Official builds are master branch on the canonical flathub git repo
 def build_is_official(step):
     return step.build.getProperty ('flathub_official_build', False)
@@ -1140,7 +1144,7 @@ def create_build_app_factory():
     steps.Trigger(name='Deleting failed build',
                   schedulerNames=['purge'],
                   waitForFinish=True,
-                  doStepIf=lambda step: not step.build.results == SUCCESS,
+                  doStepIf=do_if_failed_except_shutdown,
                   hideStepIf=hide_on_success_or_skipped,
                   alwaysRun=True,
                   set_properties={
