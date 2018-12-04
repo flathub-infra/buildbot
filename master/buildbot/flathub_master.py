@@ -1285,28 +1285,10 @@ class FlathubGithubHandler(GitHubEventHandler):
         change['properties']['flathub_issue_url'] = issue_url
         return [change], 'git'
 
-    def handle_issue_comment(self, payload, event):
-        body = payload["comment"]["body"]
+    def handle_bot_build(self, payload, event, build_id, arch):
         assoc = payload["comment"]["author_association"]
         issue_nr = payload["issue"]["number"]
         issue_url = payload["comment"]["issue_url"]
-
-        bot_re = r"(?:^|\s)%s," % config.bot_name
-        just_bot_re = re.compile(bot_re)
-        if just_bot_re.search(body) == None:
-            # No bot command, ignore
-            return [], 'git'
-
-        id_re = r"[0-9A-Za-z_\-]+\.[0-9A-Za-z_\-.]+"
-        arch_re = r"[0-9A-Za-z_]+"
-        bot_build_re = re.compile(r"%s build(?: (%s))?(?: on (%s))?" % (bot_re, id_re, arch_re))
-
-        match = bot_build_re.search(body)
-        if not match:
-            githubApiPostComment(issue_url, "I'm sorry, i did not understand that command.").addCallback(githubCommentDone)
-            return [], 'git'
-
-        (build_id, arch) = match.groups()
 
         log.msg("Detected build test request in %s PR %d (id %s)" % (payload['repository']['html_url'], issue_nr, build_id))
 
@@ -1334,6 +1316,41 @@ class FlathubGithubHandler(GitHubEventHandler):
         githubApiPostComment(issue_url, "Queued test build for %s." % (data.get_name())).addCallback(githubCommentDone)
 
         return [change], 'git'
+
+    def handle_issue_comment(self, payload, event):
+        body = payload["comment"]["body"]
+        issue_url = payload["comment"]["issue_url"]
+        sender = payload['sender']['login']
+        is_pull_request = 'pull_request' in payload['issue']
+
+        if sender == 'flathubbot':
+            # Ignore messages from myself
+            return [], 'git'
+
+        if not is_pull_request:
+            log.msg("Ignoring comment in non-pull-request")
+            return [], 'git'
+
+        bot_re = r"(?:^|\s)%s," % config.bot_name
+        just_bot_re = re.compile(bot_re)
+        if just_bot_re.search(body) == None:
+            # No bot command, ignore
+            return [], 'git'
+
+        # bot, build?
+        id_re = r"[0-9A-Za-z_\-]+\.[0-9A-Za-z_\-.]+"
+        arch_re = r"[0-9A-Za-z_]+"
+        bot_build_re = re.compile(r"%s build(?: (%s))?(?: on (%s))?" % (bot_re, id_re, arch_re))
+
+        match = bot_build_re.search(body)
+        if match:
+            (build_id, arch) = match.groups()
+            return self.handle_bot_build(payload, event, build_id, arch)
+
+        # No known command
+        githubApiPostComment(issue_url, "I'm sorry, i did not understand that command.").addCallback(githubCommentDone)
+        return [], 'git'
+
 
     def handle_push(self, payload, event):
         id = payload['repository']['name']
