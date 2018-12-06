@@ -150,12 +150,8 @@ class BuildEndpoint(Db2DataMixin, base.BuildNestingMixin, base.Endpoint):
         trigger_properties = Properties()
         trigger_properties.setProperty('flathub_repo_id', repo_id, 'publish', runtime=True)
         trigger_properties.setProperty('flathub_orig_buildid', build['buildid'], 'publish', runtime=True)
-        name = build['flathub_name']
-        if name:
-            s = name.split("/",1)
-            trigger_properties.setProperty('flathub_id', s[0], 'publish', runtime=True)
-            if len(s) > 1:
-                trigger_properties.setProperty('flathub_branch', s[1], 'publish', runtime=True)
+        trigger_properties.setProperty('flathub_name', build['flathub_name'], 'publish', runtime=True)
+        trigger_properties.setProperty('flathub_buildnumber', build['number'], 'publish', runtime=True)
         idsDeferred, resultsDeferred = sch.trigger(waited_for=False,
                                                    set_props=trigger_properties,
                                                    parent_buildid=build['buildid'],

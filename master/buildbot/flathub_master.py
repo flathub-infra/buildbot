@@ -566,6 +566,8 @@ class PeriodicPurgeStep(steps.BuildStep):
                                                  set_properties={
                                                      'flathub_repo_id' : b['flathub_repo_id'],
                                                      'flathub_orig_buildid': b['buildid'],
+                                                     'flathub_name': b['flathub_name'],
+                                                     'flathub_buildnumber': b['number'],
                                                  })
                         else: # Some leftover non-commited job? error?
                             steps.Trigger(name='Deleting old broken build %d' % b['number'],
@@ -872,14 +874,14 @@ class BuildDependenciesSteps(steps.BuildStep):
 
     @defer.inlineCallbacks
     def run(self):
-        official = self.build.getProperty ('flathub_official_build', False)
-        if not official:
-            defer.returnValue(buildbot.process.results.SUCCESS)
+        log = yield self.addLog('log')
+
         build_name = self.build.getProperty ('flathub_name', "")
         buildnr = self.build.getProperty ('flathub_buildnumber', 0)
         deps = builds.reverse_dependency_lookup(build_name)
         if deps:
             for d in deps:
+                log.addStdout("Queueing build of dependency: %s\n" % (d.get_name()))
                 c = d.get_change()
                 change = yield self.master.data.updates.addChange(
                     author = u"flathub",
@@ -889,6 +891,8 @@ class BuildDependenciesSteps(steps.BuildStep):
                     branch = c['branch'],
                     properties = c['properties']
                 )
+
+        log.finish()
 
         defer.returnValue(buildbot.process.results.SUCCESS)
 
@@ -971,6 +975,7 @@ def create_publish_factory():
                                           util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
                             ]),
         PurgeOldBuildsStep(name='Getting old builds'),
+        BuildDependenciesSteps(name='build dependencies'),
     ])
     return publish_factory
 
@@ -1169,7 +1174,6 @@ def create_build_app_factory():
                                 "flathub_flatpakref_url":
                                 util.Interpolate("%(kw:url)s/build-repo/%(prop:flathub_repo_id)s/%(prop:flathub_id)s.flatpakref", url=config.repo_manager_uri)
                             }),
-        BuildDependenciesSteps(name='build dependencies'),
         # If build failed, purge it
     steps.Trigger(name='Deleting failed build',
                   schedulerNames=['purge'],
