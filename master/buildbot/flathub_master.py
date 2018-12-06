@@ -334,7 +334,7 @@ class RepoRequestStep(steps.BuildStep):
             'json': self.json
         }
 
-        log = self.addLog('log')
+        log = yield self.addLog('log')
         retries = 0
         while True:
             log.addHeader('Performing %s request to %s\n' %
