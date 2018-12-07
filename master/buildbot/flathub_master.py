@@ -1192,7 +1192,7 @@ def create_build_app_factory():
     steps.Trigger(name='Deleting failed build',
                   schedulerNames=['purge'],
                   waitForFinish=True,
-                  doStepIf=do_if_failed_except_shutdown,
+                  doStepIf=lambda step: step.build.getProperty('flathub_repo_id', None) and do_if_failed_except_shutdown(step),
                   hideStepIf=hide_on_success_or_skipped,
                   alwaysRun=True,
                   set_properties={
