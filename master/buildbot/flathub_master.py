@@ -844,6 +844,7 @@ def create_build_factory():
             command=util.Interpolate('zgrep "<id>%(prop:flathub_id)s\\(\\.\\w\\+\\)*\\(.desktop\\)\\?</id>" builddir/*/share/app-info/xmls/%(prop:flathub_id)s.xml.gz')),
         steps.ShellCommand(
             name='Check that the right branch was built',
+            doStepIf=build_is_official,
             haltOnFailure=True,
             logEnviron=False,
             command=util.Interpolate('test ! -d repo/refs/heads/app -o -f repo/refs/heads/app/%(prop:flathub_id)s/%(prop:flathub_arch)s/%(prop:flathub_default_branch)s')),
@@ -1077,9 +1078,14 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
             if not hasYml:
                 manifest = "%s.json" % flathub_id
 
+        if official_build:
+            default_branch = u'stable'
+        else:
+            default_branch = u'test'
+
         p = {
             "flathub_name": flathub_name,
-            "flathub_default_branch": flathub_branch if flathub_branch else u'stable',
+            "flathub_default_branch": flathub_branch if flathub_branch else default_branch,
             "flathub_subject": "%s (%s)" % (git_subject, props.getProperty('got_revision')[:8]),
             "flathub_arches": flathub_arches_prop,
             "flathub_buildnumber": buildnumber,
