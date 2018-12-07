@@ -395,6 +395,15 @@ class CreateRepoBuildStep(RepoRequestStep):
         self.build.setProperty('flathub_repo_id', repo_id , 'CreateRepoBuildStep', runtime=True)
 
 
+# If the app has dashes in the last element, like "org.foo.with-dash", then
+# we will also have to accept ids like org.foo.with_dash.Debug, because
+# flatpak does this because dashes are only allowed in the last part.
+def convert_dashes_in_id(id):
+    idx = id.rfind(".")
+    if idx == -1:
+        return id
+    return id[:idx] + id[idx:].replace("-", "_")
+
 class CreateUploadToken(RepoRequestStep):
     name = 'CreateUploadToken'
 
@@ -403,7 +412,12 @@ class CreateUploadToken(RepoRequestStep):
 
     def initRequest(self):
         props = self.build.properties
-        prefix = [props.getProperty("flathub_id")]
+        id = props.getProperty("flathub_id")
+        prefix = [id]
+        id2 = convert_dashes_in_id(id)
+        if id != id2:
+            prefix.append(id2)
+
         extra_properties = props.getProperty("flathub_extra_prefixes")
         if extra_properties:
             prefix.extend(extra_properties)
