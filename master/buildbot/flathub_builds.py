@@ -193,6 +193,8 @@ class Builds:
             module = "%s.git" % id
             if fp_branch == None:
                 git_branch = repo.default_branch
+            elif fp_branch == "beta":
+                git_branch = "beta"
             else:
                 git_branch = "branch/" + fp_branch;
             if not id_is_valid(id):
@@ -269,6 +271,8 @@ class Builds:
                 name = None
                 if  git_branch == default_git_branch:
                     name = id;
+                elif  git_branch == "beta":
+                    name = id + "/beta";
                 elif git_branch.startswith("branch/"):
                     name = id + "/" + git_branch[7:];
                 if name != None:
@@ -334,6 +338,8 @@ def test_lookup_by_name():
     verify_by_name("org.app.special-repo2-branch", url="https://github.com/special2/org.app.special-repo2-branch.git", git_branch="override")
     # Regular extra-fp-branch
     verify_by_name("org.app.has-version/1.0", fp_branch="1.0", git_branch="1-0")
+    # Non-configured beta branch
+    verify_by_name("org.app.regular/beta", fp_branch="beta", git_branch="beta")
     # Non-configured special branch
     verify_by_name("org.app.regular/foobar", fp_branch="foobar", git_branch="branch/foobar")
     # Don't allow non-versioned
@@ -420,6 +426,8 @@ def test_lookup_by_git():
 
     # If a special branch is configured, we should match an official build
     verify_by_git_official("https://github.com/flathub/org.app.special-branch.git", "org.app.special-branch", git_branch="special-branch")
+    # Or we use a git branch named "beta" branch:
+    verify_by_git_official("https://github.com/flathub/org.app.regular.git", "org.app.regular", git_branch="beta", fp_branch="beta")
     # Or we use a git branch named "branch/*" branches:
     verify_by_git_official("https://github.com/flathub/org.app.regular.git", "org.app.regular", git_branch="branch/foobar", fp_branch="foobar")
     verify_by_git_official("https://github.com/flathub/org.app.regular.git", "org.app.regular", git_branch="branch/some-other", fp_branch="some-other")
