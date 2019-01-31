@@ -1,0 +1,57 @@
+{
+    "repos": {
+        "default": {
+            "base": "https://github.com/flathub"
+        },
+        "special-repo": {
+            "base": "https://github.com/special"
+        },
+        "special-repo2": {
+            "base": "https://github.com/special2",
+            "default-branch": "special2"
+        },
+        "kde": {
+            "base": "https://github.com/KDE"
+        },
+        "kde2": {
+            "base": "https://github.com/KDE2",
+            "default-branch": "kde-branch"
+        }
+    },
+    "builds": {
+        "org.kde.Sdk/5.9": {
+            "repo": "kde",
+            "git-branch": "kde-5-9"
+        },
+        "org.kde.Sdk/5.10": {
+            "repo": "kde2",
+            "git-module": "flatpak-kde-runtime.git"
+        },
+        "org.kde.Sdk/5.11": {
+            "repo": "kde2",
+            "git-module": "flatpak-kde-runtime.git",
+            "git-branch": "kde-5-11"
+        },
+        "org.app.special-branch": {
+            "git-branch": "special-branch"
+        },
+        "org.app.special-repo": {
+            "repo": "special-repo"
+        },
+        "org.app.special-repo2": {
+            "repo": "special-repo2"
+        },
+        "org.app.special-repo2-branch": {
+            "repo": "special-repo2",
+            "git-branch": "override"
+        },
+        "org.app.has-version/1.0": {
+            "git-branch": "1-0"
+        },
+        "org.app.special-module": {
+            "git-module": "special-module.git"
+        }
+    },
+    "imports": {
+    }
+}
