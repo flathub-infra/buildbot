@@ -384,6 +384,7 @@ class CreateRepoBuildStep(RepoRequestStep):
 
     def __init__(self, **kwargs):
         RepoRequestStep.__init__(self, '/build', haltOnFailure=True, **kwargs)
+        self.json = { 'repo': 'stable' }
 
     @defer.inlineCallbacks
     def gotOk(self, response, log):
