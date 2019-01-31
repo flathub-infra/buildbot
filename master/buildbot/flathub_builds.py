@@ -159,7 +159,7 @@ class Builds:
             # the user specified
         elif buildname:
             data = self.lookup_by_name(buildname)
-            if git_branch:
+            if git_branch and git_branch != data.git_branch:
                 data.git_branch = git_branch
                 # We're overriding the branch, so we loose officialness
                 data.official = False
