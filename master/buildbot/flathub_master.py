@@ -620,8 +620,11 @@ def githubApiPostComment(issue_url, comment):
 @defer.inlineCallbacks
 def githubApiAssertUserMaintainsRepo(repo_url, userDetails):
     username = userDetails.get('username', None)
-    groups = userDetails.get('groups', [])
-    allowed = adminsGithubGroup in groups
+    if config.github_auth_client == '' and config.admin_password != '':
+        allowed = username == "admin"
+    else:
+        groups = userDetails.get('groups', [])
+        allowed = adminsGithubGroup in groups
     if not allowed and username != None and config.github_api_token != "" and repo_url.startswith("https://github.com/flathub/"):
         basename = os.path.basename(repo_url)
         if basename.endswith(".git"):
