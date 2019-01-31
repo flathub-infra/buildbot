@@ -384,7 +384,14 @@ class CreateRepoBuildStep(RepoRequestStep):
 
     def __init__(self, **kwargs):
         RepoRequestStep.__init__(self, '/build', haltOnFailure=True, **kwargs)
-        self.json = { 'repo': 'stable' }
+
+    def initRequest(self):
+        props = self.build.properties
+        repo = 'stable'
+        fp_branch = props.getProperty("flathub_branch")
+        if fp_branch == "beta":
+            repo = "beta"
+        self.json = { 'repo': repo }
 
     @defer.inlineCallbacks
     def gotOk(self, response, log):
