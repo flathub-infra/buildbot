@@ -55,7 +55,7 @@ flathub_download_sources_workers = []   # Worker names for source downloaders
 # These keeps track of subset tokens for uploads by the workers
 flathub_upload_tokens = {}
 
-flathub_repoclient_path = os.getcwd() + '/scripts/repoclient'
+flathub_repoclient_path = os.getcwd() + '/scripts/flat-manager-client'
 
 adminsGithubGroup='flathub'
 
@@ -816,12 +816,12 @@ def create_build_factory():
                            hideStepIf=hide_on_success,
                            mastersrc="flathub.gpg",
                            workerdest="flathub.gpg"),
-        steps.FileDownload(name='downloading repoclient',
+        steps.FileDownload(name='downloading flat-manager-client',
                            haltOnFailure=True,
                            hideStepIf=hide_on_success,
                            mode=0o755,
-                           mastersrc="scripts/repoclient",
-                           workerdest="repoclient"),
+                           mastersrc="scripts/flat-manager-client",
+                           workerdest="flat-manager-client"),
         steps.FileDownload(name='downloading merge-sources.sh',
                            haltOnFailure=True,
                            hideStepIf=hide_on_success,
@@ -869,7 +869,7 @@ def create_build_factory():
                 shellArg(['mkdir', '-p', 'builddir/screenshots']),
                 shellArg(['ostree', 'commit', '--repo=repo', util.Interpolate('--branch=screenshots/%(prop:flathub_arch)s'), 'builddir/screenshots']),
                 # Push to repo
-                shellArg(['./repoclient', 'push',
+                shellArg(['./flat-manager-client', 'push',
                           util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri),
                           "repo"])
             ]),
