@@ -842,6 +842,11 @@ def create_build_factory():
             ]),
         FlatpakBuildStep(name='Build'),
         steps.ShellCommand(
+            name='Generate deltas',
+            haltOnFailure=True,
+            logEnviron=False,
+            command=util.Interpolate('flatpak build-update-repo --generate-static-deltas repo')),
+        steps.ShellCommand(
             name='Check for AppStream xml',
             doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
             haltOnFailure=True,
