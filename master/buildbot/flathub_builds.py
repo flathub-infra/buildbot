@@ -114,7 +114,8 @@ class Builds:
         self.reverse_repo_base = {}
 
         f = open(filename, 'r')
-        config = json.loads(f.read ())
+        # This strips /* comments */
+        config = json.loads(re.sub(r'/\*.*?\*/', '', f.read(), flags=re.DOTALL))
         for k in config["repos"]:
             r = BuildDataRepo(k, config["repos"][k])
             self.repos[k] = r

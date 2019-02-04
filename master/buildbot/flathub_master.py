@@ -117,7 +117,8 @@ GITHUB_API_BASE="https://api.github.com"
 class FlathubConfig():
     def __init__(self):
         f = open('config.json', 'r')
-        config_data = json.loads(f.read ())
+        # This strips /* comments */
+        config_data = json.loads(re.sub(r'/\*.*?\*/', '', f.read(), flags=re.DOTALL))
 
         def getConfig(config_data, name, default=""):
             return config_data.get(name, default)
@@ -172,7 +173,8 @@ def load_config():
     new_builds = Builds('builds.json')
 
     f = open('builders.json', 'r')
-    worker_config = json.loads(f.read ())
+    # This strips /* comments */
+    worker_config = json.loads(re.sub(r'/\*.*?\*/', '', f.read(), flags=re.DOTALL))
 
     # Json parsing succeeded, now change global config
 
