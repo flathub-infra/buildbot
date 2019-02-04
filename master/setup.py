@@ -212,6 +212,8 @@ setup_args = {
             "buildbot/scripts/sample.cfg",
             "buildbot/scripts/buildbot_tac.tmpl",
             "buildbot/scripts/flat-manager-client",
+            "buildbot/scripts/flathub-cleanup.sh",
+            "buildbot/scripts/flathub-merge-sources.sh",
         ]),
         include("buildbot/spec", "*.raml"),
         include("buildbot/spec/types", "*.raml"),
