@@ -147,10 +147,28 @@ class FlathubConfig():
         self.bot_name = getConfig(config_data, 'bot-name', 'bot')
 
 
+def reload_builds():
+    global builds_mtime
+    global builds
+    try:
+        new_builds_mtime = os.path.getmtime('builds.json')
+        if new_builds_mtime != builds_mtime:
+            log.msg("Reloading builds.json")
+            new_builds = Builds('builds.json')
+            builds_mtime = new_builds_mtime
+            builds = new_builds
+    except BaseException as e:
+        msg = str(e)
+        log.msg("WARNING: Failed to reload builds.json: %s" % (msg))
+        return False
+    return True
+
+
 def load_config():
     # First load all json file to catch any errors
     # before we modify global state
     new_config = FlathubConfig()
+    new_builds_mtime = os.path.getmtime('builds.json')
     new_builds = Builds('builds.json')
 
     f = open('builders.json', 'r')
@@ -159,6 +177,7 @@ def load_config():
     # Json parsing succeeded, now change global config
 
     global config
+    global builds_mtime
     global builds
     global flathub_workers
     global flathub_worker_names
@@ -167,6 +186,7 @@ def load_config():
     global flathub_download_sources_workers
 
     config = new_config
+    builds_mtime = new_builds_mtime
     builds = new_builds
     flathub_workers = []
     flathub_worker_names = []
@@ -274,6 +294,30 @@ def inherit_properties(propnames):
     return res
 
 ####### Custom steps
+
+class UpdateConfig(steps.BuildStep):
+    parms = steps.BuildStep.parms + []
+    description = 'Updating Config'
+    descriptionDone = 'Updated'
+
+    def __init__(self, **kwargs):
+        for p in self.__class__.parms:
+            if p in kwargs:
+                setattr(self, p, kwargs.pop(p))
+
+        steps.BuildStep.__init__(self, **kwargs)
+
+    @defer.inlineCallbacks
+    def run(self):
+        log = yield self.addLog('log')
+        if not reload_builds ():
+            log.addStderr('Failed to update the builds.json config, ping the admins')
+            defer.returnValue(FAILURE)
+            return
+
+        log.finish()
+
+        defer.returnValue(SUCCESS)
 
 class MaybeAddSteps(steps.BuildStep):
     parms = steps.BuildStep.parms + ['steps']
@@ -1165,6 +1209,8 @@ class FlathubEndCommentStep(steps.BuildStep, CompositeStepMixin):
 def create_build_app_factory():
     build_app_factory = util.BuildFactory()
     build_app_factory.addSteps([
+        UpdateConfig(name="Update build config",
+                     warnOnFailure=True),
         FlathubStartCommentStep(name="Send start command",
                                 hideStepIf=hide_on_success),
         steps.Git(name="checkout manifest",
