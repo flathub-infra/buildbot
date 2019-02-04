@@ -1212,6 +1212,7 @@ def create_build_app_factory():
     build_app_factory = util.BuildFactory()
     build_app_factory.addSteps([
         UpdateConfig(name="Update build config",
+                     hideStepIf=hide_on_success,
                      warnOnFailure=True),
         FlathubStartCommentStep(name="Send start command",
                                 hideStepIf=hide_on_success),
