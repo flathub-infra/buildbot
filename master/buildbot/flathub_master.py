@@ -531,7 +531,7 @@ class PurgeOldBuildsStep(steps.BuildStep):
                                     haltOnFailure=False,
                                     env={"REPO_TOKEN": config.repo_manager_token},
                                     commands=[
-                                        shellArg(['echo', flathub_repoclient_path, 'purge',
+                                        shellArg([flathub_repoclient_path, 'purge',
                                                   "%s/api/v1/build/%s" % (config.repo_manager_uri, b['flathub_repo_id'])])
                                     ]),
                 SetRepoStateStep(3, buildid=b['buildid'], name='Marking old build id %d as deleted' % b['number']),
