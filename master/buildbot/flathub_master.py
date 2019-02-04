@@ -827,7 +827,7 @@ def create_build_factory():
                            haltOnFailure=True,
                            hideStepIf=hide_on_success,
                            mode=0o755,
-                           mastersrc="scripts/merge-sources.sh",
+                           mastersrc=pyutil.sibpath(__file__, "scripts/flathub-merge-sources.sh"),
                            workerdest="merge-sources.sh"),
         steps.ShellSequence(
             name='Prepare build',
@@ -1257,7 +1257,7 @@ def create_cleanup_factory():
                            haltOnFailure=True,
                            hideStepIf=hide_on_success,
                            mode=0o755,
-                           mastersrc="scripts/cleanup.sh",
+                           mastersrc=pyutil.sibpath(__file__, "scripts/flathub-cleanup.sh"),
                            workerdest="cleanup.sh"),
         steps.ShellCommand(
             name='Status',
