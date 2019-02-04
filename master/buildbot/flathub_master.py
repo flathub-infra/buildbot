@@ -16,6 +16,7 @@ from buildbot.util import epoch2datetime
 from buildbot.util import unicode2bytes
 from buildbot import locks
 from twisted.python import log
+from twisted.python import util as pyutil
 from twisted.internet import defer
 import buildbot
 import subprocess, re, json
@@ -55,7 +56,7 @@ flathub_download_sources_workers = []   # Worker names for source downloaders
 # These keeps track of subset tokens for uploads by the workers
 flathub_upload_tokens = {}
 
-flathub_repoclient_path = os.getcwd() + '/scripts/flat-manager-client'
+flathub_repoclient_path = pyutil.sibpath(__file__, "scripts/flat-manager-client")
 
 adminsGithubGroup='flathub'
 
@@ -820,7 +821,7 @@ def create_build_factory():
                            haltOnFailure=True,
                            hideStepIf=hide_on_success,
                            mode=0o755,
-                           mastersrc="scripts/flat-manager-client",
+                           mastersrc=flathub_repoclient_path,
                            workerdest="flat-manager-client"),
         steps.FileDownload(name='downloading merge-sources.sh',
                            haltOnFailure=True,
