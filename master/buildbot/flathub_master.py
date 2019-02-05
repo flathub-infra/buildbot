@@ -848,6 +848,15 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
     def getResultSummary(self):
         return {u'step': self.result_title}
 
+def extract_tags_from_metadata(rc, stdout, stderr):
+    tags = []
+    lines = stdout.split("\n")
+    if lines[0].startswith("tags="):
+        for tag in lines[0][5:].strip().split(";"):
+            if len(tag) > 0:
+                tags.append(tag)
+    return {'flathub_built_tags': tags}
+
 def create_build_factory():
     build_factory = util.BuildFactory()
     build_factory.addSteps([
@@ -895,6 +904,9 @@ def create_build_factory():
                 shellArg(['flatpak', '--user', 'remote-modify', '--url='+ config.upstream_repo, 'flathub']),
             ]),
         FlatpakBuildStep(name='Build'),
+        steps.SetPropertyFromCommand(name='Extract built tags',
+                                     command="grep -s ^tags= builddir/metadata || true",
+                                     extract_fn=extract_tags_from_metadata),
         steps.ShellCommand(
             name='Generate deltas',
             haltOnFailure=True,
