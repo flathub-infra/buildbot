@@ -110,6 +110,7 @@ class Builds:
         self.imports = {}
         self.default_repo = None
         self.by_base_uri = {}
+        self.upstream_maintained = set()
         self.reverse_deps = {}
         self.reverse_repo_base = {}
 
@@ -128,6 +129,8 @@ class Builds:
                 l = self.reverse_deps.get(i.base, [])
                 l.append(i.buildname)
                 self.reverse_deps[i.base] = l
+        for app in config.get("upstream-maintained", []):
+            self.upstream_maintained.add (app)
 
         self.default_repo = self.repos["default"]
         for n in self.repos:
@@ -289,6 +292,9 @@ class Builds:
         fake.git_branch = git_branch
 
         return fake
+
+    def is_upstream_maintained(self, name):
+        return name in self.upstream_maintained;
 
 # Tests:
 
