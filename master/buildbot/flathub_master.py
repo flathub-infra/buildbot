@@ -808,17 +808,24 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
         self.result_title = u"Failed to build %s" % id
         self.updateSummary()
 
-        command = ['flatpak-builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
-                   '--user', '--install-deps-from=flathub',
-                   util.Property('extra_fb_args'),
-                   '--mirror-screenshots-url=https://flathub.org/repo/screenshots', '--repo', 'repo',
-                   '--extra-sources-url=' + config.upstream_sources_uri,
-                   util.Interpolate('--extra-sources=%(prop:builddir)s/../downloads'),
-                   '--default-branch', util.Property('flathub_default_branch'),
-                   '--subject', util.Property('flathub_subject'),
-                   'builddir', util.Interpolate('%(prop:flathub_manifest)s')]
         if props.getProperty("flathub_custom_buildcmd", False):
-            command = ['./build.sh', util.Property('flathub_arch'), 'repo', '', util.Interpolate('--sandbox --delete-build-dirs --user --install-deps-from=flathub --extra-sources-url='+ config.upstream_sources_uri +' --extra-sources=%(prop:builddir)s/../downloads '), util.Property('flathub_subject')]
+            command = ['./build.sh',
+                       util.Property('flathub_arch'),
+                       'repo',
+                       '',
+                       util.Interpolate('--sandbox --delete-build-dirs --user --install-deps-from=flathub --extra-sources-url='+ config.upstream_sources_uri +' --extra-sources=%(prop:builddir)s/../downloads '),
+                       util.Property('flathub_subject')]
+        else:
+            command = ['flatpak-builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
+                       '--user', '--install-deps-from=flathub',
+                       util.Property('extra_fb_args'),
+                       '--mirror-screenshots-url=https://flathub.org/repo/screenshots', '--repo', 'repo',
+                       '--extra-sources-url=' + config.upstream_sources_uri,
+                       util.Interpolate('--extra-sources=%(prop:builddir)s/../downloads'),
+                       '--default-branch', util.Property('flathub_default_branch'),
+                       '--subject', util.Property('flathub_subject'),
+                       '--add-tag=upstream-maintained' if builds.is_upstream_maintained(id) else '--remove-tag=upstream-maintained',
+                       'builddir', util.Interpolate('%(prop:flathub_manifest)s')]
 
         rendered=yield self.build.properties.render(command)
         cmd = yield self.makeRemoteShellCommand(command=rendered)
