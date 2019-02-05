@@ -234,6 +234,14 @@ def computeUploadToken(props):
 def computeBuildId(props):
     return props.getBuild().buildid
 
+@util.renderer
+def computeExtraIdArgs(props):
+    extra_ids = []
+    built_tags = props.getProperty ('flathub_built_tags')
+    if "free" in built_tags:
+        extra_ids.append("free")
+    return list(map(lambda s: "--extra-id=%s" % (s), extra_ids))
+
 # This is a bit weird, but we generate the builder name from the build number to spread them around
 # on the various builders, or we would only ever build one at a time, because each named builder
 # is serialized
@@ -940,9 +948,9 @@ def create_build_factory():
                 shellArg(['mkdir', '-p', 'builddir/screenshots']),
                 shellArg(['ostree', 'commit', '--repo=repo', util.Interpolate('--branch=screenshots/%(prop:flathub_arch)s'), 'builddir/screenshots']),
                 # Push to repo
-                shellArg(['./flat-manager-client', 'push',
-                          util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri),
-                          "repo"])
+                shellArg(util.FlattenList(['./flat-manager-client', 'push', computeExtraIdArgs,
+                                           util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri),
+                                           "repo"]))
             ]),
         steps.ShellCommand(name='stash downloads',
                            logEnviron=False,
