@@ -146,6 +146,7 @@ class FlathubConfig():
         self.comment_prefix_text = getConfig(config_data, 'comment-prefix-test', None)
         self.disable_status_updates = getConfig(config_data, 'disable-status-updates', False)
         self.bot_name = getConfig(config_data, 'bot-name', 'bot')
+        self.tag_mapping = getConfig(config_data, 'tag-mapping', {})
 
 
 def reload_builds():
@@ -242,8 +243,9 @@ def computeMasterBaseDir(props):
 def computeExtraIdArgs(props):
     extra_ids = []
     built_tags = props.getProperty ('flathub_built_tags')
-    if "free" in built_tags:
-        extra_ids.append("free")
+    for tag in config.tag_mapping:
+        if tag in built_tags:
+            extra_ids.append(config.tag_mapping[tag])
     return list(map(lambda s: "--extra-id=%s" % (s), extra_ids))
 
 # This is a bit weird, but we generate the builder name from the build number to spread them around
