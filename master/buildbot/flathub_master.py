@@ -235,6 +235,10 @@ def computeBuildId(props):
     return props.getBuild().buildid
 
 @util.renderer
+def computeMasterBaseDir(props):
+    return props.master.basedir
+
+@util.renderer
 def computeExtraIdArgs(props):
     extra_ids = []
     built_tags = props.getProperty ('flathub_built_tags')
@@ -1238,7 +1242,13 @@ class FlathubEndCommentStep(steps.BuildStep, CompositeStepMixin):
 def create_build_app_factory():
     build_app_factory = util.BuildFactory()
     build_app_factory.addSteps([
-        UpdateConfig(name="Update build config",
+        steps.ShellCommand(name='Update build config',
+                           workdir=computeMasterBaseDir,
+                           command='git pull --rebase',
+                           logEnviron=False,
+                           hideStepIf=hide_on_success,
+                           warnOnFailure=True),
+        UpdateConfig(name="Reload build config",
                      hideStepIf=hide_on_success,
                      warnOnFailure=True),
         FlathubStartCommentStep(name="Send start command",
