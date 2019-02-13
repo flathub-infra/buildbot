@@ -1658,6 +1658,11 @@ def computeConfig():
     c['workers'].append (LocalWorker(untrusted_workername))
     local_workers.append(untrusted_workername)
 
+    if len(flathub_download_sources_workers) == 0:
+        master_source_workername = 'MasterSourceWorker'
+        c['workers'].append (LocalWorker(master_source_workername))
+        flathub_download_sources_workers.append(master_source_workername)
+
     ####### Schedulers
 
     checkin = schedulers.AnyBranchScheduler(name="checkin",
