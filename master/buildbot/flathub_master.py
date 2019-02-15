@@ -128,6 +128,7 @@ class FlathubConfig():
 
         self.repo_manager_token = getConfig(config_data, 'repo-manager-token')
         self.repo_manager_uri = getConfig(config_data, 'repo-manager-uri')
+        self.repo_manager_dl_uri = getConfig(config_data, 'repo-manager-dl-uri', self.repo_manager_uri)
         self.buildbot_port = getConfig(config_data, 'buildbot-port', 8010)
         self.num_master_workers = getConfig(config_data, 'num-master-workers', 4)
         self.buildbot_uri = getConfig(config_data, 'buildbot-uri')
@@ -1297,7 +1298,7 @@ def create_build_app_factory():
                             hideStepIf=hide_on_success,
                             properties= {
                                 "flathub_flatpakref_url":
-                                util.Interpolate("%(kw:url)s/build-repo/%(prop:flathub_repo_id)s/%(prop:flathub_id)s.flatpakref", url=config.repo_manager_uri)
+                                util.Interpolate("%(kw:url)s/build-repo/%(prop:flathub_repo_id)s/%(prop:flathub_id)s.flatpakref", url=config.repo_manager_dl_uri)
                             }),
         # If build failed, purge it
     steps.Trigger(name='Deleting failed build',
