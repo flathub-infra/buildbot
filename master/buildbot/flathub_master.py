@@ -241,6 +241,14 @@ def computeMasterBaseDir(props):
     return props.master.basedir
 
 @util.renderer
+def computeStatusContext(props):
+    buildername = props.getProperty ('buildername')
+    if buildername == "download-sources":
+        return "download-sources"
+    arch = props.getProperty ('flathub_arch')
+    return "builds/%s" % (arch)
+
+@util.renderer
 def computeExtraIdArgs(props):
     extra_ids = []
     built_tags = props.getProperty ('flathub_built_tags')
@@ -1770,7 +1778,7 @@ def computeConfig():
     if config.github_api_token != '' and not config.disable_status_updates:
         c['services'].append(reporters.GitHubStatusPush(token=config.github_api_token,
                                                         verbose=True,
-                                                        context=util.Interpolate("buildbot/%(prop:buildername)s"),
+                                                        context=computeStatusContext,
                                                         startDescription='Build started.',
                                                         endDescription='Build done.',
                                                         builders=status_builders))
