@@ -957,6 +957,7 @@ def create_build_factory():
             name='Upload build',
             logEnviron=False,
             haltOnFailure=True,
+            timeout=3600,
             env={"REPO_TOKEN": computeUploadToken},
             commands=[
                 # Commit screenshots
@@ -1080,6 +1081,7 @@ def create_publish_factory():
         steps.ShellSequence(name='Publishing builds',
                             logEnviron=False,
                             haltOnFailure=True,
+                            timeout=None,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
                                 shellArg([flathub_repoclient_path, 'publish', '--wait',
@@ -1294,6 +1296,7 @@ def create_build_app_factory():
         steps.ShellSequence(name='Commiting builds',
                             logEnviron=False,
                             haltOnFailure=True,
+                            timeout=None,
                             locks=[repo_manager_lock.access('exclusive')],
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
