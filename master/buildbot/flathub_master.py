@@ -962,7 +962,7 @@ def create_build_factory():
             commands=[
                 # Commit screenshots
                 shellArg(['mkdir', '-p', 'builddir/screenshots']),
-                shellArg(['ostree', 'commit', '--repo=repo', util.Interpolate('--branch=screenshots/%(prop:flathub_arch)s'), 'builddir/screenshots']),
+                shellArg(['ostree', 'commit', '--repo=repo', '--canonical-permissions', util.Interpolate('--branch=screenshots/%(prop:flathub_arch)s'), 'builddir/screenshots']),
                 # Push to repo
                 shellArg(util.FlattenList(['./flat-manager-client', 'push', computeExtraIdArgs,
                                            util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri),
