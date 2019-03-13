@@ -512,6 +512,24 @@ class CreateUploadToken(RepoRequestStep):
         build_id = self.build.getProperty ('flathub_repo_id')
         flathub_upload_tokens[build_id] = response['token']
 
+class SetPublishJobStep(steps.BuildStep):
+    def __init__(self, buildid=None, **kwargs):
+        self.buildid=buildid
+        steps.BuildStep.__init__(self, haltOnFailure=True, **kwargs)
+
+    def start(self):
+        d = self.doSet()
+        d.addErrback(self.failed)
+
+    @defer.inlineCallbacks
+    def doSet(self):
+        if self.buildid is not None:
+            buildid = self.buildid
+        else:
+            buildid = self.build.getProperty ('flathub_orig_buildid', None)
+        yield self.master.data.updates.setBuildProperty(buildid, "flathub_publish_buildid", self.build.buildid, 'SetPublishJobStep')
+        self.finished(SUCCESS)
+
 class SetRepoStateStep(steps.BuildStep):
     def __init__(self, value, buildid=None, **kwargs):
         self.value=value
@@ -1078,6 +1096,7 @@ def create_download_sources_factory():
 def create_publish_factory():
     publish_factory = util.BuildFactory()
     publish_factory.addSteps([
+        SetPublishJobStep(name='Updating original build'),
         steps.ShellSequence(name='Publishing builds',
                             logEnviron=False,
                             haltOnFailure=True,

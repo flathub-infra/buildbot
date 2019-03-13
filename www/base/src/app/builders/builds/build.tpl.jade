@@ -22,8 +22,12 @@
   .row
       uib-tabset
           uib-tab(heading="Build steps")
-              buildsummary(ng-if="build", build="build", parentbuild="parent_build",
-                           parentrelationship="buildset.parent_relationship")
+              span
+                  buildsummary(ng-if="build", build="build", parentbuild="parent_build",
+                               parentrelationship="buildset.parent_relationship")
+              .row(ng-if="publish_build")
+                  h5 Publish job:
+                  buildrequestsummary(style="margin-left:0px;margin-top:0px",buildrequestid='publish_build.buildrequestid')
           uib-tab(heading="Build Properties")
               properties(properties="properties")
           uib-tab(heading="Worker: {{worker.name}}")

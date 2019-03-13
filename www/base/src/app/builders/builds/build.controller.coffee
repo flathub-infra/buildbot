@@ -114,7 +114,7 @@ class Build extends Controller
             # get the build plus the previous and next
             # note that this registers to the updates for all the builds for that builder
             # need to see how that scales
-            builder.getBuilds(property: ['flathub_flatpakref_url'], number__lt: buildnumber + 2, limit: 3, order: '-number').onChange = (builds) ->
+            builder.getBuilds(property: ['flathub_flatpakref_url', 'flathub_publish_buildid'], number__lt: buildnumber + 2, limit: 3, order: '-number').onChange = (builds) ->
                 $scope.prevbuild = null
                 $scope.nextbuild = null
                 build = null
@@ -134,7 +134,11 @@ class Build extends Controller
                     $window.document.title = "Build of " + build.flathub_name + if build.flathub_build_type != 1 then "(test)" else ""
 
                 if build.flathub_repo_status == 1 and build.properties.flathub_flatpakref_url?
-                        $scope.flatpakref_url = build.properties.flathub_flatpakref_url[0]
+                    $scope.flatpakref_url = build.properties.flathub_flatpakref_url[0]
+
+                if build.properties.flathub_publish_buildid?
+                    data.getBuilds(build.properties.flathub_publish_buildid[0]).onNew = (build) ->
+                        $scope.publish_build = build
 
                 breadcrumb = [
                         caption: "Builders"
@@ -156,7 +160,10 @@ class Build extends Controller
 
                 build.getProperties().onNew = (properties) ->
                    if build.flathub_repo_status == 1 and properties.flathub_flatpakref_url?
-                           $scope.flatpakref_url = properties.flathub_flatpakref_url[0]
+                       $scope.flatpakref_url = properties.flathub_flatpakref_url[0]
+                   if properties.flathub_publish_buildid?
+                       data.getBuilds(properties.flathub_publish_buildid[0]).onNew = (build) ->
+                           $scope.publish_build = build
                     $scope.properties = properties
                 $scope.changes = build.getChanges()
                 $scope.responsibles = {}
