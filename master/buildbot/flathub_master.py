@@ -934,7 +934,7 @@ def create_build_factory():
             name='Generate deltas',
             haltOnFailure=True,
             logEnviron=False,
-            command=util.Interpolate('flatpak build-update-repo --generate-static-deltas repo')),
+            command=util.Interpolate('flatpak build-update-repo --generate-static-deltas --static-delta-ignore-ref=*.Debug  --static-delta-ignore-ref=*.Sources repo')),
         steps.ShellCommand(
             name='Check for AppStream xml',
             doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
