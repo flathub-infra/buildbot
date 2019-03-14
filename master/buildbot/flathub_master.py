@@ -266,6 +266,16 @@ def computeExtraIdArgs(props):
             extra_ids.append(config.tag_mapping[tag])
     return list(map(lambda s: "--extra-id=%s" % (s), extra_ids))
 
+@util.renderer
+def computeCommitArgs(props):
+    flathub_config = props.getProperty ('flathub_config', {})
+    eol = flathub_config.get("end-of-life", None)
+    args = [flathub_repoclient_path, 'commit', '--wait']
+    if eol:
+        args = args + [ "--end-of-life=%s" % (eol) ]
+    args = args + [util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)]
+    return args
+
 # This is a bit weird, but we generate the builder name from the build number to spread them around
 # on the various builders, or we would only ever build one at a time, because each named builder
 # is serialized
@@ -1413,10 +1423,7 @@ def create_build_app_factory():
                             timeout=None,
                             locks=[repo_manager_lock.access('exclusive')],
                             env={"REPO_TOKEN": config.repo_manager_token},
-                            commands=[
-                                shellArg([flathub_repoclient_path, 'commit', '--wait',
-                                          util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
-                            ]),
+                            commands=[ shellArg(computeCommitArgs) ]),
         SetRepoStateStep(1, name='Marking build as commited',
                          hideStepIf=hide_on_success),
         steps.SetProperties(name="Set flatparef url",
