@@ -1814,7 +1814,7 @@ def computeConfig():
                                    builderNames=["purge"])
     periodic_purge = schedulers.Periodic(name="PeriodicPurge",
                                          builderNames=["periodic-purge"],
-                                         periodicBuildTimer=3*60*60)
+                                         periodicBuildTimer=1*60*60)
 
     force_cleanup = schedulers.ForceScheduler(
         name="force-cleanup",
