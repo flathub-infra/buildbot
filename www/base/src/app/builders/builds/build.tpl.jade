@@ -28,6 +28,9 @@
               .row(ng-if="publish_build")
                   h5 Publish job:
                   buildrequestsummary(style="margin-left:0px;margin-top:0px",buildrequestid='publish_build.buildrequestid')
+              .row(ng-if="update_repo_buildreq")
+                  h5 Update repo job:
+                  buildrequestsummary(style="margin-left:0px;margin-top:0px",buildrequestid='update_repo_buildreq')
           uib-tab(heading="Build Properties")
               properties(properties="properties")
           uib-tab(heading="Worker: {{worker.name}}")

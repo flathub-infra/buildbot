@@ -114,7 +114,7 @@ class Build extends Controller
             # get the build plus the previous and next
             # note that this registers to the updates for all the builds for that builder
             # need to see how that scales
-            builder.getBuilds(property: ['flathub_flatpakref_url', 'flathub_publish_buildid'], number__lt: buildnumber + 2, limit: 3, order: '-number').onChange = (builds) ->
+            builder.getBuilds(property: ['flathub_flatpakref_url', 'flathub_publish_buildid', 'flathub_update_repo_buildreq'], number__lt: buildnumber + 2, limit: 3, order: '-number').onChange = (builds) ->
                 $scope.prevbuild = null
                 $scope.nextbuild = null
                 build = null
@@ -140,6 +140,9 @@ class Build extends Controller
                     data.getBuilds(build.properties.flathub_publish_buildid[0]).onNew = (build) ->
                         $scope.publish_build = build
 
+                if build.properties.flathub_update_repo_buildreq?
+                    $scope.update_repo_buildreq = build.properties.flathub_update_repo_buildreq[0]
+
                 breadcrumb = [
                         caption: "Builders"
                         sref: "builders"
@@ -164,6 +167,9 @@ class Build extends Controller
                    if properties.flathub_publish_buildid?
                        data.getBuilds(properties.flathub_publish_buildid[0]).onNew = (build) ->
                            $scope.publish_build = build
+                   if properties.flathub_update_repo_buildreq?
+                       $scope.update_repo_buildreq = properties.flathub_update_repo_buildreq[0]
+
                     $scope.properties = properties
                 $scope.changes = build.getChanges()
                 $scope.responsibles = {}

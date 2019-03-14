@@ -3,6 +3,7 @@
 
 from future.utils import iteritems
 from future.utils import string_types
+from buildbot.interfaces import ITriggerableScheduler
 from buildbot.process.build import Build
 from buildbot.plugins import *
 from buildbot.process import logobserver
@@ -10,7 +11,10 @@ from buildbot.process import remotecommand
 from buildbot.process.buildstep import FAILURE
 from buildbot.process.buildstep import SUCCESS
 from buildbot.process.buildstep import CANCELLED
+from buildbot.process.buildstep import EXCEPTION
 from buildbot.process.buildstep import BuildStep
+from buildbot.process.properties import Properties
+from buildbot.process.properties import Property
 from buildbot.data import resultspec
 from buildbot.util import epoch2datetime
 from buildbot.util import unicode2bytes
@@ -71,6 +75,11 @@ repo_manager_lock = util.MasterLock("repo-manager")
 
 # We only want to run one periodic job at a time
 periodic_lock = util.MasterLock("periodic-lock")
+
+# This is an in-memory mapping from flat-manager update repo job id to buildbot buildrequestid
+# I is used to avoid multiple builds for the same job, but is technically "optional", so ok
+# to forget at restart.
+flathub_update_jobs_cache = {}
 
 ##### Properties
 
@@ -529,6 +538,76 @@ class SetPublishJobStep(steps.BuildStep):
             buildid = self.build.getProperty ('flathub_orig_buildid', None)
         yield self.master.data.updates.setBuildProperty(buildid, "flathub_publish_buildid", self.build.buildid, 'SetPublishJobStep')
         self.finished(SUCCESS)
+
+
+class HandleUpdateRepoStep(steps.BuildStep, CompositeStepMixin):
+    def __init__(self, buildid=None, **kwargs):
+        self.buildid=buildid
+        steps.BuildStep.__init__(self, haltOnFailure=True, **kwargs)
+        self.logEnviron = False
+
+    def getSchedulerByName(self, name):
+        # we use the fact that scheduler_manager is a multiservice, with schedulers as childs
+        # this allow to quickly find schedulers instance by name
+        schedulers = self.master.scheduler_manager.namedServices
+        if name not in schedulers:
+            raise ValueError("unknown triggered scheduler: %r" % (name,))
+        sch = schedulers[name]
+        if not ITriggerableScheduler.providedBy(sch):
+            raise ValueError(
+                "triggered scheduler is not ITriggerableScheduler: %r" % (name,))
+        return sch
+
+    @defer.inlineCallbacks
+    def run(self):
+        output = {}
+        content = yield self.getFileContentFromWorker("output.json")
+        if content == None:
+            return defer.returnValue(SUCCESS)
+
+        output = json.loads(content)
+
+        log = yield self.addLog('log')
+        log.addStdout("response: " + str(output) + "\n")
+        update_repo_job = output.get("result", {}).get("results", {}).get("update-repo-job", None)
+
+        log.addStdout("update job: " + str(update_repo_job) + "\n")
+
+        buildrequestid = flathub_update_jobs_cache.get(update_repo_job, None)
+        if not buildrequestid:
+            sch = self.getSchedulerByName("update-repo")
+            set_properties = Properties()
+            set_properties.update({ "flathub_update_job_id" : update_repo_job }, "HandleUpdateRepoStep")
+
+            idsDeferred, resultsDeferred = sch.trigger(
+                waited_for=False, sourcestamps=[],
+                set_props=set_properties,
+                parent_buildid=None,
+                parent_relationship=None
+            )
+
+            brids = {}
+            try:
+                bsid, brids = yield idsDeferred
+            except Exception as e:
+                yield self.addLogWithException(e)
+                return defer.returnValue(EXCEPTION)
+
+            buildrequestid = list(brids.values())[0]
+            log.addStdout("brid: " + str(buildrequestid) + "\n")
+            flathub_update_jobs_cache[update_repo_job] = buildrequestid
+
+        self.build.setProperty('flathub_update_repo_buildreq', buildrequestid , 'HandleUpdateRepoStep', runtime=True)
+
+        if self.buildid is not None:
+            buildid = self.buildid
+        else:
+            buildid = self.build.getProperty ('flathub_orig_buildid', None)
+
+        yield self.master.data.updates.setBuildProperty(buildid, "flathub_update_repo_buildreq", buildrequestid, 'HandleUpdateRepoStep')
+
+        log.finish()
+        defer.returnValue(SUCCESS)
 
 class SetRepoStateStep(steps.BuildStep):
     def __init__(self, value, buildid=None, **kwargs):
@@ -1103,9 +1182,10 @@ def create_publish_factory():
                             timeout=None,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
-                                shellArg([flathub_repoclient_path, 'publish', '--wait',
+                                shellArg([flathub_repoclient_path, '--output=output.json', 'publish', '--wait',
                                           util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
                             ]),
+        HandleUpdateRepoStep(name='Handling update repo'),
         SetRepoStateStep(2, name='Marking build as published'),
         steps.ShellSequence(name='Purging builds',
                             logEnviron=False,
@@ -1119,6 +1199,21 @@ def create_publish_factory():
         BuildDependenciesSteps(name='build dependencies'),
     ])
     return publish_factory
+
+def create_update_repo_factory():
+    update_repo_factory = util.BuildFactory()
+    update_repo_factory.addSteps([
+        steps.ShellSequence(name='Updating repo',
+                            logEnviron=False,
+                            haltOnFailure=True,
+                            timeout=None,
+                            env={"REPO_TOKEN": config.repo_manager_token},
+                            commands=[
+                                shellArg([flathub_repoclient_path, 'follow-job',
+                                          util.Interpolate("%(kw:url)s/api/v1/job/%(prop:flathub_update_job_id)s", url=config.repo_manager_uri)])
+                            ])
+    ])
+    return update_repo_factory
 
 def create_purge_factory():
     purge_factory = util.BuildFactory()
@@ -1706,6 +1801,8 @@ def computeConfig():
     force_build = create_build_app_force_scheduler()
     publish = schedulers.Triggerable(name="publish",
                                      builderNames=["publish"])
+    update_repo = schedulers.Triggerable(name="update-repo",
+                                     builderNames=["update-repo"])
     purge = schedulers.Triggerable(name="purge",
                                    builderNames=["purge"])
     periodic_purge = schedulers.Periodic(name="PeriodicPurge",
@@ -1730,7 +1827,7 @@ def computeConfig():
     cleanup = schedulers.Triggerable(name="cleanup-all-workers",
                                      builderNames=computeCleanupWorkers)
 
-    c['schedulers'] = [checkin, build, download_sources, force_build, publish, purge, periodic_purge, cleanup, force_cleanup]
+    c['schedulers'] = [checkin, build, download_sources, force_build, publish, update_repo, purge, periodic_purge, cleanup, force_cleanup]
 
     ####### Builders
 
@@ -1768,6 +1865,11 @@ def computeConfig():
         util.BuilderConfig(name='publish',
                            workernames=local_workers,
                            factory=create_publish_factory()))
+
+    c['builders'].append(
+        util.BuilderConfig(name='update-repo',
+                           workernames=local_workers,
+                           factory=create_update_repo_factory()))
 
     c['builders'].append(
         util.BuilderConfig(name='purge',
