@@ -954,6 +954,12 @@ def create_build_factory():
             logEnviron=False,
             command=util.Interpolate('zgrep "<content_rating type=\"oars-1\\.[01]\"/\\?>" builddir/*/share/app-info/xmls/%(prop:flathub_id)s.xml.gz')),
         steps.ShellCommand(
+            name='Check for release version in AppStream xml (will be enforced soon on production builds)',
+            doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check") and not build_is_official(),
+            haltOnFailure=True,
+            logEnviron=False,
+            command=util.Interpolate('zgrep "<release.*version=\".*\".*>" builddir/*/share/app-info/xmls/%(prop:flathub_id)s.xml.gz')),
+        steps.ShellCommand(
             name='Check that the right branch was built',
             doStepIf=build_is_official,
             haltOnFailure=True,
