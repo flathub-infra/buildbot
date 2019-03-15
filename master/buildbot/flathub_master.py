@@ -705,6 +705,7 @@ class PurgeOldBuildsStep(steps.BuildStep):
                 steps.ShellSequence(name='Purging old builds %d' % (b['number']),
                                     logEnviron=False,
                                     haltOnFailure=False,
+                                    usePTY=True,
                                     env={"REPO_TOKEN": config.repo_manager_token},
                                     commands=[
                                         shellArg([flathub_repoclient_path, 'purge',
@@ -1065,6 +1066,7 @@ def create_build_factory():
             logEnviron=False,
             haltOnFailure=True,
             timeout=3600,
+            usePTY=True,
             env={"REPO_TOKEN": computeUploadToken},
             commands=[
                 # Commit screenshots
@@ -1190,6 +1192,7 @@ def create_publish_factory():
                             logEnviron=False,
                             haltOnFailure=True,
                             timeout=None,
+                            usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
                                 shellArg([flathub_repoclient_path, '--output=output.json', 'publish', '--wait',
@@ -1200,6 +1203,7 @@ def create_publish_factory():
         steps.ShellSequence(name='Purging builds',
                             logEnviron=False,
                             haltOnFailure=False,
+                            usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
                                 shellArg([flathub_repoclient_path, 'purge',
@@ -1217,6 +1221,7 @@ def create_update_repo_factory():
                             logEnviron=False,
                             haltOnFailure=True,
                             timeout=None,
+                            usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
                                 shellArg([flathub_repoclient_path, 'follow-job',
@@ -1231,6 +1236,7 @@ def create_purge_factory():
         steps.ShellSequence(name='Purging builds',
                             logEnviron=False,
                             haltOnFailure=False,
+                            usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
                                 shellArg([flathub_repoclient_path, 'purge',
@@ -1422,6 +1428,7 @@ def create_build_app_factory():
                             haltOnFailure=True,
                             timeout=None,
                             locks=[repo_manager_lock.access('exclusive')],
+                            usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[ shellArg(computeCommitArgs) ]),
         SetRepoStateStep(1, name='Marking build as commited',
