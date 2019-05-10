@@ -1749,6 +1749,9 @@ def computeConfig():
         'db_url' : config.db_uri,
     }
 
+    c['logMaxSize'] = 60*1024*1024 # (A kde sdk build was 51mb)
+    c['logMaxTailSize'] = 32768
+
     # configure a janitor which will delete all logs older than one month,
     # and will run on sundays at noon
     c['configurators'] = [util.JanitorConfigurator(
