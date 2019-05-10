@@ -21,7 +21,7 @@ import copy
 import os
 import sys
 import textwrap
-from io import BytesIO
+from io import StringIO
 from unittest.case import SkipTest
 
 import yaml
@@ -37,10 +37,11 @@ from buildbot.test.fake import fakemaster
 from buildbot.test.fake import httpclientservice as fakehttp
 from buildbot.test.fake import kube as fakekube
 from buildbot.test.util import config
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import kubeclientservice
 
 
-class MockFileBase(object):
+class MockFileBase:
     file_mock_config = {}
 
     def setUp(self):
@@ -51,11 +52,11 @@ class MockFileBase(object):
     def tearDown(self):
         self.patcher.stop()
 
-    def mock_open(self, filename, mode=None):
+    def mock_open(self, filename, mode=None, encoding='UTF-8'):
         filename_type = os.path.basename(filename)
         file_value = self.file_mock_config[filename_type]
         mock_open = mock.Mock(
-            __enter__=mock.Mock(return_value=BytesIO(file_value)),
+            __enter__=mock.Mock(return_value=StringIO(file_value)),
             __exit__=mock.Mock())
         return mock_open
 
@@ -64,17 +65,14 @@ class KubeClientServiceTestClusterConfig(
         MockFileBase, config.ConfigErrorsMixin, unittest.SynchronousTestCase):
 
     file_mock_config = {
-        'token': 'BASE64_TOKEN'.encode('utf-8'),
-        'namespace': 'buildbot_namespace'.encode('utf-8')
+        'token': 'BASE64_TOKEN',
+        'namespace': 'buildbot_namespace'
     }
 
     def setUp(self):
-        MockFileBase.setUp(self)
+        super().setUp()
         self.patch(kubeclientservice.os, 'environ',
                    {'KUBERNETES_PORT': 'tcp://foo'})
-
-    def tearDown(self):
-        return MockFileBase.tearDown(self)
 
     def patchExist(self, val):
         self.patch(kubeclientservice.os.path, 'exists', lambda x: val)
@@ -244,7 +242,7 @@ class KubeClientServiceTestKubeCtlProxyConfig(config.ConfigErrorsMixin,
 
 
 # integration tests for KubeClientService
-class RealKubeClientServiceTest(unittest.TestCase):
+class RealKubeClientServiceTest(TestReactorMixin, unittest.TestCase):
     timeout = 200
     POD_SPEC = yaml.safe_load(
         textwrap.dedent("""
@@ -273,7 +271,8 @@ class RealKubeClientServiceTest(unittest.TestCase):
         pass
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self)
         self.createKube()
         self.kube.setServiceParent(self.master)
         return self.master.startService()

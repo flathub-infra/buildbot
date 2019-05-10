@@ -13,8 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import integer_types
-
 import json
 import os
 import pkg_resources
@@ -35,7 +33,7 @@ from buildbot.www import auth
 from buildbot.www import authz
 
 
-class FakeSession(object):
+class FakeSession:
 
     def __init__(self):
         self.user_info = {"anonymous": True}
@@ -44,7 +42,7 @@ class FakeSession(object):
         pass
 
 
-class FakeRequest(object):
+class FakeRequest:
     written = b''
     finished = False
     redirected_to = None
@@ -93,7 +91,7 @@ class FakeRequest(object):
 
     def setResponseCode(self, code, text=None):
         # twisted > 16 started to assert this
-        assert isinstance(code, integer_types)
+        assert isinstance(code, int)
         self.responseCode = code
         self.responseText = text
 
@@ -122,22 +120,21 @@ class FakeRequest(object):
         return self.session
 
 
-class RequiresWwwMixin(object):
+class RequiresWwwMixin:
     # mix this into a TestCase to skip if buildbot-www is not installed
 
     if not list(pkg_resources.iter_entry_points('buildbot.www', 'base')):
         if 'BUILDBOT_TEST_REQUIRE_WWW' in os.environ:
             raise RuntimeError('$BUILDBOT_TEST_REQUIRE_WWW is set but '
                                'buildbot-www is not installed')
-        else:
-            skip = 'buildbot-www not installed'
+        skip = 'buildbot-www not installed'
 
 
 class WwwTestMixin(RequiresWwwMixin):
     UUID = str(uuid1())
 
     def make_master(self, url=None, **kwargs):
-        master = fakemaster.make_master(wantData=True, testcase=self)
+        master = fakemaster.make_master(self, wantData=True)
         self.master = master
         master.www = mock.Mock()  # to handle the resourceNeedsReconfigs call
         master.www.getUserInfos = lambda _: getattr(

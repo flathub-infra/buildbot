@@ -15,7 +15,6 @@
 
 
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.trial import unittest
 
 from buildbot.data import steps
@@ -23,6 +22,7 @@ from buildbot.test.fake import fakedb
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import endpoint
 from buildbot.test.util import interfaces
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import epoch2datetime
 
 TIME1 = 2001111
@@ -165,11 +165,12 @@ class StepsEndpoint(endpoint.EndpointMixin, unittest.TestCase):
         self.assertEqual([s['number'] for s in steps], [0, 1, 2])
 
 
-class Step(interfaces.InterfaceTests, unittest.TestCase):
+class Step(TestReactorMixin, interfaces.InterfaceTests, unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self,
-                                             wantMq=True, wantDb=True, wantData=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantMq=True, wantDb=True,
+                                             wantData=True)
         self.rtype = steps.Step(self.master)
 
     def test_signature_newStep(self):
@@ -230,7 +231,7 @@ class Step(interfaces.InterfaceTests, unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_startStep(self):
-        self.patch(reactor, 'seconds', lambda: TIME1)
+        self.reactor.advance(TIME1)
         yield self.master.db.steps.addStep(buildid=10, name='ten',
                                            state_string='pending')
         yield self.rtype.startStep(stepid=100)
@@ -321,9 +322,9 @@ class Step(interfaces.InterfaceTests, unittest.TestCase):
     def test_finishStep(self):
         yield self.master.db.steps.addStep(buildid=10, name='ten',
                                            state_string='pending')
-        self.patch(reactor, 'seconds', lambda: TIME1)
+        self.reactor.advance(TIME1)
         yield self.rtype.startStep(stepid=100)
-        self.patch(reactor, 'seconds', lambda: TIME2)
+        self.reactor.advance(TIME2 - TIME1)
         self.master.mq.clearProductions()
         yield self.rtype.finishStep(stepid=100, results=9, hidden=False)
 

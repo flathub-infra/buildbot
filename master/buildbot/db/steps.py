@@ -19,7 +19,6 @@ import json
 import sqlalchemy as sa
 
 from twisted.internet import defer
-from twisted.internet import reactor
 
 from buildbot.db import base
 from buildbot.util import epoch2datetime
@@ -114,8 +113,8 @@ class StepsConnectorComponent(base.DBConnectorComponent):
         return self.db.pool.do(thd)
 
     @defer.inlineCallbacks
-    def startStep(self, stepid, _reactor=reactor):
-        started_at = _reactor.seconds()
+    def startStep(self, stepid):
+        started_at = int(self.master.reactor.seconds())
 
         def thd(conn):
             tbl = self.db.model.steps
@@ -165,28 +164,24 @@ class StepsConnectorComponent(base.DBConnectorComponent):
         return self.url_lock.run(lambda: self.db.pool.do(thd))
 
     # returns a Deferred that returns None
-    def finishStep(self, stepid, results, hidden, _reactor=reactor):
+    def finishStep(self, stepid, results, hidden):
         def thd(conn):
             tbl = self.db.model.steps
             q = tbl.update(whereclause=(tbl.c.id == stepid))
             conn.execute(q,
-                         complete_at=_reactor.seconds(),
+                         complete_at=self.master.reactor.seconds(),
                          results=results,
                          hidden=1 if hidden else 0)
         return self.db.pool.do(thd)
 
     def _stepdictFromRow(self, row):
-        def mkdt(epoch):
-            if epoch:
-                return epoch2datetime(epoch)
-
         return dict(
             id=row.id,
             number=row.number,
             name=row.name,
             buildid=row.buildid,
-            started_at=mkdt(row.started_at),
-            complete_at=mkdt(row.complete_at),
+            started_at=epoch2datetime(row.started_at),
+            complete_at=epoch2datetime(row.complete_at),
             state_string=row.state_string,
             results=row.results,
             urls=json.loads(row.urls_json),

@@ -15,7 +15,8 @@
 
 from __future__ import absolute_import
 from __future__ import print_function
-from future.utils import iteritems
+
+import warnings
 
 import sqlalchemy as sa
 from migrate.changeset.constraint import ForeignKeyConstraint
@@ -40,7 +41,7 @@ def upgrade(migrate_engine):
     # fk name that was put.
     # Mysql and postgres have different naming convention so this is not very
     # easy to have generic code working.
-    for t, keys in iteritems(TABLES_FKEYS_SET_NULL):
+    for t, keys in TABLES_FKEYS_SET_NULL.items():
         table = tables[t]
         for fk in table.constraints:
             if not isinstance(fk, sa.ForeignKeyConstraint):
@@ -65,14 +66,26 @@ def upgrade(migrate_engine):
             pass
         fk.create()
 
-    for t, cols in iteritems(TABLES_COLUMNS_NOT_NULL):
+    for t, cols in TABLES_COLUMNS_NOT_NULL.items():
         table = tables[t]
         if table.dialect_options.get('mysql', {}).get('engine') == 'InnoDB':
             migrate_engine.execute('SET FOREIGN_KEY_CHECKS = 0;')
         try:
+            col_objs = []
+            where = sa.false()
             for c in table.columns:
                 if c.name in cols:
-                    c.alter(nullable=False)
+                    col_objs.append(c)
+                    where |= c == None
+
+            res = migrate_engine.execute(sa.select(col_objs).where(where))
+            if res.first():
+                warnings.warn(
+                    'Inconsistent data found in DB: table %r, deleting invalid rows' % t)
+                migrate_engine.execute(table.delete(where))
+
+            for c in col_objs:
+                c.alter(nullable=False)
         finally:
             if table.dialect_options.get('mysql', {}).get('engine') == 'InnoDB':
                 migrate_engine.execute('SET FOREIGN_KEY_CHECKS = 1;')

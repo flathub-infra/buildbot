@@ -1,11 +1,11 @@
 Configuring Buildbot
 ====================
 
-The buildbot's behavior is defined by the *config file*, which normally lives in the :file:`master.cfg` file in the buildmaster's base directory (but this can be changed with an option to the :command:`buildbot create-master` command).
+The Buildbot's behavior is defined by the *config file*, which normally lives in the :file:`master.cfg` file in the buildmaster's base directory (but this can be changed with an option to the :command:`buildbot create-master` command).
 This file completely specifies which :class:`Builder`\s are to be run, which workers they should use, how :class:`Change`\s should be tracked, and where the status information is to be sent.
 The buildmaster's :file:`buildbot.tac` file names the base directory; everything else comes from the config file.
 
-A sample config file was installed for you when you created the buildmaster, but you will need to edit it before your buildbot will do anything useful.
+A sample config file was installed for you when you created the buildmaster, but you will need to edit it before your Buildbot will do anything useful.
 
 This chapter gives an overview of the format of this file and the various sections in it.
 You will need to read the later chapters to understand how to fill in each section properly.
@@ -22,7 +22,7 @@ If you *are* comfortable writing Python code, however, you can use all the power
 .. index: BuildMaster Config
 
 The ``BuildmasterConfig`` name is the only one which matters: all other names defined during the execution of the file are discarded.
-When parsing the config file, the Buildmaster generally compares the old configuration with the new one and performs the minimum set of actions necessary to bring the buildbot up to date: :class:`Builder`\s which are not changed are left untouched, and :class:`Builder`\s which are modified get to keep their old event history.
+When parsing the config file, the Buildmaster generally compares the old configuration with the new one and performs the minimum set of actions necessary to bring the Buildbot up to date: :class:`Builder`\s which are not changed are left untouched, and :class:`Builder`\s which are modified get to keep their old event history.
 
 The beginning of the :file:`master.cfg` file typically starts with something like::
 
@@ -147,8 +147,11 @@ If there are any problems during the config-file reload, they will be displayed 
 When reloading the config file, the buildmaster will endeavor to change as little as possible about the running system.
 For example, although old status targets may be shut down and new ones started up, any status targets that were not changed since the last time the config file was read will be left running and untouched.
 Likewise any :class:`Builder`\s which have not been changed will be left running.
-If a :class:`Builder` is modified (say, the build process is changed) while a :class:`Build` is currently running, that :class:`Build` will keep running with the old process until it completes.
-Any previously queued :class:`Build`\s (or :class:`Build`\s which get queued after the reconfig) will use the new process.
+If a :class:`Builder` is modified (say, the build command is changed), this change will apply only for new :class:`Build`\s.
+Any existing build that is currently running or was already queued will be allowed to finish using the old configuration.
+
+Note that if any lock is renamed, old and new instances of the lock will be completely unrelated in the eyes of the buildmaster.
+This means that buildmaster will be able to start new builds that would otherwise have waited for the old lock to be released.
 
 .. warning::
 

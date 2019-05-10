@@ -13,9 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import string_types
-from future.utils import text_type
-
 import os
 import re
 
@@ -30,6 +27,7 @@ from buildbot.test.util import changesource
 from buildbot.test.util import config
 from buildbot.test.util import gpo
 from buildbot.test.util import logging
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import bytes2unicode
 from buildbot.util import unicode2bytes
 
@@ -42,7 +40,7 @@ class GitOutputParsing(gpo.GetProcessOutputMixin, unittest.TestCase):
     """Test GitPoller methods for parsing git output"""
 
     def setUp(self):
-        self.poller = gitpoller.GitPoller('git@example.com:foo/baz.git')
+        self.poller = gitpoller.GitPoller('git@example.com:~foo/baz.git')
         self.setUpGetProcessOutput()
 
     dummyRevStr = '12345abcde'
@@ -112,10 +110,10 @@ class GitOutputParsing(gpo.GetProcessOutputMixin, unittest.TestCase):
         def cb_desired(r):
             self.assertEqual(r, desiredGoodResult)
             # check types
-            if isinstance(r, string_types):
-                self.assertIsInstance(r, text_type)
+            if isinstance(r, str):
+                self.assertIsInstance(r, str)
             elif isinstance(r, list):
-                [self.assertIsInstance(e, text_type) for e in r]
+                [self.assertIsInstance(e, str) for e in r]
         d.addCallback(lambda _: self.assertAllCommandsRan())
         return d
 
@@ -173,10 +171,11 @@ class GitOutputParsing(gpo.GetProcessOutputMixin, unittest.TestCase):
 class TestGitPollerBase(gpo.GetProcessOutputMixin,
                         changesource.ChangeSourceMixin,
                         logging.LoggingMixin,
+                        TestReactorMixin,
                         unittest.TestCase):
 
-    REPOURL = 'git@example.com:foo/baz.git'
-    REPOURL_QUOTED = 'git%40example.com%3Afoo%2Fbaz.git'
+    REPOURL = 'git@example.com:~foo/baz.git'
+    REPOURL_QUOTED = 'git%40example.com%3A%7Efoo%2Fbaz.git'
 
     def createPoller(self):
         # this is overridden in TestGitPollerWithSshPrivateKey
@@ -184,6 +183,7 @@ class TestGitPollerBase(gpo.GetProcessOutputMixin,
 
     @defer.inlineCallbacks
     def setUp(self):
+        self.setUpTestReactor()
         self.setUpGetProcessOutput()
         yield self.setUpChangeSource()
 
@@ -544,7 +544,7 @@ class TestGitPoller(TestGitPollerBase):
                 'files': ['/etc/442'],
                 'project': '',
                 'properties': {},
-                'repository': 'git@example.com:foo/baz.git',
+                'repository': 'git@example.com:~foo/baz.git',
                 'revision': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
                 'revlink': '',
                 'src': 'git',
@@ -559,7 +559,7 @@ class TestGitPoller(TestGitPollerBase):
                 'files': ['/etc/64a'],
                 'project': '',
                 'properties': {},
-                'repository': 'git@example.com:foo/baz.git',
+                'repository': 'git@example.com:~foo/baz.git',
                 'revision': '64a5dc2a4bd4f558b5dd193d47c83c7d7abc9a1a',
                 'revlink': '',
                 'src': 'git',
@@ -574,7 +574,7 @@ class TestGitPoller(TestGitPollerBase):
                 'files': ['/etc/911'],
                 'project': '',
                 'properties': {},
-                'repository': 'git@example.com:foo/baz.git',
+                'repository': 'git@example.com:~foo/baz.git',
                 'revision': '9118f4ab71963d23d02d4bdc54876ac8bf05acf2',
                 'revlink': '',
                 'src': 'git',
@@ -692,7 +692,7 @@ class TestGitPoller(TestGitPollerBase):
              'files': ['/etc/442'],
              'project': '',
              'properties': {},
-             'repository': 'git@example.com:foo/baz.git',
+             'repository': 'git@example.com:~foo/baz.git',
              'revision': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
              'revlink': '',
              'src': 'git',
@@ -769,7 +769,7 @@ class TestGitPoller(TestGitPollerBase):
              'files': ['/etc/442'],
              'project': '',
              'properties': {},
-             'repository': 'git@example.com:foo/baz.git',
+             'repository': 'git@example.com:~foo/baz.git',
              'revision': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
              'revlink': '',
              'src': 'git',
@@ -1233,7 +1233,7 @@ class TestGitPoller(TestGitPollerBase):
             'files': ['/etc/442'],
             'project': '',
             'properties': {},
-            'repository': 'git@example.com:foo/baz.git',
+            'repository': 'git@example.com:~foo/baz.git',
             'revision': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
             'revlink': '',
             'src': 'git',
@@ -1247,7 +1247,7 @@ class TestGitPoller(TestGitPollerBase):
             'files': ['/etc/64a'],
             'project': '',
             'properties': {},
-            'repository': 'git@example.com:foo/baz.git',
+            'repository': 'git@example.com:~foo/baz.git',
             'revision': '64a5dc2a4bd4f558b5dd193d47c83c7d7abc9a1a',
             'revlink': '',
             'src': 'git',
@@ -1577,6 +1577,74 @@ class TestGitPollerWithSshHostKey(TestGitPollerBase):
             mock.call(known_hosts_path, '* ssh-host-key'),
             mock.call(key_path, 'ssh-key', mode=0o400),
             mock.call(known_hosts_path, '* ssh-host-key'),
+        ]
+
+        self.assertEqual(expected_file_writes,
+                         write_local_file_mock.call_args_list)
+
+
+class TestGitPollerWithSshKnownHosts(TestGitPollerBase):
+
+    def createPoller(self):
+        return gitpoller.GitPoller(self.REPOURL, sshPrivateKey='ssh-key',
+                                   sshKnownHosts='ssh-known-hosts')
+
+    @mock.patch('buildbot.util.private_tempdir.PrivateTemporaryDirectory',
+                new_callable=MockPrivateTemporaryDirectory)
+    @mock.patch('buildbot.changes.gitpoller.writeLocalFile')
+    @defer.inlineCallbacks
+    def test_poll_initial_2_10(self, write_local_file_mock, temp_dir_mock):
+
+        key_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
+        known_hosts_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@',
+                                        'ssh-known-hosts')
+
+        self.expectCommands(
+            gpo.Expect('git', '--version')
+            .stdout(b'git version 2.10.0\n'),
+            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
+            gpo.Expect('git',
+                       '-c',
+                       'core.sshCommand=ssh -i "{0}" '
+                       '-o "UserKnownHostsFile={1}"'.format(
+                               key_path, known_hosts_path),
+                       'ls-remote', '--refs', self.REPOURL),
+            gpo.Expect('git',
+                       '-c',
+                       'core.sshCommand=ssh -i "{0}" '
+                       '-o "UserKnownHostsFile={1}"'.format(
+                               key_path, known_hosts_path),
+                       'fetch', self.REPOURL,
+                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
+            .path('gitpoller-work'),
+            gpo.Expect('git', 'rev-parse',
+                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
+            .path('gitpoller-work')
+            .stdout(b'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5\n'),
+        )
+
+        yield self.poller.poll()
+
+        self.assertAllCommandsRan()
+        self.assertEqual(self.poller.lastRev, {
+            'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
+        })
+        self.master.db.state.assertStateByClass(
+            name=bytes2unicode(self.REPOURL), class_name='GitPoller',
+            lastRev={
+                'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
+            })
+
+        temp_dir_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@')
+        self.assertEqual(temp_dir_mock.dirs,
+                         [(temp_dir_path, 0o700),
+                          (temp_dir_path, 0o700)])
+
+        expected_file_writes = [
+            mock.call(key_path, 'ssh-key', mode=0o400),
+            mock.call(known_hosts_path, 'ssh-known-hosts'),
+            mock.call(key_path, 'ssh-key', mode=0o400),
+            mock.call(known_hosts_path, 'ssh-known-hosts'),
         ]
 
         self.assertEqual(expected_file_writes,

@@ -20,7 +20,7 @@ from twisted.internet import task
 from buildbot.test.fake import fakemaster
 
 
-class ChangeSourceMixin(object):
+class ChangeSourceMixin:
 
     """
     This class is used for testing change sources, and handles a few things:
@@ -38,8 +38,7 @@ class ChangeSourceMixin(object):
 
     def setUpChangeSource(self):
         "Set up the mixin - returns a deferred."
-        self.master = fakemaster.make_master(wantDb=True, wantData=True,
-                                             testcase=self)
+        self.master = fakemaster.make_master(self, wantDb=True, wantData=True)
         assert not hasattr(self.master, 'addChange')  # just checking..
         return defer.succeed(None)
 

@@ -16,14 +16,11 @@
 Support for buildsets in the database
 """
 
-from future.utils import integer_types
-
 import json
 
 import sqlalchemy as sa
 
 from twisted.internet import defer
-from twisted.internet import reactor
 
 from buildbot.db import NULL
 from buildbot.db import base
@@ -49,16 +46,15 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
     @defer.inlineCallbacks
     def addBuildset(self, sourcestamps, reason, properties, builderids,
                     waited_for, external_idstring=None, submitted_at=None,
-                    parent_buildid=None, parent_relationship=None,
-                    _reactor=reactor):
-        if submitted_at:
+                    parent_buildid=None, parent_relationship=None):
+        if submitted_at is not None:
             submitted_at = datetime2epoch(submitted_at)
         else:
-            submitted_at = _reactor.seconds()
+            submitted_at = int(self.master.reactor.seconds())
 
         # convert to sourcestamp IDs first, as necessary
         def toSsid(sourcestamp):
-            if isinstance(sourcestamp, integer_types):
+            if isinstance(sourcestamp, int):
                 return defer.succeed(sourcestamp)
             ssConnector = self.master.db.sourcestamps
             return ssConnector.findSourceStampId(**sourcestamp)
@@ -132,12 +128,11 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
         return (bsid, brids)
 
     @defer.inlineCallbacks
-    def completeBuildset(self, bsid, results, complete_at=None,
-                         _reactor=reactor):
+    def completeBuildset(self, bsid, results, complete_at=None):
         if complete_at is not None:
             complete_at = datetime2epoch(complete_at)
         else:
-            complete_at = _reactor.seconds()
+            complete_at = int(self.master.reactor.seconds())
 
         def thd(conn):
             tbl = self.db.model.buildsets
@@ -240,13 +235,12 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
                         conn.execute(sa.select([tbl.c.sourcestampid],
                                                (tbl.c.buildsetid == row.id))).fetchall()]
 
-        def mkdt(epoch):
-            if epoch:
-                return epoch2datetime(epoch)
         return BsDict(external_idstring=row.external_idstring,
-                      reason=row.reason, submitted_at=mkdt(row.submitted_at),
+                      reason=row.reason,
+                      submitted_at=epoch2datetime(row.submitted_at),
                       complete=bool(row.complete),
-                      complete_at=mkdt(row.complete_at), results=row.results,
+                      complete_at=epoch2datetime(row.complete_at),
+                      results=row.results,
                       bsid=row.id, sourcestamps=sourcestamps,
                       parent_buildid=row.parent_buildid,
                       parent_relationship=row.parent_relationship)

@@ -22,6 +22,7 @@ from twisted.trial import unittest
 from buildbot.process import log
 from buildbot.process import logobserver
 from buildbot.test.fake import fakemaster
+from buildbot.test.util.misc import TestReactorMixin
 
 
 class MyLogObserver(logobserver.LogObserver):
@@ -42,10 +43,11 @@ class MyLogObserver(logobserver.LogObserver):
         self.obs.append(('fin',))
 
 
-class TestLogObserver(unittest.TestCase):
+class TestLogObserver(TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self, wantData=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantData=True)
 
     @defer.inlineCallbacks
     def test_sequence(self):
@@ -74,7 +76,7 @@ class TestLogObserver(unittest.TestCase):
 class MyLogLineObserver(logobserver.LogLineObserver):
 
     def __init__(self):
-        logobserver.LogLineObserver.__init__(self)
+        super().__init__()
         self.obs = []
 
     def outLineReceived(self, data):
@@ -90,10 +92,11 @@ class MyLogLineObserver(logobserver.LogLineObserver):
         self.obs.append(('fin',))
 
 
-class TestLineConsumerLogObesrver(unittest.TestCase):
+class TestLineConsumerLogObesrver(TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self, wantData=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantData=True)
 
     @defer.inlineCallbacks
     def do_test_sequence(self, consumer):
@@ -154,10 +157,11 @@ class TestLineConsumerLogObesrver(unittest.TestCase):
         ])
 
 
-class TestLogLineObserver(unittest.TestCase):
+class TestLogLineObserver(TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self, wantData=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantData=True)
 
     @defer.inlineCallbacks
     def test_sequence(self):
@@ -190,10 +194,11 @@ class TestLogLineObserver(unittest.TestCase):
         lo.setMaxLineLength(120939403)
 
 
-class TestOutputProgressObserver(unittest.TestCase):
+class TestOutputProgressObserver(TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self, wantData=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantData=True)
 
     @defer.inlineCallbacks
     def test_sequence(self):
@@ -209,10 +214,11 @@ class TestOutputProgressObserver(unittest.TestCase):
         yield _log.finish()
 
 
-class TestBufferObserver(unittest.TestCase):
+class TestBufferObserver(TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self, wantData=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantData=True)
 
     @defer.inlineCallbacks
     def do_test_sequence(self, lo):

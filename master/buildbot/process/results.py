@@ -13,9 +13,7 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import lrange
-
-ALL_RESULTS = lrange(7)
+ALL_RESULTS = list(range(7))
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = ALL_RESULTS
 Results = ["success", "warnings", "failure", "skipped", "exception", "retry", "cancelled"]
 
@@ -62,7 +60,7 @@ def computeResultAndTermination(obj, result, previousResult):
     return result, terminate
 
 
-class ResultComputingConfigMixin(object):
+class ResultComputingConfigMixin:
 
     haltOnFailure = False
     flunkOnWarnings = False

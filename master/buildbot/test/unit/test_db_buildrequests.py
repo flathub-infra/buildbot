@@ -13,12 +13,9 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import lrange
-
 import datetime
 
 from twisted.internet import defer
-from twisted.internet import task
 from twisted.trial import unittest
 
 from buildbot.db import buildrequests
@@ -27,6 +24,7 @@ from buildbot.test.fake import fakemaster
 from buildbot.test.util import connector_component
 from buildbot.test.util import db
 from buildbot.test.util import interfaces
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import UTC
 from buildbot.util import epoch2datetime
 
@@ -343,14 +341,12 @@ class Tests(interfaces.InterfaceTests):
     @defer.inlineCallbacks
     def do_test_claimBuildRequests(self, rows, now, brids, expected=None,
                                    expfailure=None, claimed_at=None):
-        clock = task.Clock()
-        clock.advance(now)
+        self.reactor.advance(now)
 
         try:
             yield self.insertTestData(rows)
             yield self.db.buildrequests.claimBuildRequests(brids=brids,
-                                                           claimed_at=claimed_at,
-                                                           _reactor=clock)
+                                                           claimed_at=claimed_at)
             results = yield self.db.buildrequests.getBuildRequests()
 
             self.assertNotEqual(expected, None,
@@ -401,7 +397,7 @@ class Tests(interfaces.InterfaceTests):
                     id=id, buildsetid=self.BSID, builderid=self.BLDRID1)
                 for id in range(1, 1000)
             ],
-            1300305713, lrange(1, 1000),
+            1300305713, list(range(1, 1000)),
             [
                 (id, epoch2datetime(1300305713), self.MASTER_ID)
                 for id in range(1, 1000)
@@ -431,7 +427,7 @@ class Tests(interfaces.InterfaceTests):
                 fakedb.BuildRequestClaim(brid=1000,
                                          masterid=self.OTHER_MASTER_ID,
                                          claimed_at=1300103810),
-            ], 1300305712, lrange(1, 1001),
+            ], 1300305712, list(range(1, 1001)),
             expfailure=buildrequests.AlreadyClaimedError)
         results = yield self.db.buildrequests.getBuildRequests(claimed=True)
 
@@ -447,8 +443,7 @@ class Tests(interfaces.InterfaceTests):
     @defer.inlineCallbacks
     def test_claimBuildRequests_sequential(self):
         now = 120350934
-        clock = task.Clock()
-        clock.advance(now)
+        self.reactor.advance(now)
 
         yield self.insertTestData([
             fakedb.BuildRequest(
@@ -456,10 +451,8 @@ class Tests(interfaces.InterfaceTests):
             fakedb.BuildRequest(
                 id=45, buildsetid=self.BSID, builderid=self.BLDRID1),
         ])
-        yield self.db.buildrequests.claimBuildRequests(brids=[44],
-                                                       _reactor=clock)
-        yield self.db.buildrequests.claimBuildRequests(brids=[45],
-                                                       _reactor=clock)
+        yield self.db.buildrequests.claimBuildRequests(brids=[44])
+        yield self.db.buildrequests.claimBuildRequests(brids=[45])
         results = yield self.db.buildrequests.getBuildRequests(claimed=False)
 
         self.assertEqual(results, [])
@@ -470,15 +463,12 @@ class Tests(interfaces.InterfaceTests):
                                       complete_at=None):
         if brids is None:
             brids = [44]
-        clock = task.Clock()
-        clock.advance(now)
+        self.reactor.advance(now)
 
         try:
             yield self.insertTestData(rows)
-            yield self.db.buildrequests.completeBuildRequests(brids=brids,
-                                                           results=7,
-                                                           complete_at=complete_at,
-                                                          _reactor=clock)
+            yield self.db.buildrequests.completeBuildRequests(
+                brids=brids, results=7, complete_at=complete_at)
             results = yield self.db.buildrequests.getBuildRequests()
 
             self.assertNotEqual(expected, None,
@@ -543,7 +533,7 @@ class Tests(interfaces.InterfaceTests):
         ], 1300305712,
             [(id, True, 7, epoch2datetime(1300305712))
                 for id in range(1, 280)
-             ], brids=lrange(1, 280))
+             ], brids=list(range(1, 280)))
 
     def test_completeBuildRequests_multiple_notmine(self):
         # note that the requests are completed even though they are not mine!
@@ -638,7 +628,7 @@ class Tests(interfaces.InterfaceTests):
             [45, 47, 48])
 
 
-class TestFakeDB(unittest.TestCase, Tests):
+class TestFakeDB(TestReactorMixin, unittest.TestCase, Tests):
     # Compatibility with some checks in the "real" tests.
 
     class db_engine:
@@ -647,7 +637,8 @@ class TestFakeDB(unittest.TestCase, Tests):
             name = 'buildbot_fake'
 
     def setUp(self):
-        self.master = fakemaster.make_master(wantDb=True, testcase=self)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantDb=True)
         self.db = self.master.db
         self.db.checkForeignKeys = True
         self.insertTestData = self.db.insertTestData

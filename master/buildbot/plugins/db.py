@@ -15,8 +15,6 @@
 #
 # pylint: disable=C0111
 
-from future.utils import string_types
-
 import traceback
 from pkg_resources import iter_entry_points
 
@@ -30,7 +28,7 @@ from buildbot.interfaces import IPlugin
 _NAMESPACE_BASE = 'buildbot'
 
 
-class _PluginEntry(object):
+class _PluginEntry:
 
     def __init__(self, group, entry, loader):
         self._group = group
@@ -96,7 +94,7 @@ class _PluginEntryProxy(_PluginEntry):
         return self._plugin_entry.value
 
 
-class _NSNode(object):
+class _NSNode:
     # pylint: disable=W0212
 
     def __init__(self):
@@ -107,8 +105,7 @@ class _NSNode(object):
             child.load()
 
     def add(self, name, entry):
-        assert isinstance(name, string_types) and isinstance(entry,
-                                                             _PluginEntry)
+        assert isinstance(name, str) and isinstance(entry, _PluginEntry)
         self._add(name, entry)
 
     def _add(self, name, entry):
@@ -145,12 +142,12 @@ class _NSNode(object):
         return child
 
     def info(self, name):
-        assert isinstance(name, string_types)
+        assert isinstance(name, str)
 
         return self._get(name).info
 
     def get(self, name):
-        assert isinstance(name, string_types)
+        assert isinstance(name, str)
 
         return self._get(name).value
 
@@ -186,7 +183,7 @@ class _NSNode(object):
         return dict(self._info_all())
 
 
-class _Plugins(object):
+class _Plugins:
 
     """
     represent plugins within a namespace
@@ -278,7 +275,7 @@ class _Plugins(object):
             raise AttributeError(str(err))
 
 
-class _PluginDB(object):
+class _PluginDB:
 
     """
     Plugin infrastructure support for Buildbot

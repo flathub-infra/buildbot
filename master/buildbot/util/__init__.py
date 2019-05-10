@@ -13,34 +13,29 @@
 #
 # Copyright Buildbot Team Members
 
-
-from builtins import bytes
-from future.utils import string_types
-from future.utils import text_type
-
 import calendar
 import datetime
 import itertools
+import json
 import locale
 import re
 import textwrap
 import time
-import json
-
+from builtins import bytes
 from urllib.parse import urlsplit
 from urllib.parse import urlunsplit
 
 import dateutil.tz
 
 from twisted.python import reflect
-from twisted.python.versions import Version
 from twisted.python.deprecate import deprecatedModuleAttribute
-
+from twisted.python.versions import Version
 from zope.interface import implementer
 
 from buildbot.interfaces import IConfigured
-from buildbot.util.misc import deferredLocked
 from buildbot.util.giturlparse import giturlparse
+from buildbot.util.misc import deferredLocked
+
 from ._notifier import Notifier
 
 
@@ -112,7 +107,7 @@ def formatInterval(eta):
 
 
 @implementer(IConfigured)
-class ComparableMixin(object):
+class ComparableMixin:
     compare_attrs = ()
 
     class _None:
@@ -204,7 +199,7 @@ badchars_map = bytes.maketrans(b"\t !#$%&'()*+,./:;<=>?@[\\]^{|}~",
 
 
 def safeTranslate(s):
-    if isinstance(s, text_type):
+    if isinstance(s, str):
         s = s.encode('utf8')
     return s.translate(badchars_map)
 
@@ -216,15 +211,15 @@ def none_or_str(x):
 
 
 def unicode2bytes(x, encoding='utf-8', errors='strict'):
-    if isinstance(x, text_type):
+    if isinstance(x, str):
         x = x.encode(encoding, errors)
     return x
 
 
 def bytes2unicode(x, encoding='utf-8', errors='strict'):
-    if isinstance(x, (text_type, type(None))):
+    if isinstance(x, (str, type(None))):
         return x
-    return text_type(x, encoding, errors)
+    return str(x, encoding, errors)
 
 
 _hush_pyflakes = [json]
@@ -265,12 +260,14 @@ def epoch2datetime(epoch):
     """Convert a UNIX epoch time to a datetime object, in the UTC timezone"""
     if epoch is not None:
         return datetime.datetime.fromtimestamp(epoch, tz=UTC)
+    return None
 
 
 def datetime2epoch(dt):
     """Convert a non-naive datetime object to a UNIX epoch timestamp"""
     if dt is not None:
         return calendar.timegm(dt.utctimetuple())
+    return None
 
 
 # TODO: maybe "merge" with formatInterval?
@@ -302,7 +299,7 @@ def human_readable_delta(start, end):
 
 
 def makeList(input):
-    if isinstance(input, string_types):
+    if isinstance(input, str):
         return [input]
     elif input is None:
         return []
@@ -383,7 +380,7 @@ def join_list(maybeList):
 
 def command_to_string(command):
     words = command
-    if isinstance(words, (bytes, string_types)):
+    if isinstance(words, (bytes, str)):
         words = words.split()
 
     try:
@@ -401,7 +398,7 @@ def command_to_string(command):
     # description is requested before rendering)
     stringWords = []
     for w in words:
-        if isinstance(w, (bytes, string_types)):
+        if isinstance(w, (bytes, str)):
             # If command was bytes, be gentle in
             # trying to covert it.
             w = bytes2unicode(w, errors="replace")

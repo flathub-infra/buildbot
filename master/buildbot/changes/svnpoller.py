@@ -16,8 +16,6 @@
 # Changed to svn (using xml.dom.minidom) by Niklaus Giger
 # Hacked beyond recognition by Brian Warner
 
-from future.utils import text_type
-
 import os
 import xml.dom.minidom
 from urllib.parse import quote_plus as urlquote_plus
@@ -98,10 +96,10 @@ class SVNPoller(base.PollingChangeSource, util.ComparableMixin):
         if name is None:
             name = repourl
 
-        base.PollingChangeSource.__init__(self, name=name,
-                                          pollInterval=pollInterval,
-                                          pollAtLaunch=pollAtLaunch,
-                                          svnuser=svnuser, svnpasswd=svnpasswd)
+        super().__init__(name=name,
+                         pollInterval=pollInterval,
+                         pollAtLaunch=pollAtLaunch,
+                         svnuser=svnuser, svnpasswd=svnpasswd)
 
         if repourl.endswith("/"):
             repourl = repourl[:-1]  # strip the trailing slash
@@ -327,13 +325,13 @@ class SVNPoller(base.PollingChangeSource, util.ComparableMixin):
         changes = []
 
         for el in new_logentries:
-            revision = text_type(el.getAttribute("revision"))
+            revision = str(el.getAttribute("revision"))
 
             revlink = ''
 
             if self.revlinktmpl and revision:
                 revlink = self.revlinktmpl % urlquote_plus(revision)
-                revlink = text_type(revlink)
+                revlink = str(revlink)
 
             log.msg("Adding change revision %s" % (revision,))
             author = self._get_text(el, "author")

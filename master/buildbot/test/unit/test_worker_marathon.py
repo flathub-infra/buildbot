@@ -17,6 +17,7 @@
 from twisted.internet import defer
 from twisted.trial import unittest
 
+from buildbot.interfaces import LatentWorkerSubstantiatiationCancelled
 from buildbot.process.properties import Properties
 from buildbot.test.fake import fakebuild
 from buildbot.test.fake import fakemaster
@@ -25,7 +26,7 @@ from buildbot.test.util.misc import TestReactorMixin
 from buildbot.worker.marathon import MarathonLatentWorker
 
 
-class FakeBot(object):
+class FakeBot:
     info = {}
 
     def notifyOnDisconnect(self, n):
@@ -47,10 +48,11 @@ class TestMarathonLatentWorker(unittest.SynchronousTestCase, TestReactorMixin):
 
     def tearDown(self):
         if self.worker is not None:
-            class FakeResult(object):
+            class FakeResult:
                 code = 200
             self._http.delete = lambda _: defer.succeed(FakeResult())
             self.worker.master.stopService()
+        self.flushLoggedErrors(LatentWorkerSubstantiatiationCancelled)
 
     def test_constructor_normal(self):
         worker = MarathonLatentWorker('bot', 'tcp://marathon.local', 'foo',
@@ -62,7 +64,7 @@ class TestMarathonLatentWorker(unittest.SynchronousTestCase, TestReactorMixin):
         kwargs.setdefault('image', 'debian:wheezy')
         worker = MarathonLatentWorker('bot', 'tcp://marathon.local', **kwargs)
         self.worker = worker
-        master = fakemaster.make_master(testcase=self, wantData=True)
+        master = fakemaster.make_master(self, wantData=True)
         self._http = self.successResultOf(
             fakehttpclientservice.HTTPClientService.getFakeService(
                 master, self, 'tcp://marathon.local', auth=kwargs.get(

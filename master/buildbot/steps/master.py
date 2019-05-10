@@ -13,8 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import text_type
-
 import os
 import pprint
 import re
@@ -51,7 +49,7 @@ class MasterShellCommand(BuildStep):
         self.interruptSignal = kwargs.pop('interruptSignal', 'KILL')
         self.logEnviron = kwargs.pop('logEnviron', True)
 
-        BuildStep.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
         self.command = command
         self.masterWorkdir = self.workdir
@@ -80,7 +78,7 @@ class MasterShellCommand(BuildStep):
         # render properties
         command = self.command
         # set up argv
-        if isinstance(command, (text_type, bytes)):
+        if isinstance(command, (str, bytes)):
             if runtime.platformType == 'win32':
                 # allow %COMSPEC% to have args
                 argv = os.environ['COMSPEC'].split()
@@ -103,7 +101,7 @@ class MasterShellCommand(BuildStep):
 
         self.stdio_log = stdio_log = self.addLog("stdio")
 
-        if isinstance(command, (text_type, bytes)):
+        if isinstance(command, (str, bytes)):
             stdio_log.addHeader(command.strip() + "\n\n")
         else:
             stdio_log.addHeader(" ".join(command) + "\n\n")
@@ -134,7 +132,7 @@ class MasterShellCommand(BuildStep):
             newenv = {}
             for key, v in env.items():
                 if v is not None:
-                    if not isinstance(v, (text_type, bytes)):
+                    if not isinstance(v, (str, bytes)):
                         raise RuntimeError("'env' values must be strings or "
                                            "lists; key '%s' is incorrect" % (key,))
                     newenv[key] = p.sub(subst, env[key])
@@ -169,7 +167,7 @@ class MasterShellCommand(BuildStep):
             pass
         except error.ProcessExitedAlready:
             pass
-        BuildStep.interrupt(self, reason)
+        super().interrupt(reason)
 
 
 class SetProperty(BuildStep):
@@ -179,7 +177,7 @@ class SetProperty(BuildStep):
     renderables = ['property', 'value']
 
     def __init__(self, property, value, **kwargs):
-        BuildStep.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.property = property
         self.value = value
 
@@ -197,7 +195,7 @@ class SetProperties(BuildStep):
     renderables = ['properties']
 
     def __init__(self, properties=None, **kwargs):
-        BuildStep.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.properties = properties
 
     def run(self):
@@ -215,7 +213,7 @@ class Assert(BuildStep):
     renderables = ['check']
 
     def __init__(self, check, **kwargs):
-        BuildStep.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.check = check
         self.descriptionDone = ["checked {}".format(repr(self.check))]
 
@@ -232,7 +230,7 @@ class LogRenderable(BuildStep):
     renderables = ['content']
 
     def __init__(self, content, **kwargs):
-        BuildStep.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.content = content
 
     def start(self):

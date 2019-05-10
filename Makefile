@@ -51,7 +51,7 @@ frontend_install_tests: frontend_deps
 
 # upgrade FE dependencies
 frontend_yarn_upgrade:
-	for i in $(WWW_PKGS) $(WWW_EX_PKGS); do (cd $$i; echo $$i; yarn upgrade || echo $$i failed); done
+	for i in $(WWW_PKGS) $(WWW_EX_PKGS); do (cd $$i; echo $$i; rm -rf yarn.lock; yarn install || echo $$i failed); done
 
 # install git hooks for validating patches at commit time
 hooks:
@@ -92,7 +92,7 @@ release_notes: $(VENV_NAME)
 	git commit -m "relnotes for $(VERSION)"
 
 $(ALL_PKGS_TARGETS): cleanup_for_tarballs frontend_deps
-	. .venv/bin/activate && ./common/maketarball.sh $(patsubst %_pkg,%,$@)
+	. $(VENV_NAME)/bin/activate && ./common/maketarball.sh $(patsubst %_pkg,%,$@)
 
 cleanup_for_tarballs:
 	find . -name VERSION -exec rm {} \;

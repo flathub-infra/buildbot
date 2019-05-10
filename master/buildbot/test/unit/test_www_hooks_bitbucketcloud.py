@@ -14,8 +14,6 @@
 # Copyright Buildbot Team Members
 # Copyright Mamba Team
 
-from future.utils import text_type
-
 from io import BytesIO
 
 from twisted.internet import defer
@@ -23,6 +21,7 @@ from twisted.trial import unittest
 
 from buildbot.test.fake.web import FakeRequest
 from buildbot.test.fake.web import fakeMasterForHooks
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import unicode2bytes
 from buildbot.www import change_hook
 from buildbot.www.hooks.bitbucketcloud import _HEADER_EVENT
@@ -634,7 +633,7 @@ def _prepare_request(payload, headers=None, change_dict=None):
     request = FakeRequest(change_dict)
     request.uri = b"/change_hook/bitbucketcloud"
     request.method = b"POST"
-    if isinstance(payload, text_type):
+    if isinstance(payload, str):
         payload = unicode2bytes(payload)
     request.content = BytesIO(payload)
     request.received_headers[b'Content-Type'] = _CT_JSON
@@ -642,9 +641,11 @@ def _prepare_request(payload, headers=None, change_dict=None):
     return request
 
 
-class TestChangeHookConfiguredWithGitChange(unittest.TestCase):
+class TestChangeHookConfiguredWithGitChange(unittest.TestCase,
+                                            TestReactorMixin):
 
     def setUp(self):
+        self.setUpTestReactor()
         self.change_hook = change_hook.ChangeHookResource(
             dialects={'bitbucketcloud': {}}, master=fakeMasterForHooks(self))
 

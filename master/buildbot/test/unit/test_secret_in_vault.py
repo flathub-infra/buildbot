@@ -20,15 +20,18 @@ from buildbot.secrets.providers.vault import HashiCorpVaultSecretProvider
 from buildbot.test.fake import fakemaster
 from buildbot.test.fake import httpclientservice as fakehttpclientservice
 from buildbot.test.util.config import ConfigErrorsMixin
+from buildbot.test.util.misc import TestReactorMixin
 
 
-class TestSecretInVaultHttpFakeBase(ConfigErrorsMixin, unittest.TestCase):
+class TestSecretInVaultHttpFakeBase(ConfigErrorsMixin, TestReactorMixin,
+                                    unittest.TestCase):
 
     def setUp(self, version):
+        self.setUpTestReactor()
         self.srvcVault = HashiCorpVaultSecretProvider(vaultServer="http://vaultServer",
                                                       vaultToken="someToken",
                                                       apiVersion=version)
-        self.master = fakemaster.make_master(testcase=self, wantData=True)
+        self.master = fakemaster.make_master(self, wantData=True)
         self._http = self.successResultOf(
             fakehttpclientservice.HTTPClientService.getFakeService(
                 self.master, self, 'http://vaultServer', headers={'X-Vault-Token': "someToken"}))
@@ -43,7 +46,7 @@ class TestSecretInVaultHttpFakeBase(ConfigErrorsMixin, unittest.TestCase):
 class TestSecretInVaultV1(TestSecretInVaultHttpFakeBase):
 
     def setUp(self):
-        TestSecretInVaultHttpFakeBase.setUp(self, version=1)
+        super().setUp(version=1)
 
     @defer.inlineCallbacks
     def testGetValue(self):
@@ -104,7 +107,7 @@ class TestSecretInVaultV1(TestSecretInVaultHttpFakeBase):
 class TestSecretInVaultV2(TestSecretInVaultHttpFakeBase):
 
     def setUp(self):
-        TestSecretInVaultHttpFakeBase.setUp(self, version=2)
+        super().setUp(version=2)
 
     @defer.inlineCallbacks
     def testGetValue(self):

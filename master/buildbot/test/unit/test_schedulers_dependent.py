@@ -25,6 +25,7 @@ from buildbot.schedulers import base
 from buildbot.schedulers import dependent
 from buildbot.test.fake import fakedb
 from buildbot.test.util import scheduler
+from buildbot.test.util.misc import TestReactorMixin
 
 SUBMITTED_AT_TIME = 111111111
 COMPLETE_AT_TIME = 222222222
@@ -33,9 +34,10 @@ SCHEDULERID = 133
 UPSTREAM_NAME = 'uppy'
 
 
-class Dependent(scheduler.SchedulerMixin, unittest.TestCase):
+class Dependent(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
+        self.setUpTestReactor()
         self.setUpScheduler()
 
     def tearDown(self):
@@ -80,11 +82,13 @@ class Dependent(scheduler.SchedulerMixin, unittest.TestCase):
 
         self.assertEqual(
             sorted([q.filter for q in sched.master.mq.qrefs]),
-            [('buildsets', None, 'complete',), ('buildsets', None, 'new',)])
+            [('buildsets', None, 'complete',), ('buildsets', None, 'new',),
+             ('schedulers', '133', 'updated')])
 
         yield sched.deactivate()
 
-        self.assertEqual([q.filter for q in sched.master.mq.qrefs], [])
+        self.assertEqual([q.filter for q in sched.master.mq.qrefs],
+                         [('schedulers', '133', 'updated')])
 
     def sendBuildsetMessage(self, scheduler_name=None, results=-1,
                             complete=False):

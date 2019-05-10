@@ -19,9 +19,6 @@ A latent worker that uses EC2 to instantiate the workers on demand.
 Tested with Python boto 1.5c
 """
 
-from future.utils import integer_types
-from future.utils import string_types
-
 import os
 import re
 import time
@@ -88,7 +85,7 @@ class EC2LatentWorker(AbstractLatentWorker):
         if tags is None:
             tags = {}
 
-        AbstractLatentWorker.__init__(self, name, password, **kwargs)
+        super().__init__(name, password, **kwargs)
 
         if security_name and subnet_id:
             raise ValueError(
@@ -102,21 +99,20 @@ class EC2LatentWorker(AbstractLatentWorker):
                 'valid_ami_location_regex and valid_ami_owners')
         self.ami = ami
         if valid_ami_owners is not None:
-            if isinstance(valid_ami_owners, integer_types):
+            if isinstance(valid_ami_owners, int):
                 valid_ami_owners = (valid_ami_owners,)
             else:
                 for element in valid_ami_owners:
-                    if not isinstance(element, integer_types):
+                    if not isinstance(element, int):
                         raise ValueError(
                             'valid_ami_owners should be int or iterable '
                             'of ints', element)
         if valid_ami_location_regex is not None:
-            if not isinstance(valid_ami_location_regex, string_types):
+            if not isinstance(valid_ami_location_regex, str):
                 raise ValueError(
                     'valid_ami_location_regex should be a string')
-            else:
-                # verify that regex will compile
-                re.compile(valid_ami_location_regex)
+            # pre-compile the regex
+            valid_ami_location_regex = re.compile(valid_ami_location_regex)
         if spot_instance and price_multiplier is None and max_spot_price is None:
             raise ValueError('You must provide either one, or both, of '
                              'price_multiplier or max_spot_price')
@@ -319,7 +315,7 @@ class EC2LatentWorker(AbstractLatentWorker):
         if self.valid_ami_location_regex:
             level = 0
             options = []
-            get_match = re.compile(self.valid_ami_location_regex).match
+            get_match = self.valid_ami_location_regex.match
             for image in images:
                 # Image must be available
                 if image.state != 'available':

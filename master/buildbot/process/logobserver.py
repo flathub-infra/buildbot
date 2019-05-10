@@ -20,7 +20,7 @@ from buildbot import interfaces
 
 
 @implementer(interfaces.ILogObserver)
-class LogObserver(object):
+class LogObserver:
 
     def setStep(self, step):
         self.step = step
@@ -57,6 +57,7 @@ class LogLineObserver(LogObserver):
     headerDelimiter = "\n"
 
     def __init__(self):
+        super().__init__()
         self.max_length = 16384
 
     def setMaxLineLength(self, max_length):
@@ -85,23 +86,20 @@ class LogLineObserver(LogObserver):
     def outLineReceived(self, line):
         """This will be called with complete stdout lines (not including the
         delimiter). Override this in your observer."""
-        pass
 
     def errLineReceived(self, line):
         """This will be called with complete lines of stderr (not including
         the delimiter). Override this in your observer."""
-        pass
 
     def headerLineReceived(self, line):
         """This will be called with complete lines of stderr (not including
         the delimiter). Override this in your observer."""
-        pass
 
 
 class LineConsumerLogObserver(LogLineObserver):
 
     def __init__(self, consumerFunction):
-        LogLineObserver.__init__(self)
+        super().__init__()
         self.generator = None
         self.consumerFunction = consumerFunction
 
@@ -144,7 +142,7 @@ class OutputProgressObserver(LogObserver):
 class BufferLogObserver(LogObserver):
 
     def __init__(self, wantStdout=True, wantStderr=False):
-        LogObserver.__init__(self)
+        super().__init__()
         self.stdout = [] if wantStdout else None
         self.stderr = [] if wantStderr else None
 

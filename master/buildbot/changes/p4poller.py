@@ -17,8 +17,6 @@
 
 # Many thanks to Dave Peticolas for contributing this module
 
-from future.utils import text_type
-
 import datetime
 import os
 import re
@@ -132,9 +130,9 @@ class P4Source(base.PollingChangeSource, util.ComparableMixin):
         if name is None:
             name = "P4Source:%s:%s" % (p4port, p4base)
 
-        base.PollingChangeSource.__init__(self, name=name,
-                                          pollInterval=pollInterval,
-                                          pollAtLaunch=pollAtLaunch)
+        super().__init__(name=name,
+                         pollInterval=pollInterval,
+                         pollAtLaunch=pollAtLaunch)
 
         if project is None:
             project = ''
@@ -197,10 +195,10 @@ class P4Source(base.PollingChangeSource, util.ComparableMixin):
         reactor.spawnProcess(protocol, self.p4bin, command, env=os.environ)
 
     def _parseTicketPassword(self, text):
-        lines = text.split("\n")
-        if len(lines) < 3:
+        lines = text.splitlines()
+        if len(lines) < 2:
             return None
-        return lines[2].strip()
+        return lines[-1].strip()
 
     def _getPasswd(self):
         if self.use_tickets:
@@ -345,10 +343,10 @@ class P4Source(base.PollingChangeSource, util.ComparableMixin):
                     author=who,
                     files=branch_files[branch],
                     comments=comments,
-                    revision=text_type(num),
+                    revision=str(num),
                     when_timestamp=when,
                     branch=branch,
                     project=self.project,
-                    revlink=self.revlink_callable(branch, text_type(num)))
+                    revlink=self.revlink_callable(branch, str(num)))
 
             self.last_change = num

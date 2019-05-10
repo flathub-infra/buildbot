@@ -28,7 +28,7 @@ class Listener(base.Listener):
     name = "pbListener"
 
     def __init__(self):
-        base.Listener.__init__(self)
+        super().__init__()
 
         # username : (password, portstr, PBManager registration)
         self._registrations = {}
@@ -104,7 +104,6 @@ class FileWriterProxy(ReferenceableProxy):
 
 class _NoSuchMethod(Exception):
     """Rewrapped pb.NoSuchMethod remote exception"""
-    pass
 
 
 @contextlib.contextmanager
@@ -115,8 +114,7 @@ def _wrapRemoteException():
         if ex.remoteType in (b'twisted.spread.flavors.NoSuchMethod',
                              'twisted.spread.flavors.NoSuchMethod'):
             raise _NoSuchMethod(ex)
-        else:
-            raise
+        raise
 
 
 class Connection(base.Connection, pb.Avatar):
@@ -129,7 +127,7 @@ class Connection(base.Connection, pb.Avatar):
     info = None
 
     def __init__(self, master, worker, mind):
-        base.Connection.__init__(self, master, worker)
+        super().__init__(master, worker)
         self.mind = mind
 
     # methods called by the PBManager

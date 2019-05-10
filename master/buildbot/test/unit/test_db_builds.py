@@ -13,10 +13,7 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import lrange
-
 from twisted.internet import defer
-from twisted.internet import task
 from twisted.trial import unittest
 
 from buildbot.data import resultspec
@@ -26,6 +23,7 @@ from buildbot.test.fake import fakemaster
 from buildbot.test.util import connector_component
 from buildbot.test.util import interfaces
 from buildbot.test.util import validation
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import epoch2datetime
 
 TIME1 = 1304262222
@@ -198,12 +196,12 @@ class Tests(interfaces.InterfaceTests):
 
     @defer.inlineCallbacks
     def test_addBuild_first(self):
-        clock = task.Clock()
-        clock.advance(TIME1)
+        self.reactor.advance(TIME1)
         yield self.insertTestData(self.backgroundData)
         id, number = yield self.db.builds.addBuild(builderid=77,
-                                                   buildrequestid=41, workerid=13, masterid=88,
-                                                   state_string='test test2', _reactor=clock)
+                                                   buildrequestid=41,
+                                                   workerid=13, masterid=88,
+                                                   state_string='test test2')
         bdict = yield self.db.builds.getBuild(id)
         validation.verifyDbDict(self, 'dbbuilddict', bdict)
         self.assertEqual(bdict, {'buildrequestid': 41, 'builderid': 77,
@@ -214,15 +212,15 @@ class Tests(interfaces.InterfaceTests):
 
     @defer.inlineCallbacks
     def test_addBuild_existing(self):
-        clock = task.Clock()
-        clock.advance(TIME1)
+        self.reactor.advance(TIME1)
         yield self.insertTestData(self.backgroundData + [
             fakedb.Build(number=10, buildrequestid=41, builderid=77,
                          masterid=88, workerid=13),
         ])
         id, number = yield self.db.builds.addBuild(builderid=77,
-                                                   buildrequestid=41, workerid=13, masterid=88,
-                                                   state_string='test test2', _reactor=clock)
+                                                   buildrequestid=41,
+                                                   workerid=13, masterid=88,
+                                                   state_string='test test2')
         bdict = yield self.db.builds.getBuild(id)
         validation.verifyDbDict(self, 'dbbuilddict', bdict)
         self.assertEqual(number, 11)
@@ -246,10 +244,9 @@ class Tests(interfaces.InterfaceTests):
 
     @defer.inlineCallbacks
     def test_finishBuild(self):
-        clock = task.Clock()
-        clock.advance(TIME4)
+        self.reactor.advance(TIME4)
         yield self.insertTestData(self.backgroundData + [self.threeBuilds[0]])
-        yield self.db.builds.finishBuild(buildid=50, results=7, _reactor=clock)
+        yield self.db.builds.finishBuild(buildid=50, results=7)
         bdict = yield self.db.builds.getBuild(50)
         validation.verifyDbDict(self, 'dbbuilddict', bdict)
         self.assertEqual(bdict, dict(id=50, number=5, buildrequestid=42,
@@ -299,12 +296,11 @@ class RealTests(Tests):
 
     @defer.inlineCallbacks
     def test_addBuild_existing_race(self):
-        clock = task.Clock()
-        clock.advance(TIME1)
+        self.reactor.advance(TIME1)
         yield self.insertTestData(self.backgroundData)
 
         # add new builds at *just* the wrong time, repeatedly
-        numbers = lrange(1, 8)
+        numbers = list(range(1, 8))
 
         def raceHook(conn):
             if not numbers:
@@ -315,8 +311,9 @@ class RealTests(Tests):
                           'started_at': TIME1, 'state_string': "hi"})
 
         id, number = yield self.db.builds.addBuild(builderid=77,
-                                                   buildrequestid=41, workerid=13, masterid=88,
-                                                   state_string='test test2', _reactor=clock,
+                                                   buildrequestid=41,
+                                                   workerid=13, masterid=88,
+                                                   state_string='test test2',
                                                    _race_hook=raceHook)
         bdict = yield self.db.builds.getBuild(id)
         validation.verifyDbDict(self, 'dbbuilddict', bdict)
@@ -428,10 +425,11 @@ class RealTests(Tests):
                          [self.threeBdicts[50], self.threeBdicts[51]])
 
 
-class TestFakeDB(unittest.TestCase, Tests):
+class TestFakeDB(TestReactorMixin, unittest.TestCase, Tests):
 
     def setUp(self):
-        self.master = fakemaster.make_master(wantDb=True, testcase=self)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantDb=True)
         self.db = self.master.db
         self.db.checkForeignKeys = True
         self.insertTestData = self.db.insertTestData

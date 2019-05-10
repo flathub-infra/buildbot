@@ -33,10 +33,11 @@ from buildbot.steps import trigger
 from buildbot.test.fake import fakedb
 from buildbot.test.util import steps
 from buildbot.test.util.interfaces import InterfaceTests
+from buildbot.test.util.misc import TestReactorMixin
 
 
 @implementer(interfaces.ITriggerableScheduler)
-class FakeTriggerable(object):
+class FakeTriggerable:
 
     triggered_with = None
     result = SUCCESS
@@ -70,7 +71,7 @@ class TriggerableInterfaceTest(unittest.TestCase, InterfaceTests):
         self.assertInterfacesImplemented(FakeTriggerable)
 
 
-class FakeSourceStamp(object):
+class FakeSourceStamp:
 
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -79,7 +80,7 @@ class FakeSourceStamp(object):
         return self.__dict__.copy()
 
 
-class FakeSchedulerManager(object):
+class FakeSchedulerManager:
     pass
 
 
@@ -96,9 +97,10 @@ def BRID_TO_BUILD_NUMBER(brid):
     return brid + 4000
 
 
-class TestTrigger(steps.BuildStepMixin, unittest.TestCase):
+class TestTrigger(steps.BuildStepMixin, TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
+        self.setUpTestReactor()
         return self.setUpBuildStep()
 
     def tearDown(self):
@@ -108,7 +110,7 @@ class TestTrigger(steps.BuildStepMixin, unittest.TestCase):
         sourcestamps = sourcestampsInBuild or []
         got_revisions = gotRevisionsInBuild or {}
 
-        steps.BuildStepMixin.setupStep(self, step, *args, **kwargs)
+        super().setupStep(step, *args, **kwargs)
 
         # This step reaches deeply into a number of parts of Buildbot.  That
         # should be fixed!
@@ -185,7 +187,7 @@ class TestTrigger(steps.BuildStepMixin, unittest.TestCase):
         if self.step.waitForFinish:
             for i in [11, 22, 33, 44]:
                 yield self.master.db.builds.finishBuild(BRID_TO_BID(i), results_dict.get(i, SUCCESS))
-        d = steps.BuildStepMixin.runStep(self)
+        d = super().runStep()
         # the build doesn't finish until after a callLater, so this has the
         # effect of checking whether the deferred has been fired already;
         if self.step.waitForFinish:

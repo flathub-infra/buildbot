@@ -11,6 +11,7 @@
         td(width='150px') Started At
         td(width='150px') Duration
         td(width='300px') Users
+        td(width='150px') Worker
         td Status
       tr(ng-repeat='build in builds | orderBy:"-started_at"')
           td(ng-show="builders") {{ builders.get(build.builderid).name }}
@@ -49,6 +50,9 @@
           td
             span(title="{{build.properties.owners[0]}}")
               | {{ build.properties.owners[0].join(",") }}
+          td
+            a(ui-sref='worker({worker: build.workerid})')
+              | {{build.properties.workername[0]}}
           td
             ul.list-inline
               li

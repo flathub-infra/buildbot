@@ -17,8 +17,6 @@
 Parse various kinds of 'CVS notify' email.
 """
 
-from future.utils import text_type
-
 import calendar
 import datetime
 import re
@@ -44,9 +42,10 @@ class MaildirSource(MaildirService, util.ComparableMixin):
     """Generic base class for Maildir-based change sources"""
 
     compare_attrs = ("basedir", "pollinterval", "prefix")
+    name = 'MaildirSource'
 
     def __init__(self, maildir, prefix=None, category='', repository=''):
-        MaildirService.__init__(self, maildir)
+        super().__init__(maildir)
         self.prefix = prefix
         self.category = category
         self.repository = repository
@@ -72,7 +71,7 @@ class MaildirSource(MaildirService, util.ComparableMixin):
             if chtuple:
                 src, chdict = chtuple
             if chdict:
-                return self.master.data.updates.addChange(src=text_type(src),
+                return self.master.data.updates.addChange(src=str(src),
                                                           **chdict)
             else:
                 log.msg("no change found in maildir file '%s'" % filename)
@@ -89,7 +88,7 @@ class CVSMaildirSource(MaildirSource):
 
     def __init__(self, maildir, prefix=None, category='',
                  repository='', properties=None):
-        MaildirSource.__init__(self, maildir, prefix, category, repository)
+        super().__init__(maildir, prefix, category, repository)
         if properties is None:
             properties = {}
         self.properties = properties
@@ -426,7 +425,7 @@ class BzrLaunchpadEmailMaildirSource(MaildirSource):
     def __init__(self, maildir, prefix=None, branchMap=None, defaultBranch=None, **kwargs):
         self.branchMap = branchMap
         self.defaultBranch = defaultBranch
-        MaildirSource.__init__(self, maildir, prefix, **kwargs)
+        super().__init__(maildir, prefix, **kwargs)
 
     def parse(self, m, prefix=None):
         """Parse branch notification messages sent by Launchpad.
@@ -470,7 +469,7 @@ class BzrLaunchpadEmailMaildirSource(MaildirSource):
         lines = list(body_line_iterator(m, True))
         rev = None
         while lines:
-            line = text_type(lines.pop(0), "utf-8", errors="ignore")
+            line = str(lines.pop(0), "utf-8", errors="ignore")
 
             # revno: 101
             match = re.search(r"^revno: ([0-9.]+)", line)

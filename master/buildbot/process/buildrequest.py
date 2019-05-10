@@ -13,9 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import integer_types
-from future.utils import string_types
-
 import calendar
 
 from twisted.internet import defer
@@ -25,7 +22,7 @@ from buildbot.process import properties
 from buildbot.process.results import SKIPPED
 
 
-class BuildRequestCollapser(object):
+class BuildRequestCollapser:
     # brids is a list of the new added buildrequests id
     # This class is called before generated the 'new' event for the
     # buildrequest
@@ -96,7 +93,7 @@ class BuildRequestCollapser(object):
         return brids
 
 
-class TempSourceStamp(object):
+class TempSourceStamp:
     # temporary fake sourcestamp
 
     ATTRS = ('branch', 'revision', 'repository', 'project', 'codebase')
@@ -135,13 +132,13 @@ class TempSourceStamp(object):
             result['patch_%s' % attr] = patch.get(attr)
 
         assert all(
-            isinstance(val, string_types + integer_types + (type(None),))
+            isinstance(val, (str, int, type(None)))
             for attr, val in result.items()
         ), result
         return result
 
 
-class TempChange(object):
+class TempChange:
     # temporary fake change
 
     def __init__(self, d):
@@ -158,7 +155,7 @@ class TempChange(object):
         return self._chdict
 
 
-class BuildRequest(object):
+class BuildRequest:
 
     """
 

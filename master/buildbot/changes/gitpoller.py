@@ -45,9 +45,10 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
     compare_attrs = ("repourl", "branches", "workdir",
                      "pollInterval", "gitbin", "usetimestamps",
                      "category", "project", "pollAtLaunch",
-                     "buildPushesWithNoCommits", "sshPrivateKey", "sshHostKey")
+                     "buildPushesWithNoCommits", "sshPrivateKey", "sshHostKey",
+                     "sshKnownHosts")
 
-    secrets = ("sshPrivateKey", "sshHostKey")
+    secrets = ("sshPrivateKey", "sshHostKey", "sshKnownHosts")
 
     def __init__(self, repourl, branches=None, branch=None,
                  workdir=None, pollInterval=10 * 60,
@@ -56,7 +57,7 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
                  pollinterval=-2, fetch_refspec=None,
                  encoding='utf-8', name=None, pollAtLaunch=False,
                  buildPushesWithNoCommits=False, only_tags=False,
-                 sshPrivateKey=None, sshHostKey=None):
+                 sshPrivateKey=None, sshHostKey=None, sshKnownHosts=None):
 
         # for backward compatibility; the parameter used to be spelled with 'i'
         if pollinterval != -2:
@@ -65,16 +66,12 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         if name is None:
             name = repourl
 
-        if sshHostKey is not None and sshPrivateKey is None:
-            config.error('GitPoller: sshPrivateKey must be provided in order '
-                         'use sshHostKey')
-            sshPrivateKey = None
-
-        base.PollingChangeSource.__init__(self, name=name,
-                                          pollInterval=pollInterval,
-                                          pollAtLaunch=pollAtLaunch,
-                                          sshPrivateKey=sshPrivateKey,
-                                          sshHostKey=sshHostKey)
+        super().__init__(name=name,
+                         pollInterval=pollInterval,
+                         pollAtLaunch=pollAtLaunch,
+                         sshPrivateKey=sshPrivateKey,
+                         sshHostKey=sshHostKey,
+                         sshKnownHosts=sshKnownHosts)
 
         if project is None:
             project = ''
@@ -105,7 +102,8 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         self.lastRev = {}
         self.sshPrivateKey = sshPrivateKey
         self.sshHostKey = sshHostKey
-        self.setupGit()
+        self.sshKnownHosts = sshKnownHosts
+        self.setupGit(logname='GitPoller')
 
         if fetch_refspec is not None:
             config.error("GitPoller: fetch_refspec is no longer supported. "
@@ -136,7 +134,7 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         try:
             self.lastRev = yield self.getState('lastRev', {})
 
-            base.PollingChangeSource.activate(self)
+            super().activate()
         except Exception as e:
             log.err(e, 'while initializing GitPoller repository')
 
@@ -181,8 +179,9 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         return branch
 
     def _trackerBranch(self, branch):
-        return "refs/buildbot/{}/{}".format(urlquote(self.repourl, ''),
-                                        self._removeHeads(branch))
+        # manually quote tilde for Python 3.7
+        url = urlquote(self.repourl, '').replace('~', '%7E')
+        return "refs/buildbot/{}/{}".format(url, self._removeHeads(branch))
 
     @defer.inlineCallbacks
     def poll(self):
@@ -383,7 +382,11 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         writeLocalFile(keyPath, self.sshPrivateKey, mode=stat.S_IRUSR)
 
     def _downloadSshKnownHosts(self, path):
-        writeLocalFile(path, getSshKnownHostsContents(self.sshHostKey))
+        if self.sshKnownHosts is not None:
+            contents = self.sshKnownHosts
+        else:
+            contents = getSshKnownHostsContents(self.sshHostKey)
+        writeLocalFile(path, contents)
 
     def _getSshPrivateKeyPath(self, ssh_data_path):
         return os.path.join(ssh_data_path, 'ssh-key')
@@ -411,7 +414,7 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
             self._downloadSshPrivateKey(key_path)
 
             known_hosts_path = None
-            if self.sshHostKey is not None:
+            if self.sshHostKey is not None or self.sshKnownHosts is not None:
                 known_hosts_path = self._getSshKnownHostsPath(ssh_workdir)
                 self._downloadSshKnownHosts(known_hosts_path)
 

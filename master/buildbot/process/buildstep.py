@@ -13,11 +13,8 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import raise_with_traceback
-from future.utils import string_types
-from future.utils import text_type
-
 import re
+import sys
 
 from twisted.internet import defer
 from twisted.internet import error
@@ -245,7 +242,7 @@ class SyncLogFileWrapper(logobserver.LogObserver):
         self._maybeFinished()
 
 
-class BuildStepStatus(object):
+class BuildStepStatus:
     # used only for old-style steps
     pass
 
@@ -408,7 +405,8 @@ class BuildStep(results.ResultComputingConfigMixin,
                     # python thinks it is actually workdir that is not existing.
                     # python will then swallow the attribute error and call
                     # __getattr__ from worker_transition
-                    raise raise_with_traceback(CallableAttributeError(e))
+                    _, _, traceback = sys.exc_info()
+                    raise CallableAttributeError(e).with_traceback(traceback)
                     # we re-raise the original exception by changing its type,
                     # but keeping its stacktrace
             else:
@@ -482,7 +480,7 @@ class BuildStep(results.ResultComputingConfigMixin,
                                 methodInfo(self.getCurrentSummary))
 
         stepResult = summary.get('step', 'finished')
-        if not isinstance(stepResult, text_type):
+        if not isinstance(stepResult, str):
             raise TypeError("step result string must be unicode (got %r)"
                             % (stepResult,))
         if self.stepid is not None:
@@ -493,7 +491,7 @@ class BuildStep(results.ResultComputingConfigMixin,
 
         if not self._running:
             buildResult = summary.get('build', None)
-            if buildResult and not isinstance(buildResult, text_type):
+            if buildResult and not isinstance(buildResult, str):
                 raise TypeError("build result string must be unicode")
     # updateSummary gets patched out for old-style steps, so keep a copy we can
     # call internally for such steps
@@ -521,7 +519,8 @@ class BuildStep(results.ResultComputingConfigMixin,
                       for access in self.locks]
         # then narrow WorkerLocks down to the worker that this build is being
         # run on
-        self.locks = [(l.getLock(self.build.workerforbuilder.worker), la)
+        self.locks = [(l.getLockForWorker(self.build.workerforbuilder.worker),
+                       la)
                       for l, la in self.locks]
 
         for l, la in self.locks:
@@ -790,9 +789,11 @@ class BuildStep(results.ResultComputingConfigMixin,
         return self.build.getWorkerName()
 
     def addLog(self, name, type='s', logEncoding=None):
+        if self.stepid is None:
+            raise BuildStepCancelled
         d = self.master.data.updates.addLog(self.stepid,
                                             util.bytes2unicode(name),
-                                            text_type(type))
+                                            str(type))
 
         @d.addCallback
         def newLog(logid):
@@ -820,6 +821,8 @@ class BuildStep(results.ResultComputingConfigMixin,
     @_maybeUnhandled
     @defer.inlineCallbacks
     def addCompleteLog(self, name, text):
+        if self.stepid is None:
+            raise BuildStepCancelled
         logid = yield self.master.data.updates.addLog(self.stepid,
                                                       util.bytes2unicode(name), 't')
         _log = self._newLog(name, 't', logid)
@@ -829,6 +832,8 @@ class BuildStep(results.ResultComputingConfigMixin,
     @_maybeUnhandled
     @defer.inlineCallbacks
     def addHTMLLog(self, name, html):
+        if self.stepid is None:
+            raise BuildStepCancelled
         logid = yield self.master.data.updates.addLog(self.stepid,
                                                       util.bytes2unicode(name), 'h')
         _log = self._newLog(name, 'h', logid)
@@ -873,7 +878,7 @@ class BuildStep(results.ResultComputingConfigMixin,
     @_maybeUnhandled
     @defer.inlineCallbacks
     def addURL(self, name, url):
-        yield self.master.data.updates.addStepURL(self.stepid, text_type(name), text_type(url))
+        yield self.master.data.updates.addStepURL(self.stepid, str(name), str(url))
         return None
 
     @defer.inlineCallbacks
@@ -934,7 +939,7 @@ class LoggingBuildStep(BuildStep):
 
     def __init__(self, logfiles=None, lazylogfiles=False, log_eval_func=None,
                  *args, **kwargs):
-        BuildStep.__init__(self, *args, **kwargs)
+        super().__init__(*args, **kwargs)
 
         if logfiles is None:
             logfiles = {}
@@ -1078,7 +1083,7 @@ class LoggingBuildStep(BuildStep):
         return defer.succeed(None)
 
 
-class CommandMixin(object):
+class CommandMixin:
 
     @defer.inlineCallbacks
     def _runRemoteCommand(self, cmd, abandonOnFailure, args, makeResult=None):
@@ -1114,7 +1119,7 @@ class CommandMixin(object):
             makeResult=lambda cmd: cmd.updates['files'][0])
 
 
-class ShellMixin(object):
+class ShellMixin:
 
     command = None
     env = {}
@@ -1274,7 +1279,7 @@ def regex_log_evaluator(cmd, _, regexes):
         # we won't be changing "worst" unless possible_status is worse than it,
         # so we don't even need to check the log if that's the case
         if worst_status(worst, possible_status) == possible_status:
-            if isinstance(err, string_types):
+            if isinstance(err, str):
                 err = re.compile(".*%s.*" % err, re.DOTALL)
             for l in cmd.logs.values():
                 if err.search(l.getText()):

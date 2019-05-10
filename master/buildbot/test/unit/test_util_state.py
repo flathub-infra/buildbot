@@ -16,7 +16,8 @@
 from twisted.internet import defer
 from twisted.trial import unittest
 
-from buildbot.test.fake.fakemaster import make_master
+from buildbot.test.fake import fakemaster
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import state
 
 
@@ -27,12 +28,13 @@ class FakeObject(state.StateMixin):
         self.master = master
 
 
-class TestStateMixin(unittest.TestCase):
+class TestStateMixin(TestReactorMixin, unittest.TestCase):
 
     OBJECTID = 19
 
     def setUp(self):
-        self.master = make_master(wantDb=True, testcase=self)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantDb=True)
         self.object = FakeObject(self.master)
 
     @defer.inlineCallbacks
@@ -59,7 +61,7 @@ class TestStateMixin(unittest.TestCase):
 
         def check_exc(f):
             f.trap(KeyError)
-            pass
+
         d.addCallbacks(cb, check_exc)
         return d
 

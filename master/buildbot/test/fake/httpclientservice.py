@@ -32,7 +32,7 @@ log = Logger()
 
 
 @implementer(IHttpResponse)
-class ResponseWrapper(object):
+class ResponseWrapper:
 
     def __init__(self, code, content):
         self._content = content
@@ -62,7 +62,7 @@ class HTTPClientService(service.SharedService):
 
     def __init__(self, base_url, auth=None, headers=None, debug=None, verify=None):
         assert not base_url.endswith("/"), "baseurl should not end with /"
-        service.SharedService.__init__(self)
+        super().__init__()
         self._base_url = base_url
         self._auth = auth
 

@@ -28,14 +28,16 @@ from buildbot.steps.source.p4 import P4
 from buildbot.test.fake.remotecommand import Expect
 from buildbot.test.fake.remotecommand import ExpectShell
 from buildbot.test.util import sourcesteps
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.test.util.properties import ConstantRenderable
 
 _is_windows = (platform.system() == 'Windows')
 
 
-class TestP4(sourcesteps.SourceStepMixin, unittest.TestCase):
+class TestP4(sourcesteps.SourceStepMixin, TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
+        self.setUpTestReactor()
         return self.setUpSourceStep()
 
     def tearDown(self):
@@ -44,8 +46,7 @@ class TestP4(sourcesteps.SourceStepMixin, unittest.TestCase):
     def setupStep(self, step, args=None, patch=None, **kwargs):
         if args is None:
             args = {}
-        step = sourcesteps.SourceStepMixin.setupStep(
-            self, step, args={}, patch=None, **kwargs)
+        step = super().setupStep(step, args={}, patch=None, **kwargs)
         self.build.getSourceStamp().revision = args.get('revision', None)
 
         # builddir property used to create absolute path required in perforce

@@ -22,12 +22,13 @@ from twisted.trial import unittest
 from buildbot.test.fake import fakemaster
 from buildbot.test.fake.fakebuild import FakeBuildForRendering as FakeBuild
 from buildbot.test.fake.kube import KubeClientService
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util.kubeclientservice import KubeError
 from buildbot.util.kubeclientservice import KubeHardcodedConfig
 from buildbot.worker import kubernetes
 
 
-class FakeBot(object):
+class FakeBot:
     info = {}
 
     def notifyOnDisconnect(self, n):
@@ -40,7 +41,7 @@ class FakeBot(object):
         self.n()
 
 
-class FakeResult(object):
+class FakeResult:
     code = 204
 
 
@@ -48,14 +49,17 @@ def mock_delete(*args):
     return defer.succeed(FakeResult())
 
 
-class TestKubernetesWorker(unittest.TestCase):
+class TestKubernetesWorker(TestReactorMixin, unittest.TestCase):
     worker = None
+
+    def setUp(self):
+        self.setUpTestReactor()
 
     def setupWorker(self, *args, **kwargs):
         config = KubeHardcodedConfig(master_url="https://kube.example.com")
         self.worker = worker = kubernetes.KubeLatentWorker(
             *args, kube_config=config, **kwargs)
-        master = fakemaster.make_master(testcase=self, wantData=True)
+        master = fakemaster.make_master(self, wantData=True)
         self._kube = self.successResultOf(
             KubeClientService.getFakeService(master, self, kube_config=config))
         worker.setServiceParent(master)

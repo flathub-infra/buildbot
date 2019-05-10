@@ -190,14 +190,13 @@ class KubeInClusterConfigLoader(KubeConfigLoaderBase):
         self.config['master_url'] = os.environ['KUBERNETES_PORT'].replace(
             'tcp', 'https')
         self.config['verify'] = self.kube_cert_file
-        with open(self.kube_token_file) as token_content:
-            token = token_content.read().decode('utf-8').strip()
+        with open(self.kube_token_file, encoding="utf-8") as token_content:
+            token = token_content.read().strip()
             self.config['headers'] = {
                 'Authorization': 'Bearer {0}'.format(token)
             }
-        with open(self.kube_namespace_file) as namespace_content:
-            self.config['namespace'] = namespace_content.read().decode(
-                'utf-8').strip()
+        with open(self.kube_namespace_file, encoding="utf-8") as namespace_content:
+            self.config['namespace'] = namespace_content.read().strip()
 
     def getConfig(self):
         return self.config
@@ -205,7 +204,7 @@ class KubeInClusterConfigLoader(KubeConfigLoaderBase):
 
 class KubeError(RuntimeError):
     def __init__(self, response_json):
-        RuntimeError.__init__(self, response_json['message'])
+        super().__init__(response_json['message'])
         self.json = response_json
         self.reason = response_json.get('reason')
 
@@ -213,7 +212,7 @@ class KubeError(RuntimeError):
 class KubeClientService(HTTPClientService):
     def __init__(self, kube_config=None):
         self.config = kube_config
-        HTTPClientService.__init__(self, '')
+        super().__init__('')
         self._namespace = None
         kube_config.setServiceParent(self)
 
@@ -221,7 +220,7 @@ class KubeClientService(HTTPClientService):
     def _prepareRequest(self, ep, kwargs):
         config = self.config.getConfig()
         self._base_url = config['master_url']
-        url, req_kwargs = HTTPClientService._prepareRequest(self, ep, kwargs)
+        url, req_kwargs = super()._prepareRequest(ep, kwargs)
 
         if 'headers' not in req_kwargs:
             req_kwargs['headers'] = {}

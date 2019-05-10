@@ -22,7 +22,7 @@ from buildbot.util import service
 class FakeWorkerManager(service.AsyncMultiService):
 
     def __init__(self):
-        service.AsyncMultiService.__init__(self)
+        super().__init__()
         self.setName('workers')
 
         # WorkerRegistration instances keyed by worker name
@@ -60,7 +60,7 @@ class FakeWorkerManager(service.AsyncMultiService):
         return defer.succeed(True)
 
 
-class FakeWorkerRegistration(object):
+class FakeWorkerRegistration:
 
     def __init__(self, worker):
         self.updates = []

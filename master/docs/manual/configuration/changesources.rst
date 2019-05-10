@@ -851,7 +851,7 @@ It accepts the following arguments:
     * a list of the branches to fetch. Non-existing branches are ignored.
     * ``True`` indicating that all branches should be fetched
     * a callable which takes a single argument.
-      It should take a remote refspec (such as ``'refs/heads/master'``, and return a boolean indicating whether that branch should be fetched.
+      It should take a remote refspec (such as ``'refs/heads/master'``), and return a boolean indicating whether that branch should be fetched.
 
 ``branch``
     accepts a single branch name to fetch.
@@ -900,18 +900,24 @@ It accepts the following arguments:
 ``only_tags``
     Determines if the GitPoller should poll for new tags in the git repository.
 
-``sshPrivateKey``
+``sshPrivateKey`` (optional)
     Specifies private SSH key for git to use. This may be either a :ref:`Secret`
     or just a string. This option requires Git-2.3 or later. The master must
     either have the host in the known hosts file or the host key must be
     specified via the `sshHostKey` option.
 
-``sshHostKey``
+``sshHostKey`` (optional)
     Specifies public host key to match when authenticating with SSH
     public key authentication. This may be either a :ref:`Secret` or just a
     string. `sshPrivateKey` must be specified in order to use this option.
     The host key must be in the form of `<key type> <base64-encoded string>`,
     e.g. `ssh-rsa AAAAB3N<...>FAaQ==`.
+
+``sshKnownHosts`` (optional)
+   Specifies the contents of the SSH known_hosts file to match when authenticating with SSH public key authentication.
+   This may be either a :ref:`Secret` or just a string.
+   `sshPrivateKey` must be specified in order to use this option.
+   `sshHostKey` must not be specified in order to use this option.
 
 A configuration for the Git poller might look like this:
 
@@ -950,8 +956,15 @@ The :bb:chsrc:`HgPoller` accepts the following arguments:
     the url that describes the remote repository, e.g. ``http://hg.example.com/projects/myrepo``.
     Any url suitable for ``hg pull`` can be specified.
 
+``bookmarks``
+    a list of the bookmarks to monitor.
+
+``branches``
+    a list of the branches to monitor; defaults to ``['default']``.
+
 ``branch``
-    the desired branch to pull, will default to ``'default'``
+    the desired branch to pull.
+    Exists for backwards compatibility with old configurations.
 
 ``workdir``
     the directory where the poller should keep its local repository.

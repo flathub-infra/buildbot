@@ -34,7 +34,7 @@ class IndexResource(resource.Resource):
     needsReconfig = True
 
     def __init__(self, master, staticdir):
-        resource.Resource.__init__(self, master)
+        super().__init__(master)
         loader = jinja2.FileSystemLoader(staticdir)
         self.jinja = jinja2.Environment(
             loader=loader, undefined=jinja2.StrictUndefined)
@@ -92,7 +92,7 @@ class IndexResource(resource.Resource):
                             block, pretty=False)
                         html = compiler.compile()
                 res[template_name % (basename,)] = json.dumps(html)
-            pass
+
         return res
 
     @staticmethod

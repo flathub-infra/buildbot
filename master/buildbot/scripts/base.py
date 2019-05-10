@@ -198,7 +198,7 @@ class SubcommandOptions(usage.Options):
                                 optfile_name in optfile):
                             op[i] = list(op[i])
                             op[i][2] = optfile[optfile_name]
-        usage.Options.__init__(self, *args)
+        super().__init__(*args)
         if hasattr(cls, 'optParameters'):
             cls.optParameters = old_optParameters
 
@@ -273,7 +273,7 @@ class SubcommandOptions(usage.Options):
             raise usage.UsageError(msg)
 
 
-class BasedirMixin(object):
+class BasedirMixin:
 
     """SubcommandOptions Mixin to handle subcommands that take a basedir
     argument"""

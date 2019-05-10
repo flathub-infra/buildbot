@@ -10,13 +10,117 @@ Release Notes
 
 .. towncrier release notes start
 
+Buildbot ``2.3.0`` ( ``2019-05-06`` )
+=====================================
+
+Highlights
+----------
+
+- Support for older browsers has been hopefully temporarily broken due to frontend changes in progress.
+  Notably, Internet Explorer 11 is not supported in this release.
+  Currently supported browsers are Chrome 56, Firefox 52, Edge 13 and Safari 10, newer versions of these browsers and their compatible derivatives.
+  This set of browsers covers 98% of users of buildbot.net.
+
+Bug fixes
+---------
+
+- Fixed :bb:step:`Git` to clean the repository after the checkout when submodules are enabled. Previously this action could lead to untracked module directories after changing branches.
+- Latent workers with negative `build_wait_timeout` will be shutdown on master shutdown.
+- Latent worker will now wait until `start_instance()` before starting `stop_instance()` or vice-versa. Master will wait for these functions to finish during shutdown.
+- Latent worker will now correctly handle synchronous exception from the backend worker driver.
+- Fixed a potential error during database migration when upgrading to versions >=2.0 (:issue:`4711`).
+
+Deprecations and Removals
+-------------------------
+
+- The implementation language of the Buildbot web frontend has been changed from CoffeeScript to JavaScript.
+  The documentation has not been updated yet, as we plan to transition to TypeScript.
+  In the transitory period support for some browsers, notably IE 11 has been dropped.
+  We hope to bring support for older browsers back once the transitory period is over.
+- The support for building Buildbot using npm as package manager has been removed.
+  Please use yarn as a replacement that is used by Buildbot developers.
+
+Buildbot ``2.2.0`` ( ``2019-04-07`` )
+=====================================
+
+Bug fixes
+---------
+
+- Fix passing the verify and debug parameters for the HttpStatusPush reporter
+- The builder page UI now correctly shows the list of owners for each build.
+- Fixed bug with tilde in git repo url on Python 3.7 (:issue:`4639`).
+- Fix secret leak when non-interpolated secret was passed to a step (:issue:`4007`)
+
+Features
+--------
+
+- Added new :bb:step:`GitCommit` step to perform git commit operation
+- Added new :bb:step:`GitTag` step to perform git tag operation
+- HgPoller now supports bookmarks in addition to branches.
+- Buildbot can now monitor multiple branches in a Mercurial repository.
+- :py:class:`~buildbot.www.oauth2.OAuth2Auth` have been adapted to support ref:`Secret`.
+- Buildbot can now get secrets from the unix password store by `zx2c4` (https://www.passwordstore.org/).
+- Added a ``basename`` property to the Github pull request webhook handler.
+- The GitHub change hook secret can now be rendered.
+- Each build now gets a preparation step which counts the time spend starting latent worker.
+- Support known_hosts file format as ``sshKnownHosts`` parameter in SSH-related operations (:issue:`4681`)
+
+
+Buildbot ``2.1.0`` ( ``2019-03-09`` )
+=====================================
+
+Highlights
+----------
+
+- Worker to Master protocol can now be encrypted via TLS.
+
+Bug fixes
+---------
+
+- To avoid database corruption, the ``upgrade-master`` command now ignores all
+  signals except ``SIGKILL``. It cannot be interrupted with ``ctrl-c``
+  (:issue:`4600`).
+- Fixed incorrect tracking of latent worker states that could sometimes result
+  in duplicate ``stop_instance`` calls and so on.
+- Fixed a race condition that could manifest in cancelled substantiations if
+  builds were created during insubstantiation of a latent worker.
+- Perforce CLI Rev. 2018.2/1751184 (2019/01/21) is now supported
+  (:issue:`4574`).
+- Fix encoding issues with Forcescheduler parameters error management code.
+
+Improved Documentation
+----------------------
+
+- fix grammar mistakes and use Uppercase B for Buildbot
+
+Features
+--------
+
+- :py:class:`~buildbot-worker.buildbot_worker.bot.Worker` now have
+  `connection_string` kw-argument which can be used to connect to a master
+  over TLS.
+- Adding 'expand_logs' option for LogPreview related settings.
+- Force schedulers buttons are now sorted by their name. (:issue:`4619`)
+- :bb:cfg:`workers` now have a new ``defaultProperties`` parameter.
+
+
+Buildbot ``2.0.1`` ( ``2019-02-06`` )
+=====================================
+
+Bug fixes
+---------
+
+- Do not build universal python wheels now that Python 2 is not supported.
+- Print a warning discouraging users from stopping the database migration.
+
+
 Buildbot ``2.0.0`` ( ``2019-02-02`` )
 =====================================
 
 Deprecations and Removals
 -------------------------
 
-- Removed support for Python 2.7 in the buildbot master code.
+- Removed support for Python <3.5 in the buildbot master code.
   Buildbot worker remains compatible with python2.7, and interoperability tests are run continuously.
 - APIs that are not documented in the official Buildbot documentation have been
   made private. Users of these undocumented APIs are encouraged to file bugs to

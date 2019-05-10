@@ -14,7 +14,9 @@
 # Copyright Buildbot Team Members
 #
 from zope.interface import implementer
+
 from buildbot.interfaces import IConfigurator
+
 
 """ This module holds configurators, which helps setup schedulers, builders, steps,
     for a very specific purpose.
@@ -23,7 +25,7 @@ from buildbot.interfaces import IConfigurator
 
 
 @implementer(IConfigurator)
-class ConfiguratorBase(object):
+class ConfiguratorBase:
     """
         I provide base helper methods for configurators
     """

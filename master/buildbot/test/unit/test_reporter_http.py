@@ -25,10 +25,11 @@ from buildbot.process.results import SUCCESS
 from buildbot.reporters.http import HttpStatusPush
 from buildbot.test.fake import fakemaster
 from buildbot.test.fake import httpclientservice as fakehttpclientservice
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.test.util.reporter import ReporterTestMixin
 
 
-class BuildLookAlike(object):
+class BuildLookAlike:
 
     """ a class whose instances compares to any build dict that this reporter is supposed to send out"""
 
@@ -57,21 +58,23 @@ class BuildLookAlike(object):
         return "{ any build }"
 
 
-class TestHttpStatusPush(unittest.TestCase, ReporterTestMixin):
+class TestHttpStatusPush(TestReactorMixin, unittest.TestCase, ReporterTestMixin):
 
     @defer.inlineCallbacks
     def setUp(self):
+        self.setUpTestReactor()
         # ignore config error if txrequests is not installed
         config._errors = Mock()
-        self.master = fakemaster.make_master(testcase=self,
-                                             wantData=True, wantDb=True, wantMq=True)
+        self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
+                                             wantMq=True)
         yield self.master.startService()
 
     @defer.inlineCallbacks
     def createReporter(self, auth=("username", "passwd"), **kwargs):
         self._http = yield fakehttpclientservice.HTTPClientService.getService(
             self.master,
-            "serv", auth=auth)
+            "serv", auth=auth,
+            debug=None, verify=None)
 
         interpolated_auth = None
         if auth is not None:

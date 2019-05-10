@@ -17,7 +17,6 @@
 import time
 
 from twisted.internet import defer
-from twisted.internet import task
 from twisted.trial import unittest
 
 from buildbot.db import steps
@@ -26,6 +25,7 @@ from buildbot.test.fake import fakemaster
 from buildbot.test.util import connector_component
 from buildbot.test.util import interfaces
 from buildbot.test.util import validation
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import epoch2datetime
 
 TIME1 = 1304262222
@@ -34,7 +34,7 @@ TIME3 = 1304262224
 TIME4 = 1304262235
 
 
-class Tests(interfaces.InterfaceTests):
+class Tests(TestReactorMixin, interfaces.InterfaceTests):
 
     # common sample data
 
@@ -85,6 +85,9 @@ class Tests(interfaces.InterfaceTests):
          'urls': [],
          'hidden': False},
     ]
+
+    def setUp(self):
+        self.setUpTestReactor()
 
     # signature tests
 
@@ -180,12 +183,12 @@ class Tests(interfaces.InterfaceTests):
 
     @defer.inlineCallbacks
     def test_addStep_getStep(self):
-        clock = task.Clock()
-        clock.advance(TIME1)
+        self.reactor.advance(TIME1)
         yield self.insertTestData(self.backgroundData)
         stepid, number, name = yield self.db.steps.addStep(buildid=30,
-                                                           name='new', state_string='new')
-        yield self.db.steps.startStep(stepid=stepid, _reactor=clock)
+                                                           name='new',
+                                                           state_string='new')
+        yield self.db.steps.startStep(stepid=stepid)
         self.assertEqual((number, name), (0, 'new'))
         stepdict = yield self.db.steps.getStep(stepid=stepid)
         validation.verifyDbDict(self, 'stepdict', stepdict)
@@ -203,12 +206,11 @@ class Tests(interfaces.InterfaceTests):
 
     @defer.inlineCallbacks
     def test_addStep_getStep_existing_step(self):
-        clock = task.Clock()
-        clock.advance(TIME1)
+        self.reactor.advance(TIME1)
         yield self.insertTestData(self.backgroundData + [self.stepRows[0]])
         stepid, number, name = yield self.db.steps.addStep(
             buildid=30, name='new', state_string='new')
-        yield self.db.steps.startStep(stepid=stepid, _reactor=clock)
+        yield self.db.steps.startStep(stepid=stepid)
         self.assertEqual((number, name), (1, 'new'))
         stepdict = yield self.db.steps.getStep(stepid=stepid)
         validation.verifyDbDict(self, 'stepdict', stepdict)
@@ -217,8 +219,7 @@ class Tests(interfaces.InterfaceTests):
 
     @defer.inlineCallbacks
     def test_addStep_getStep_name_collisions(self):
-        clock = task.Clock()
-        clock.advance(TIME1)
+        self.reactor.advance(TIME1)
         yield self.insertTestData(self.backgroundData + [
             fakedb.Step(id=73, number=0, name='new', buildid=30),
             fakedb.Step(id=74, number=1, name='new_1', buildid=30),
@@ -227,7 +228,7 @@ class Tests(interfaces.InterfaceTests):
         ])
         stepid, number, name = yield self.db.steps.addStep(
             buildid=30, name='new', state_string='new')
-        yield self.db.steps.startStep(stepid=stepid, _reactor=clock)
+        yield self.db.steps.startStep(stepid=stepid)
         self.assertEqual((number, name), (4, 'new_3'))
         stepdict = yield self.db.steps.getStep(stepid=stepid)
         validation.verifyDbDict(self, 'stepdict', stepdict)
@@ -284,11 +285,9 @@ class Tests(interfaces.InterfaceTests):
 
     @defer.inlineCallbacks
     def test_finishStep(self):
-        clock = task.Clock()
-        clock.advance(TIME2)
+        self.reactor.advance(TIME2)
         yield self.insertTestData(self.backgroundData + [self.stepRows[2]])
-        yield self.db.steps.finishStep(stepid=72, results=11, hidden=False,
-                                       _reactor=clock)
+        yield self.db.steps.finishStep(stepid=72, results=11, hidden=False)
         stepdict = yield self.db.steps.getStep(stepid=72)
         self.assertEqual(stepdict['results'], 11)
         self.assertEqual(stepdict['complete_at'], epoch2datetime(TIME2))
@@ -305,18 +304,16 @@ class Tests(interfaces.InterfaceTests):
 class RealTests(Tests):
 
     # the fake connector doesn't deal with this edge case
-
     @defer.inlineCallbacks
     def test_addStep_getStep_name_collisions_too_long(self):
-        clock = task.Clock()
-        clock.advance(TIME1)
+        self.reactor.advance(TIME1)
         yield self.insertTestData(self.backgroundData + [
             fakedb.Step(id=73, number=0, name='a' * 49, buildid=30),
             fakedb.Step(id=74, number=1, name='a' * 48 + '_1', buildid=30),
         ])
         stepid, number, name = yield self.db.steps.addStep(
             buildid=30, name='a' * 49, state_string='new')
-        yield self.db.steps.startStep(stepid=stepid, _reactor=clock)
+        yield self.db.steps.startStep(stepid=stepid)
         self.assertEqual((number, name), (2, 'a' * 48 + '_2'))
         stepdict = yield self.db.steps.getStep(stepid=stepid)
         validation.verifyDbDict(self, 'stepdict', stepdict)
@@ -325,8 +322,7 @@ class RealTests(Tests):
 
     @defer.inlineCallbacks
     def test_addStep_getStep_name_collisions_too_long_extra_digits(self):
-        clock = task.Clock()
-        clock.advance(TIME1)
+        self.reactor.advance(TIME1)
         yield self.insertTestData(self.backgroundData + [
             fakedb.Step(id=73, number=0, name='a' * 50, buildid=30),
         ] + [fakedb.Step(id=73 + i, number=i, name='a' * 48 + ('_%d' % i), buildid=30)
@@ -336,7 +332,7 @@ class RealTests(Tests):
                   ])
         stepid, number, name = yield self.db.steps.addStep(
             buildid=30, name='a' * 50, state_string='new')
-        yield self.db.steps.startStep(stepid=stepid, _reactor=clock)
+        yield self.db.steps.startStep(stepid=stepid)
         self.assertEqual((number, name), (100, 'a' * 46 + '_100'))
         stepdict = yield self.db.steps.getStep(stepid=stepid)
         validation.verifyDbDict(self, 'stepdict', stepdict)
@@ -344,10 +340,11 @@ class RealTests(Tests):
         self.assertEqual(stepdict['name'], name)
 
 
-class TestFakeDB(unittest.TestCase, Tests):
+class TestFakeDB(Tests, unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(wantDb=True, testcase=self)
+        super().setUp()
+        self.master = fakemaster.make_master(self, wantDb=True)
         self.db = self.master.db
         self.db.checkForeignKeys = True
         self.insertTestData = self.db.insertTestData

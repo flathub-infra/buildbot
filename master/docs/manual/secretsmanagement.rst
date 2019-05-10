@@ -128,13 +128,40 @@ SecretInVault
 Vault secures, stores, and tightly controls access to secrets.
 Vault presents a unified API to access multiple backends.
 At the moment buildbot supports KV v1 and v2 backends.
-To be authenticated in Vault, Buildbot need to send a token to the vault server.
+To be authenticated in Vault, Buildbot needs to send a token to the vault server.
 The token is generated when the Vault instance is initialized for the first time.
 
 
-In the master configuration, the Vault provider is instantiated through the Buildbot service manager as a secret provider with the the Vault server address and the Vault token.
+In the master configuration, the Vault provider is instantiated through the Buildbot service manager as a secret provider with the Vault server address and the Vault token.
 The provider SecretInVault allows Buildbot to read secrets in Vault.
 For more information about Vault please visit: _`Vault`: https://www.vaultproject.io/
+
+.. _SecretInPass:
+
+SecretInPass
+`````````````
+
+.. code-block:: python
+
+    c['secretsProviders'] = [secrets.SecretInPass(
+                            gpgPassphrase="passphrase", 
+                            dirname="/path/to/password/store"
+    )]
+
+Passwords can be stored in a unix password store, encrypted using GPG keys.
+Buildbot can query secrets via the ``pass`` binary found in the PATH of each worker.
+While ``pass`` allows for multiline entries, the secret must be on the first line of each entry.
+The only caveat is that all passwords Buildbot needs to access have to be encrypted using the same GPG key.
+
+For more information about ``pass``, please visit _`pass`: https://www.passwordstore.org/
+
+Arguments:
+
+``gpgPassphrase``
+  (optional) Pass phrase to the GPG decryption key, if any
+
+``dirname``
+  (optional) Absolute path to the password store directory, defaults to ~/.password-store
 
 How to populate secrets in a build
 ----------------------------------
@@ -167,7 +194,7 @@ How to configure a Vault instance
 ---------------------------------
 
 Vault being a very generic system, it can be complex to install for the first time.
-Here is a simple tutorial to install the minimal Vault for use with Buildbot.
+Here is a simple tutorial to install the minimal Vault to use with Buildbot.
 
 Use Docker to install Vault
 ```````````````````````````

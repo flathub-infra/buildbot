@@ -21,7 +21,7 @@ from buildbot.data.resultspec import ResultSpec
 from buildbot.process.properties import Properties
 
 
-class Db2DataMixin(object):
+class Db2DataMixin:
 
     def _generate_filtered_properties(self, props, filters):
         """

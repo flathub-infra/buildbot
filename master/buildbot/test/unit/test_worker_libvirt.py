@@ -16,13 +16,13 @@
 import mock
 
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.internet import utils
 from twisted.python import failure
 from twisted.trial import unittest
 
 from buildbot import config
 from buildbot.test.fake import libvirt
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import eventual
 from buildbot.worker import libvirt as libvirtworker
 
@@ -86,7 +86,6 @@ class TestLibVirtWorker(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_prepare_base_image_full(self):
-        pass
         self.patch(utils, "getProcessValue", mock.Mock())
         utils.getProcessValue.side_effect = lambda x, y: defer.succeed(0)
 
@@ -179,7 +178,10 @@ class TestLibVirtWorker(unittest.TestCase):
         self.assertEqual(bs.canStartBuild(), True)
 
 
-class TestWorkQueue(unittest.TestCase):
+class TestWorkQueue(TestReactorMixin, unittest.TestCase):
+
+    def setUp(self):
+        self.setUpTestReactor()
 
     def tearDown(self):
         return eventual.flushEventualQueue()
@@ -187,15 +189,16 @@ class TestWorkQueue(unittest.TestCase):
     def delayed_success(self):
         def work():
             d = defer.Deferred()
-            reactor.callLater(0, d.callback, True)
+            self.reactor.callLater(0, d.callback, True)
             return d
         return work
 
     def delayed_errback(self):
         def work():
             d = defer.Deferred()
-            reactor.callLater(0, d.errback,
-                              failure.Failure(RuntimeError("Test failure")))
+            self.reactor.callLater(0, d.errback,
+                                   failure.Failure(
+                                       RuntimeError("Test failure")))
             return d
         return work
 
@@ -206,8 +209,8 @@ class TestWorkQueue(unittest.TestCase):
 
         @d.addErrback
         def errback(f):
-            # log.msg("errback called?")
-            pass
+            """ log.msg("errback called?") """
+
         return d
 
     @defer.inlineCallbacks

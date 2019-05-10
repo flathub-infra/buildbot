@@ -30,7 +30,7 @@ from buildbot.interfaces import IPlugin
 db = buildbot.plugins.db
 
 
-class FakeEntry(object):
+class FakeEntry:
 
     """
     An entry suitable for unit tests
@@ -78,7 +78,7 @@ class ITestInterface(IPlugin):
 
 
 @implementer(ITestInterface)
-class ClassWithInterface(object):
+class ClassWithInterface:
 
     """
     a class to implement a simple interface
@@ -92,7 +92,7 @@ class ClassWithInterface(object):
         return name or self._name
 
 
-class ClassWithNoInterface(object):
+class ClassWithNoInterface:
 
     """
     just a class
@@ -251,8 +251,7 @@ class TestBuildbotPlugins(unittest.TestCase):
 class SimpleFakeEntry(FakeEntry):
 
     def __init__(self, name, value):
-        FakeEntry.__init__(self, name, 'non-existent', 'irrelevant', False,
-                           value)
+        super().__init__(name, 'non-existent', 'irrelevant', False, value)
 
 
 _WORKER_FAKE_ENTRIES = {

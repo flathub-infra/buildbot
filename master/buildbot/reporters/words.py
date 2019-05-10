@@ -86,8 +86,13 @@ def maybeColorize(text, color, useColors):
 
 class UsageError(ValueError):
 
+    # pylint: disable=useless-super-delegation
     def __init__(self, string="Invalid usage", *more):
-        ValueError.__init__(self, string, *more)
+        # This is not useless as we change the default value of an argument.
+        # This bug is reported as "fixed" but apparently, it is not.
+        # https://github.com/PyCQA/pylint/issues/1085
+        # (Maybe there is a problem with builtin exceptions).
+        super().__init__(string, *more)
 
 
 class ForceOptions(usage.Options):
@@ -116,38 +121,6 @@ class ForceOptions(usage.Options):
             self['reason'] = " ".join(args)
 
 
-class BuildRequest:
-    hasStarted = False
-    timer = None
-
-    def __init__(self, parent, useRevisions=False, useColors=True):
-        self.parent = parent
-        self.useRevisions = useRevisions
-        self.useColors = useColors
-        self.timer = reactor.callLater(5, self.soon)
-
-    def soon(self):
-        del self.timer
-        if not self.hasStarted:
-            self.parent.send("The build has been queued, I'll give a shout"
-                             " when it starts")
-
-    def started(self, s):
-        self.hasStarted = True
-        if self.timer:
-            self.timer.cancel()
-            del self.timer
-        if self.useRevisions:
-            response = "build containing revision(s) [%s] forced" % s.getRevisions(
-            )
-        else:
-            response = "build #%d forced" % s.getNumber()
-        self.parent.send(response)
-        self.parent.send("I'll give a shout when the build finishes")
-        d = s.waitUntilFinished()
-        d.addCallback(self.parent.watchedBuildFinished)
-
-
 class Contact(service.AsyncService):
 
     """I hold the state for a single user's interaction with the buildbot.
@@ -157,7 +130,7 @@ class Contact(service.AsyncService):
     'broadcast contact' (chat rooms, IRC channels as a whole).
     """
 
-    def __init__(self, bot, user=None, channel=None):
+    def __init__(self, bot, user=None, channel=None, _reactor=reactor):
         """
         :param StatusBot bot: StatusBot this Contact belongs to
         :param user: User ID representing this contact
@@ -171,7 +144,7 @@ class Contact(service.AsyncService):
             self.name = "Contact(channel=%s)" % (channel,)
         elif user:
             self.name = "Contact(name=%s)" % (user,)
-        service.AsyncService.__init__(self)
+        super().__init__()
         self.bot = bot
         self.notify_events = {}
         self.subscribed = []
@@ -184,6 +157,8 @@ class Contact(service.AsyncService):
         self.user = user
         self.channel = channel
         self._next_HELLO = 'yes?'
+
+        self.reactor = _reactor
 
     # silliness
 
@@ -199,7 +174,7 @@ class Contact(service.AsyncService):
     def startService(self):
         if self.channel and not self.user:
             self.add_notification_events(self.bot.notify_events)
-        return service.AsyncService.startService(self)
+        return super().startService()
 
     def stopService(self):
         self.remove_all_notification_events()
@@ -208,7 +183,7 @@ class Contact(service.AsyncService):
         response = self.silly[message]
         when = 0.5
         for r in response:
-            reactor.callLater(when, self.send, r)
+            self.reactor.callLater(when, self.send, r)
             when += 2.5
 
     def builderMatchesAnyTag(self, builder_tags):
@@ -771,7 +746,8 @@ class Contact(service.AsyncService):
                     complete_at = lastBuild['complete_at']
                     if complete_at:
                         complete_at = util.datetime2epoch(complete_at)
-                        ago = self.convertTime(int(util.now() - complete_at))
+                        ago = self.convertTime(int(self.reactor.seconds() -
+                                                   complete_at))
                     else:
                         ago = "??"
                     status = lastBuild['state_string']
@@ -816,7 +792,8 @@ class Contact(service.AsyncService):
                 complete_at = lastBuild['complete_at']
                 if complete_at:
                     complete_at = util.datetime2epoch(complete_at)
-                    ago = self.convertTime(int(util.now() - complete_at))
+                    ago = self.convertTime(int(self.reactor.seconds() -
+                                               complete_at))
                 else:
                     ago = "??"
                 status = lastBuild['state_string']
@@ -900,11 +877,11 @@ class Contact(service.AsyncService):
             self.act("readies phasers")
 
     def command_DANCE(self, args):
-        reactor.callLater(1.0, self.send, "<(^.^<)")
-        reactor.callLater(2.0, self.send, "<(^.^)>")
-        reactor.callLater(3.0, self.send, "(>^.^)>")
-        reactor.callLater(3.5, self.send, "(7^.^)7")
-        reactor.callLater(5.0, self.send, "(>^.^<)")
+        self.reactor.callLater(1.0, self.send, "<(^.^<)")
+        self.reactor.callLater(2.0, self.send, "<(^.^)>")
+        self.reactor.callLater(3.0, self.send, "(>^.^)>")
+        self.reactor.callLater(3.5, self.send, "(7^.^)7")
+        self.reactor.callLater(5.0, self.send, "(>^.^<)")
 
     def command_HUSTLE(self, args):
         self.act("does the hustle")
@@ -940,7 +917,7 @@ class Contact(service.AsyncService):
                 botmaster.cancelCleanShutdown()
         elif args == 'now':
             self.send("Stopping buildbot")
-            reactor.stop()
+            self.reactor.stop()
     command_SHUTDOWN.usage = {
         None: "shutdown check|start|stop|now - shutdown the buildbot master",
         "check": "shutdown check - check if the buildbot master is running or shutting down",
@@ -1032,7 +1009,7 @@ class StatusBot(service.AsyncMultiService):
                  useRevisions=False, showBlameList=False, useColors=True,
                  categories=None  # deprecated
                  ):
-        service.AsyncMultiService.__init__(self)
+        super().__init__()
         self.tags = tags or categories
         self.notify_events = notify_events
         self.useColors = useColors

@@ -22,15 +22,15 @@ from buildbot.process import buildrequest
 from buildbot.process.builder import Builder
 from buildbot.test.fake import fakedb
 from buildbot.test.fake import fakemaster
+from buildbot.test.util.misc import TestReactorMixin
 
 
-class TestBuildRequestCollapser(unittest.TestCase):
+class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self,
-                                             wantData=True,
-                                             wantDb=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantData=True, wantDb=True)
         self.master.botmaster = mock.Mock(name='botmaster')
         self.master.botmaster.builders = {}
         self.builders = {}
@@ -285,12 +285,14 @@ class TestBuildRequestCollapser(unittest.TestCase):
         yield self.do_request_collapse(rows, [21], [20])
 
 
-class TestBuildRequest(unittest.TestCase):
+class TestBuildRequest(TestReactorMixin, unittest.TestCase):
+
+    def setUp(self):
+        self.setUpTestReactor()
 
     @defer.inlineCallbacks
     def test_fromBrdict(self):
-        master = fakemaster.make_master(testcase=self,
-                                        wantData=True, wantDb=True)
+        master = fakemaster.make_master(self, wantData=True, wantDb=True)
         master.db.insertTestData([
             fakedb.Builder(id=77, name='bldr'),
             fakedb.SourceStamp(id=234, branch='trunk',
@@ -328,8 +330,7 @@ class TestBuildRequest(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_fromBrdict_submittedAt_NULL(self):
-        master = fakemaster.make_master(testcase=self,
-                                        wantData=True, wantDb=True)
+        master = fakemaster.make_master(self, wantData=True, wantDb=True)
         master.db.insertTestData([
             fakedb.Builder(id=77, name='bldr'),
             fakedb.SourceStamp(id=234, branch='trunk',
@@ -349,8 +350,7 @@ class TestBuildRequest(unittest.TestCase):
         self.assertEqual(br.submittedAt, None)
 
     def test_fromBrdict_no_sourcestamps(self):
-        master = fakemaster.make_master(testcase=self,
-                                        wantData=True, wantDb=True)
+        master = fakemaster.make_master(self, wantData=True, wantDb=True)
         master.db.insertTestData([
             fakedb.Builder(id=78, name='not important'),
             fakedb.Buildset(id=539, reason='triggered'),
@@ -367,8 +367,7 @@ class TestBuildRequest(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_fromBrdict_multiple_sourcestamps(self):
-        master = fakemaster.make_master(testcase=self,
-                                        wantData=True, wantDb=True)
+        master = fakemaster.make_master(self, wantData=True, wantDb=True)
         master.db.insertTestData([
             fakedb.Builder(id=77, name='bldr'),
             fakedb.SourceStamp(id=234, branch='trunk',
@@ -424,8 +423,7 @@ class TestBuildRequest(unittest.TestCase):
             Source2 has rev 9201 and contains changes 14 and 16 from repository svn://b
         """
         brs = []  # list of buildrequests
-        master = fakemaster.make_master(testcase=self,
-                                        wantData=True, wantDb=True)
+        master = fakemaster.make_master(self, wantData=True, wantDb=True)
         master.db.insertTestData([
             fakedb.Builder(id=77, name='bldr'),
             fakedb.SourceStamp(id=234, branch='trunk',
@@ -502,8 +500,7 @@ class TestBuildRequest(unittest.TestCase):
               Merging requests requires both requests to have the same codebases
         """
         brDicts = []  # list of buildrequests dictionary
-        master = fakemaster.make_master(testcase=self,
-                                        wantData=True, wantDb=True)
+        master = fakemaster.make_master(self, wantData=True, wantDb=True)
         master.db.insertTestData([
             fakedb.Builder(id=77, name='bldr'),
             fakedb.SourceStamp(id=238, branch='trunk',

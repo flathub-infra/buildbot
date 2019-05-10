@@ -13,8 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import string_types
-
 import inspect
 
 from twisted.internet import defer
@@ -23,7 +21,7 @@ from buildbot.data.exceptions import InvalidPathError
 from buildbot.util import bytes2unicode
 
 
-class EndpointMatcherBase(object):
+class EndpointMatcherBase:
 
     def __init__(self, role, defaultDeny=True):
         self.role = role
@@ -55,12 +53,12 @@ class EndpointMatcherBase(object):
         # a repr for debugging. displays the class, and string attributes
         args = []
         for k, v in self.__dict__.items():
-            if isinstance(v, string_types):
+            if isinstance(v, str):
                 args.append("%s='%s'" % (k, v))
         return "%s(%s)" % (self.__class__.__name__, ", ".join(args))
 
 
-class Match(object):
+class Match:
 
     def __init__(self, master, build=None, buildrequest=None, buildset=None):
         self.master = master
@@ -96,17 +94,11 @@ class Match(object):
 
 class AnyEndpointMatcher(EndpointMatcherBase):
 
-    def __init__(self, **kwargs):
-        EndpointMatcherBase.__init__(self, **kwargs)
-
     def match(self, ep, action="get", options=None):
         return defer.succeed(Match(self.master))
 
 
 class AnyControlEndpointMatcher(EndpointMatcherBase):
-
-    def __init__(self, **kwargs):
-        EndpointMatcherBase.__init__(self, **kwargs)
 
     def match(self, ep, action="", options=None):
         if bytes2unicode(action).lower() != "get":
@@ -118,7 +110,7 @@ class StopBuildEndpointMatcher(EndpointMatcherBase):
 
     def __init__(self, builder=None, **kwargs):
         self.builder = builder
-        EndpointMatcherBase.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     @defer.inlineCallbacks
     def matchFromBuilderId(self, builderid):
@@ -158,7 +150,7 @@ class ForceBuildEndpointMatcher(EndpointMatcherBase):
 
     def __init__(self, builder=None, **kwargs):
         self.builder = builder
-        EndpointMatcherBase.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     @defer.inlineCallbacks
     def match_ForceSchedulerEndpoint_force(self, epobject, epdict, options):
@@ -180,7 +172,7 @@ class RebuildBuildEndpointMatcher(EndpointMatcherBase):
 
     def __init__(self, builder=None, **kwargs):
         self.builder = builder
-        EndpointMatcherBase.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     @defer.inlineCallbacks
     def match_BuildEndpoint_rebuild(self, epobject, epdict, options):
@@ -200,7 +192,7 @@ class EnableSchedulerEndpointMatcher(EndpointMatcherBase):
 class ViewBuildsEndpointMatcher(EndpointMatcherBase):
 
     def __init__(self, branch=None, project=None, builder=None, **kwargs):
-        EndpointMatcherBase.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.branch = branch
         self.project = project
         self.builder = builder
@@ -210,4 +202,4 @@ class BranchEndpointMatcher(EndpointMatcherBase):
 
     def __init__(self, branch, **kwargs):
         self.branch = branch
-        EndpointMatcherBase.__init__(self, **kwargs)
+        super().__init__(**kwargs)

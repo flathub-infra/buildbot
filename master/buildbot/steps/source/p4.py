@@ -14,8 +14,6 @@
 # Copyright Buildbot Team Members
 # Portions Copyright 2013 Bad Dog Consulting
 
-from future.utils import string_types
-
 import re
 
 from twisted.internet import defer
@@ -79,7 +77,7 @@ class P4(Source):
         self.p4extra_args = p4extra_args
         self.use_tickets = use_tickets
 
-        Source.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
         if self.mode not in self.possible_modes and not interfaces.IRenderable.providedBy(self.mode):
             config.error("mode %s is not an IRenderable, or one of %s" % (
@@ -92,7 +90,7 @@ class P4(Source):
             config.error(
                 "Either provide p4viewspec or p4base and p4branch (and optionally p4extra_views")
 
-        if p4viewspec and isinstance(p4viewspec, string_types):
+        if p4viewspec and isinstance(p4viewspec, str):
             config.error(
                 "p4viewspec must not be a string, and should be a sequence of 2 element sequences")
 

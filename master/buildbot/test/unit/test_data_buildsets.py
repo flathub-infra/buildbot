@@ -14,7 +14,6 @@
 # Copyright Buildbot Team Members
 
 from twisted.internet import defer
-from twisted.internet import task
 from twisted.trial import unittest
 from zope.interface import implementer
 
@@ -27,6 +26,7 @@ from buildbot.test.fake import fakedb
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import endpoint
 from buildbot.test.util import interfaces as util_interfaces
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import epoch2datetime
 
 A_TIMESTAMP = 1341700729
@@ -124,11 +124,13 @@ class BuildsetsEndpoint(endpoint.EndpointMixin, unittest.TestCase):
         self.assertEqual(buildsets[0]['bsid'], 14)
 
 
-class Buildset(util_interfaces.InterfaceTests, unittest.TestCase):
+class Buildset(TestReactorMixin, util_interfaces.InterfaceTests,
+               unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self,
-                                             wantMq=True, wantDb=True, wantData=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantMq=True, wantDb=True,
+                                             wantData=True)
         self.rtype = buildsets.Buildset(self.master)
         return self.master.db.insertTestData([
             fakedb.SourceStamp(id=234, branch='br', codebase='cb',
@@ -165,11 +167,9 @@ class Buildset(util_interfaces.InterfaceTests, unittest.TestCase):
         Note that addBuildset does not add sourcestamps, so this method assumes
         there are none in the db.
         """
-        clock = task.Clock()
-        clock.advance(A_TIMESTAMP)
-        xxx_todo_changeme = yield self.rtype.addBuildset(_reactor=clock, **kwargs)
+        self.reactor.advance(A_TIMESTAMP)
 
-        (bsid, brids) = xxx_todo_changeme
+        (bsid, brids) = yield self.rtype.addBuildset(**kwargs)
         self.assertEqual((bsid, brids), expectedReturn)
         # check the correct message was received
         self.master.mq.assertProductions(
@@ -239,7 +239,7 @@ class Buildset(util_interfaces.InterfaceTests, unittest.TestCase):
 
     def test_addBuildset_two_builderNames(self):
         @implementer(interfaces.IScheduler)
-        class FakeSched(object):
+        class FakeSched:
             name = 'fakesched'
 
         kwargs = dict(scheduler='fakesched', reason='because',
@@ -263,7 +263,7 @@ class Buildset(util_interfaces.InterfaceTests, unittest.TestCase):
 
     def test_addBuildset_no_builderNames(self):
         @implementer(interfaces.IScheduler)
-        class FakeSched(object):
+        class FakeSched:
             name = 'fakesched'
 
         kwargs = dict(scheduler='fakesched', reason='because',
@@ -321,8 +321,7 @@ class Buildset(util_interfaces.InterfaceTests, unittest.TestCase):
         if buildRequestResults is None:
             buildRequestResults = {}
 
-        clock = task.Clock()
-        clock.advance(A_TIMESTAMP)
+        self.reactor.advance(A_TIMESTAMP)
 
         def mkbr(brid, bsid=72):
             return fakedb.BuildRequest(id=brid, buildsetid=bsid, builderid=42,
@@ -343,7 +342,7 @@ class Buildset(util_interfaces.InterfaceTests, unittest.TestCase):
             fakedb.BuildsetSourceStamp(buildsetid=73, sourcestampid=234),
         ])
 
-        yield self.rtype.maybeBuildsetComplete(72, _reactor=clock)
+        yield self.rtype.maybeBuildsetComplete(72)
 
         self.master.db.buildsets.assertBuildsetCompletion(72, expectComplete)
         if expectMessage:

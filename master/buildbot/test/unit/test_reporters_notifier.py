@@ -32,17 +32,20 @@ from buildbot.reporters.notifier import NotifierBase
 from buildbot.test.fake import fakedb
 from buildbot.test.fake import fakemaster
 from buildbot.test.util.config import ConfigErrorsMixin
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.test.util.notifier import NotifierTestMixin
 
 py_27 = sys.version_info[0] > 2 or (sys.version_info[0] == 2
                                     and sys.version_info[1] >= 7)
 
 
-class TestMailNotifier(ConfigErrorsMixin, unittest.TestCase, NotifierTestMixin):
+class TestMailNotifier(ConfigErrorsMixin, TestReactorMixin,
+                       unittest.TestCase, NotifierTestMixin):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self,
-                                             wantData=True, wantDb=True, wantMq=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
+                                             wantMq=True)
 
     @defer.inlineCallbacks
     def setupNotifier(self, *args, **kwargs):
@@ -319,7 +322,7 @@ class TestMailNotifier(ConfigErrorsMixin, unittest.TestCase, NotifierTestMixin):
         class NoPatchSourcestamp(SourceStamp):
 
             def __init__(self, id, patchid):
-                SourceStamp.__init__(self, id=id)
+                super().__init__(id=id)
         self.patch(fakedb, 'SourceStamp', NoPatchSourcestamp)
         mn, builds = yield self.setupBuildMessage(mode=("change",), addPatch=True)
         self.assertEqual(mn.sendMessage.call_count, 1)

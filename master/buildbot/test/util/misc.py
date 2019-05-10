@@ -13,14 +13,14 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import text_type
-
 import os
 import sys
 
+from twisted.internet import threads
 from twisted.python import log
 from twisted.python import threadpool
 from twisted.python.compat import NativeStringIO
+from twisted.trial.unittest import TestCase
 
 import buildbot
 from buildbot.process.buildstep import BuildStep
@@ -29,7 +29,7 @@ from buildbot.test.fake.reactor import TestReactor
 from buildbot.util.eventual import _setReactor
 
 
-class PatcherMixin(object):
+class PatcherMixin:
 
     """
     Mix this in to get a few special-cased patching methods
@@ -47,7 +47,7 @@ class PatcherMixin(object):
             os.uname = replacement
 
 
-class StdoutAssertionsMixin(object):
+class StdoutAssertionsMixin:
 
     """
     Mix this in to be able to assert on stdout during the test
@@ -67,7 +67,7 @@ class StdoutAssertionsMixin(object):
         return self.stdout.getvalue().strip()
 
 
-class TestReactorMixin(object):
+class TestReactorMixin:
 
     """
     Mix this in to get TestReactor as self.reactor which is correctly cleaned up
@@ -77,6 +77,12 @@ class TestReactorMixin(object):
         self.patch(threadpool, 'ThreadPool', NonThreadPool)
         self.reactor = TestReactor()
         _setReactor(self.reactor)
+
+        def deferToThread(f, *args, **kwargs):
+            return threads.deferToThreadPool(self.reactor, self.reactor.getThreadPool(),
+                                             f, *args, **kwargs)
+        self.patch(threads, 'deferToThread', deferToThread)
+
         # During shutdown sequence we must first stop the reactor and only then
         # set unset the reactor used for eventually() because any callbacks
         # that are run during reactor.stop() may use eventually() themselves.
@@ -84,17 +90,36 @@ class TestReactorMixin(object):
         self.addCleanup(self.reactor.stop)
 
 
+class TimeoutableTestCase(TestCase):
+    # The addCleanup in current Twisted does not time out any functions
+    # registered via addCleanups. Until we can depend on fixed Twisted, use
+    # TimeoutableTestCase whenever test failure may cause it to block and not
+    # report anything.
+
+    def deferRunCleanups(self, ignored, result):
+        self._deferRunCleanupResult = result
+        d = self._run('deferRunCleanupsTimeoutable', result)
+        d.addErrback(self._ebGotMaybeTimeout, result)
+        return d
+
+    def _ebGotMaybeTimeout(self, failure, result):
+        result.addError(self, failure)
+
+    def deferRunCleanupsTimeoutable(self):
+        return super().deferRunCleanups(None, self._deferRunCleanupResult)
+
+
 def encodeExecutableAndArgs(executable, args, encoding="utf-8"):
     """
     Encode executable and arguments from unicode to bytes.
     This avoids a deprecation warning when calling reactor.spawnProcess()
     """
-    if isinstance(executable, text_type):
+    if isinstance(executable, str):
         executable = executable.encode(encoding)
 
     argsBytes = []
     for arg in args:
-        if isinstance(arg, text_type):
+        if isinstance(arg, str):
             arg = arg.encode(encoding)
         argsBytes.append(arg)
 

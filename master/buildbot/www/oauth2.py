@@ -27,6 +27,7 @@ from twisted.internet import defer
 from twisted.internet import threads
 
 from buildbot import config
+from buildbot.process.properties import Properties
 from buildbot.util import bytes2unicode
 from buildbot.util.logger import Logger
 from buildbot.www import auth
@@ -40,7 +41,7 @@ class OAuth2LoginResource(auth.LoginResource):
     needsReconfig = False
 
     def __init__(self, master, _auth):
-        auth.LoginResource.__init__(self, master)
+        super().__init__(master)
         self.auth = _auth
 
     def render_POST(self, request):
@@ -54,22 +55,22 @@ class OAuth2LoginResource(auth.LoginResource):
             url = request.args.get(b"redirect", [None])[0]
             url = yield self.auth.getLoginURL(url)
             raise resource.Redirect(url)
+
+        if not token:
+            details = yield self.auth.verifyCode(code)
         else:
-            if not token:
-                details = yield self.auth.verifyCode(code)
-            else:
-                details = yield self.auth.acceptToken(token)
-            if self.auth.userInfoProvider is not None:
-                infos = yield self.auth.userInfoProvider.getUserInfo(details['username'])
-                details.update(infos)
-            session = request.getSession()
-            session.user_info = details
-            session.updateSession(request)
-            state = request.args.get(b"state", [b""])[0]
-            if state:
-                for redirect in parse_qs(state).get('redirect', []):
-                    raise resource.Redirect(self.auth.homeUri + "#" + redirect)
-            raise resource.Redirect(self.auth.homeUri)
+            details = yield self.auth.acceptToken(token)
+        if self.auth.userInfoProvider is not None:
+            infos = yield self.auth.userInfoProvider.getUserInfo(details['username'])
+            details.update(infos)
+        session = request.getSession()
+        session.user_info = details
+        session.updateSession(request)
+        state = request.args.get(b"state", [b""])[0]
+        if state:
+            for redirect in parse_qs(state).get('redirect', []):
+                raise resource.Redirect(self.auth.homeUri + "#" + redirect)
+        raise resource.Redirect(self.auth.homeUri)
 
 
 class OAuth2Auth(auth.AuthBase):
@@ -86,7 +87,7 @@ class OAuth2Auth(auth.AuthBase):
 
     def __init__(self,
                  clientId, clientSecret, autologin=False, **kwargs):
-        auth.AuthBase.__init__(self, **kwargs)
+        super().__init__(**kwargs)
         self.clientId = clientId
         self.clientSecret = clientSecret
         self.autologin = autologin
@@ -106,17 +107,21 @@ class OAuth2Auth(auth.AuthBase):
     def getLoginResource(self):
         return OAuth2LoginResource(self.master, self)
 
+    @defer.inlineCallbacks
     def getLoginURL(self, redirect_url):
         """
         Returns the url to redirect the user to for user consent
         """
+        p = Properties()
+        p.master = self.master
+        clientId = yield p.render(self.clientId)
         oauth_params = {'redirect_uri': self.loginUri,
-                        'client_id': self.clientId, 'response_type': 'code'}
+                        'client_id': clientId, 'response_type': 'code'}
         if redirect_url is not None:
             oauth_params['state'] = urlencode(dict(redirect=redirect_url))
         oauth_params.update(self.authUriAdditionalParams)
         sorted_oauth_params = sorted(oauth_params.items(), key=lambda val: val[0])
-        return defer.succeed("%s?%s" % (self.authUri, urlencode(sorted_oauth_params)))
+        return "%s?%s" % (self.authUri, urlencode(sorted_oauth_params))
 
     def createSessionFromToken(self, token):
         s = requests.Session()
@@ -139,18 +144,19 @@ class OAuth2Auth(auth.AuthBase):
     # based on https://github.com/maraujop/requests-oauth
     # from Miguel Araujo, augmented to support header based clientSecret
     # passing
+    @defer.inlineCallbacks
     def verifyCode(self, code):
         # everything in deferToThread is not counted with trial  --coverage :-(
-        def thd():
+        def thd(client_id, client_secret):
             url = self.tokenUri
             data = {'redirect_uri': self.loginUri, 'code': code,
                     'grant_type': self.grantType}
             auth = None
             if self.getTokenUseAuthHeaders:
-                auth = (self.clientId, self.clientSecret)
+                auth = (client_id, client_secret)
             else:
                 data.update(
-                    {'client_id': self.clientId, 'client_secret': self.clientSecret})
+                    {'client_id': client_id, 'client_secret': client_secret})
             data.update(self.tokenUriAdditionalParams)
             response = requests.post(
                 url, data=data, auth=auth, verify=self.sslVerify)
@@ -167,7 +173,12 @@ class OAuth2Auth(auth.AuthBase):
 
             session = self.createSessionFromToken(content)
             return self.getUserInfoFromOAuthClient(session)
-        return threads.deferToThread(thd)
+        p = Properties()
+        p.master = self.master
+        client_id = yield p.render(self.clientId)
+        client_secret = yield p.render(self.clientSecret)
+        result = yield threads.deferToThread(thd, client_id, client_secret)
+        return result
 
     def getUserInfoFromOAuthClient(self, c):
         return {}
@@ -224,7 +235,7 @@ class GitHubAuth(OAuth2Auth):
                  apiVersion=3, getTeamsMembership=False, debug=False,
                  **kwargs):
 
-        OAuth2Auth.__init__(self, clientId, clientSecret, autologin, **kwargs)
+        super().__init__(clientId, clientSecret, autologin, **kwargs)
         if serverURL is not None:
             # setup for enterprise github
             if serverURL.endswith("/"):

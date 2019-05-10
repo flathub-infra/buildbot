@@ -87,7 +87,7 @@ def timed_do_fn(f):
     return wrap
 
 
-class DBThreadPool(object):
+class DBThreadPool:
 
     running = False
 
@@ -176,7 +176,7 @@ class DBThreadPool(object):
             if with_engine:
                 arg = self.engine
             else:
-                arg = self.engine.contextual_connect()
+                arg = self.engine.connect()
             try:
                 try:
                     rv = callable(arg, *args, **kwargs)

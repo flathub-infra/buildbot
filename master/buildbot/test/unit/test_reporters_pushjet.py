@@ -25,14 +25,17 @@ from buildbot.reporters.pushjet import PushjetNotifier
 from buildbot.test.fake import fakemaster
 from buildbot.test.fake import httpclientservice as fakehttpclientservice
 from buildbot.test.util.config import ConfigErrorsMixin
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import httpclientservice
 
 
-class TestPushjetNotifier(ConfigErrorsMixin, unittest.TestCase):
+class TestPushjetNotifier(ConfigErrorsMixin, TestReactorMixin,
+                          unittest.TestCase):
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self,
-                                             wantData=True, wantDb=True, wantMq=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
+                                             wantMq=True)
 
     def setupFakeHttp(self, base_url='https://api.pushjet.io'):
         return self.successResultOf(fakehttpclientservice.HTTPClientService.getFakeService(

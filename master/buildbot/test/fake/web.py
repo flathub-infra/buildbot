@@ -13,8 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import text_type
-
 from io import BytesIO
 
 from mock import Mock
@@ -26,7 +24,10 @@ from buildbot.test.fake import fakemaster
 
 
 def fakeMasterForHooks(testcase):
-    master = fakemaster.make_master(wantData=True, testcase=testcase)
+    # testcase must derive from TestReactorMixin and setUpTestReactor()
+    # must be called before calling this function.
+
+    master = fakemaster.make_master(testcase, wantData=True)
     master.www = Mock()
     return master
 
@@ -45,7 +46,7 @@ class FakeRequest(Mock):
     failure = None
 
     def __init__(self, args=None, content=b''):
-        Mock.__init__(self)
+        super().__init__()
 
         if args is None:
             args = {}
@@ -89,19 +90,19 @@ class FakeRequest(Mock):
                     "values which are not bytes".format(self.args))
 
         if self.uri and not isinstance(self.uri, bytes):
-                raise ValueError("self.uri: {!r} is {}, not bytes".format(
-                    self.uri, type(self.uri)))
+            raise ValueError("self.uri: {!r} is {}, not bytes".format(
+                self.uri, type(self.uri)))
 
         if self.method and not isinstance(self.method, bytes):
-                raise ValueError("self.method: {!r} is {}, not bytes".format(
-                    self.method, type(self.method)))
+            raise ValueError("self.method: {!r} is {}, not bytes".format(
+                self.method, type(self.method)))
 
         result = resource.render(self)
         if isinstance(result, bytes):
             self.write(result)
             self.finish()
             return self.deferred
-        elif isinstance(result, text_type):
+        elif isinstance(result, str):
             raise ValueError("{!r} should return bytes, not {}: {!r}".format(
                 resource.render, type(result), result))
         elif result is server.NOT_DONE_YET:

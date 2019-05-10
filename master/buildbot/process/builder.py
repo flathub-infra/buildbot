@@ -13,8 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import string_types
-
 import warnings
 import weakref
 
@@ -39,7 +37,7 @@ from buildbot.util import service as util_service
 def enforceChosenWorker(bldr, workerforbuilder, breq):
     if 'workername' in breq.properties:
         workername = breq.properties['workername']
-        if isinstance(workername, string_types):
+        if isinstance(workername, str):
             return workername == workerforbuilder.worker.workername
 
     return True
@@ -57,7 +55,7 @@ class Builder(util_service.ReconfigurableServiceMixin,
         return None
 
     def __init__(self, name):
-        service.MultiService.__init__(self)
+        super().__init__()
         self.name = name
 
         # this is filled on demand by getBuilderId; don't access it directly
@@ -193,6 +191,7 @@ class Builder(util_service.ReconfigurableServiceMixin,
             self.workers.append(wfb)
             self.botmaster.maybeStartBuildsForBuilder(self.name)
 
+    @defer.inlineCallbacks
     def attached(self, worker, commands):
         """This is invoked by the Worker when the self.workername bot
         registers their builder.
@@ -224,22 +223,19 @@ class Builder(util_service.ReconfigurableServiceMixin,
         wfb = workerforbuilder.WorkerForBuilder()
         wfb.setBuilder(self)
         self.attaching_workers.append(wfb)
-        d = wfb.attached(worker, commands)
-        d.addCallback(self._attached)
-        d.addErrback(self._not_attached, worker)
-        return d
 
-    def _attached(self, wfb):
-        self.attaching_workers.remove(wfb)
-        self.workers.append(wfb)
+        try:
+            wfb = yield wfb.attached(worker, commands)
+            self.attaching_workers.remove(wfb)
+            self.workers.append(wfb)
+            return self
 
-        return self
-
-    def _not_attached(self, why, worker):
-        # already log.err'ed by WorkerForBuilder._attachFailure
-        # TODO: remove from self.workers (except that detached() should get
-        #       run first, right?)
-        log.err(why, 'worker failed to attach')
+        except Exception as e:  # pragma: no cover
+            # already log.err'ed by WorkerForBuilder._attachFailure
+            # TODO: remove from self.workers (except that detached() should get
+            #       run first, right?)
+            log.err(e, 'worker failed to attach')
+            return None
 
     def detached(self, worker):
         """This is called when the connection to the bot is lost."""

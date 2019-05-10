@@ -13,8 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import text_type
-
 import cgi
 import datetime
 import fnmatch
@@ -47,7 +45,7 @@ class BadJsonRpc2(Exception):
         self.jsonrpccode = jsonrpccode
 
 
-class ContentTypeParser(object):
+class ContentTypeParser:
 
     def __init__(self, contenttype):
         self.typeheader = contenttype
@@ -71,7 +69,7 @@ class RestRootResource(resource.Resource):
         version_cls.apiVersion = version
 
     def __init__(self, master):
-        resource.Resource.__init__(self, master)
+        super().__init__(master)
 
         min_vers = master.config.www.get('rest_minimum_version', 0)
         latest = max(list(self.version_classes))
@@ -198,9 +196,9 @@ class V2RootResource(resource.Resource):
             if not isinstance(data[name], types):
                 raise BadJsonRpc2("'%s' must be %s" % (name, typename),
                                   JSONRPC_CODES["invalid_request"])
-        check("jsonrpc", (str, text_type), "a string")
-        check("method", (str, text_type), "a string")
-        check("id", (str, text_type, int, type(None)),
+        check("jsonrpc", (str,), "a string")
+        check("method", (str,), "a string")
+        check("id", (str, int, type(None)),
               "a string, number, or null")
         check("params", (dict,), "an object")
         if data['jsonrpc'] != '2.0':
@@ -214,7 +212,8 @@ class V2RootResource(resource.Resource):
 
         def writeError(msg, errcode=399,
                        jsonrpccode=JSONRPC_CODES["internal_error"]):
-            msg = bytes2unicode(msg)
+            if isinstance(msg, bytes):
+                msg = bytes2unicode(msg)
             if self.debug:
                 log.msg("JSONRPC error: %s" % (msg,))
             request.setResponseCode(errcode)
@@ -291,7 +290,7 @@ class V2RootResource(resource.Resource):
                 try:
                     props = []
                     for v in reqArgs[arg]:
-                        if not isinstance(v, (bytes, text_type)):
+                        if not isinstance(v, (bytes, str)):
                             raise TypeError(
                                 "Invalid type {} for {}".format(type(v), v))
                         props.append(bytes2unicode(v))

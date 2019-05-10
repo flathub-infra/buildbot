@@ -22,7 +22,7 @@ from twisted.internet import defer
 from twisted.python import log
 
 
-class LRUCache(object):
+class LRUCache:
 
     """
     A least-recently-used cache, with a fixed maximum size.
@@ -176,7 +176,7 @@ class AsyncLRUCache(LRUCache):
     __slots__ = ['concurrent']
 
     def __init__(self, miss_fn, max_size=50):
-        LRUCache.__init__(self, miss_fn, max_size=max_size)
+        super().__init__(miss_fn, max_size=max_size)
         self.concurrent = {}
 
     def get(self, key, **miss_fn_kwargs):

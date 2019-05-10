@@ -19,7 +19,6 @@ import time
 from datetime import datetime
 
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.python import log
 from twisted.web import client
 
@@ -52,8 +51,7 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
         self.owner = owner
         self.slug = slug
         self.branch = branch
-        base.PollingChangeSource.__init__(
-            self, name='/'.join([owner, slug]), pollInterval=pollInterval, pollAtLaunch=pollAtLaunch)
+        super().__init__(name='/'.join([owner, slug]), pollInterval=pollInterval, pollAtLaunch=pollAtLaunch)
         self.encoding = encoding
 
         if hasattr(pullrequest_filter, '__call__'):
@@ -125,7 +123,7 @@ class BitbucketPullrequestPoller(base.PollingChangeSource):
                             pr['updated_on'].split('.')[0],
                             '%Y-%m-%dT%H:%M:%S')
                     else:
-                        updated = epoch2datetime(reactor.seconds())
+                        updated = epoch2datetime(self.master.reactor.seconds())
                     title = pr['title']
                     # parse commit api page
                     page = yield client.getPage(str(pr['source']['commit']['links']['self']['href']))

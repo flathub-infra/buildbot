@@ -29,6 +29,7 @@ from twisted.web.server import Request
 
 from buildbot.test.unit import test_www_hooks_base
 from buildbot.test.util import www
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.www import auth
 from buildbot.www import change_hook
 from buildbot.www import resource
@@ -45,9 +46,10 @@ class NeedsReconfigResource(resource.Resource):
         NeedsReconfigResource.reconfigs += 1
 
 
-class Test(www.WwwTestMixin, unittest.TestCase):
+class Test(TestReactorMixin, www.WwwTestMixin, unittest.TestCase):
 
     def setUp(self):
+        self.setUpTestReactor()
         self.master = self.make_master(url='h:/a/b/')
         self.svc = self.master.www = service.WWWService()
         self.svc.setServiceParent(self.master)
@@ -251,7 +253,7 @@ class TestBuildbotSite(unittest.SynchronousTestCase):
     def test_updateSession(self):
         session = self.site.makeSession()
 
-        class FakeChannel(object):
+        class FakeChannel:
             transport = None
 
             def isSecure(self):

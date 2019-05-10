@@ -37,7 +37,7 @@ link_urls = {
 }
 
 
-class PullRequestMixin(object):
+class PullRequestMixin:
     def extractProperties(self, payload):
         def flatten(properties, base, info_dict):
             for k, v in info_dict.items():
@@ -80,8 +80,7 @@ class GitHubPullrequestPoller(base.ReconfigurablePollingChangeSource,
         if repository_type not in ["https", "svn", "git", "ssh"]:
             config.error(
                 "repository_type must be one of {https, svn, git, ssh}")
-        base.ReconfigurablePollingChangeSource.checkConfig(
-            self, name=self.name, **kwargs)
+        super().checkConfig(name=self.name, **kwargs)
 
     @defer.inlineCallbacks
     def reconfigService(self,
@@ -98,8 +97,7 @@ class GitHubPullrequestPoller(base.ReconfigurablePollingChangeSource,
                         repository_type="https",
                         github_property_whitelist=None,
                         **kwargs):
-        yield base.ReconfigurablePollingChangeSource.reconfigService(
-            self, name=self.name, **kwargs)
+        yield super().reconfigService(name=self.name, **kwargs)
 
         if baseURL is None:
             baseURL = HOSTED_BASE_URL

@@ -216,7 +216,7 @@ class Properties(util.ComparableMixin):
         return text
 
 
-class PropertiesMixin(object):
+class PropertiesMixin:
 
     """
     A mixin to add L{IProperties} methods to a class which does not implement
@@ -257,7 +257,7 @@ class PropertiesMixin(object):
         return props.render(value)
 
 
-class _PropertyMap(object):
+class _PropertyMap:
 
     """
     Privately-used mapping object to implement WithProperties' substitutions,
@@ -385,7 +385,7 @@ _notHasKey = _NotHasKey()
 
 
 @implementer(IRenderable)
-class _Lookup(util.ComparableMixin, object):
+class _Lookup(util.ComparableMixin):
 
     compare_attrs = (
         'value', 'index', 'default', 'defaultWhenFalse', 'hasKey', 'elideNoneAs')
@@ -444,7 +444,7 @@ def _getInterpolationList(fmtstring):
 
 
 @implementer(IRenderable)
-class _PropertyDict(object):
+class _PropertyDict:
 
     def getRenderingFor(self, build):
         return build.getProperties()
@@ -454,7 +454,7 @@ _thePropertyDict = _PropertyDict()
 
 
 @implementer(IRenderable)
-class _SecretRenderer(object):
+class _SecretRenderer:
 
     def __init__(self, secret_name):
         self.secret_name = secret_name
@@ -478,27 +478,10 @@ class _SecretRenderer(object):
 class Secret(_SecretRenderer):
 
     def __repr__(self):
-        return "Secret({0})".format(self.secretKey)
-
-    def __init__(self, secretKey):
-        self.secretKey = secretKey
-
-    @defer.inlineCallbacks
-    def getRenderingFor(self, props):
-        secretsSrv = props.master.namedServices.get("secrets")
-        if not secretsSrv:
-            error_message = "secrets service not started, need to configure" \
-                            " SecretManager in c['services'] to use 'secrets'" \
-                            "in Interpolate"
-            raise KeyError(error_message)
-        credsservice = props.master.namedServices['secrets']
-        secret_detail = yield credsservice.get(self.secretKey)
-        if secret_detail is None:
-            raise KeyError("secret key %s is not found in any provider" % self.secretKey)
-        return secret_detail.value
+        return "Secret({0})".format(self.secret_name)
 
 
-class _SecretIndexer(object):
+class _SecretIndexer:
 
     def __contains__(self, password):
         return True
@@ -508,7 +491,7 @@ class _SecretIndexer(object):
 
 
 @implementer(IRenderable)
-class _SourceStampDict(util.ComparableMixin, object):
+class _SourceStampDict(util.ComparableMixin):
 
     compare_attrs = ('codebase',)
 
@@ -523,7 +506,7 @@ class _SourceStampDict(util.ComparableMixin, object):
 
 
 @implementer(IRenderable)
-class _Lazy(util.ComparableMixin, object):
+class _Lazy(util.ComparableMixin):
 
     compare_attrs = ('value',)
 
@@ -538,7 +521,7 @@ class _Lazy(util.ComparableMixin, object):
 
 
 @implementer(IRenderable)
-class Interpolate(util.ComparableMixin, object):
+class Interpolate(util.ComparableMixin):
 
     """
     This is a marker class, used fairly widely to indicate that we
@@ -727,7 +710,7 @@ class Interpolate(util.ComparableMixin, object):
 
 
 @implementer(IRenderable)
-class _ComparisonRenderer(util.ComparableMixin, object):
+class _ComparisonRenderer(util.ComparableMixin):
     """
     An instance of this class renders a comparison given by a comparator
     function with v1 and v2
@@ -839,7 +822,7 @@ class FlattenList(util.ComparableMixin):
 
 
 @implementer(IRenderable)
-class _Renderer(util.ComparableMixin, object):
+class _Renderer(util.ComparableMixin):
 
     compare_attrs = ('fn',)
 
@@ -877,7 +860,7 @@ def renderer(fn):
 
 
 @implementer(IRenderable)
-class _DefaultRenderer(object):
+class _DefaultRenderer:
 
     """
     Default IRenderable adaptor. Calls .getRenderingFor if available, otherwise
@@ -898,7 +881,7 @@ registerAdapter(_DefaultRenderer, object, IRenderable)
 
 
 @implementer(IRenderable)
-class _ListRenderer(object):
+class _ListRenderer:
 
     """
     List IRenderable adaptor. Maps Build.render over the list.
@@ -915,7 +898,7 @@ registerAdapter(_ListRenderer, list, IRenderable)
 
 
 @implementer(IRenderable)
-class _TupleRenderer(object):
+class _TupleRenderer:
 
     """
     Tuple IRenderable adaptor. Maps Build.render over the tuple.
@@ -934,7 +917,7 @@ registerAdapter(_TupleRenderer, tuple, IRenderable)
 
 
 @implementer(IRenderable)
-class _DictRenderer(object):
+class _DictRenderer:
 
     """
     Dict IRenderable adaptor. Maps Build.render over the keys and values in the dict.
@@ -954,7 +937,7 @@ registerAdapter(_DictRenderer, dict, IRenderable)
 
 
 @implementer(IRenderable)
-class Transform(object):
+class Transform:
 
     """
     A renderable that combines other renderables' results using an arbitrary function.

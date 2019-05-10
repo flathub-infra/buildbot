@@ -23,9 +23,10 @@ from twisted.trial import unittest
 
 from buildbot.process.users import manual
 from buildbot.test.fake import fakemaster
+from buildbot.test.util.misc import TestReactorMixin
 
 
-class ManualUsersMixin(object):
+class ManualUsersMixin:
 
     """
     This class fakes out the master/db components to test the manual
@@ -33,7 +34,7 @@ class ManualUsersMixin(object):
     """
 
     def setUpManualUsers(self):
-        self.master = fakemaster.make_master(testcase=self, wantDb=True)
+        self.master = fakemaster.make_master(self, wantDb=True)
 
 
 class TestUsersBase(unittest.TestCase):
@@ -42,12 +43,14 @@ class TestUsersBase(unittest.TestCase):
     Not really sure what there is to test, aside from _setUpManualUsers getting
     self.master set.
     """
-    pass
 
 
-class TestCommandlineUserManagerPerspective(unittest.TestCase, ManualUsersMixin):
+class TestCommandlineUserManagerPerspective(TestReactorMixin,
+                                            unittest.TestCase,
+                                            ManualUsersMixin):
 
     def setUp(self):
+        self.setUpTestReactor()
         self.setUpManualUsers()
 
     def call_perspective_commandline(self, *args):
@@ -213,9 +216,11 @@ class TestCommandlineUserManagerPerspective(unittest.TestCase, ManualUsersMixin)
         self.assertEqual(result, exp_format)
 
 
-class TestCommandlineUserManager(unittest.TestCase, ManualUsersMixin):
+class TestCommandlineUserManager(TestReactorMixin, unittest.TestCase,
+                                 ManualUsersMixin):
 
     def setUp(self):
+        self.setUpTestReactor()
         self.setUpManualUsers()
         self.manual_component = manual.CommandlineUserManager(username="user",
                                                               passwd="userpw",

@@ -26,7 +26,7 @@ from buildbot.util import toJson
 from buildbot.util import unicode2bytes
 
 
-class Consumer(object):
+class Consumer:
 
     def __init__(self, request):
         self.request = request
@@ -57,7 +57,7 @@ class EventResource(resource.Resource):
     isLeaf = True
 
     def __init__(self, master):
-        resource.Resource.__init__(self)
+        super().__init__()
 
         self.master = master
         self.consumers = {}

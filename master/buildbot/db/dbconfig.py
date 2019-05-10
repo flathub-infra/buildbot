@@ -23,25 +23,25 @@ from buildbot.db import model
 from buildbot.db import state
 
 
-class FakeDBConnector(object):
+class FakeDBConnector:
     pass
 
 
-class FakeCacheManager(object):
+class FakeCacheManager:
 
     def get_cache(self, cache_name, miss_fn):
         return None
 
 
-class FakeMaster(object):
+class FakeMaster:
     pass
 
 
-class FakePool(object):
+class FakePool:
     pass
 
 
-class DbConfig(object):
+class DbConfig:
 
     def __init__(self, BuildmasterConfig, basedir, name="config"):
         self.db_url = MasterConfig.getDbUrlFromConfig(
@@ -70,7 +70,7 @@ class DbConfig(object):
         except (ProgrammingError, OperationalError):
             # ProgrammingError: mysql&pg, OperationalError: sqlite
             # assume db is not initialized
-            db.pool.engine.close()
+            db.pool.engine.dispose()
             return None
         return db
 
@@ -79,7 +79,7 @@ class DbConfig(object):
         if db is not None:
             ret = db.state.thdGetState(
                 db.pool.engine, self.objectid, name, default=default)
-            db.pool.engine.close()
+            db.pool.engine.dispose()
         else:
             if default is not state.StateConnectorComponent.Thunk:
                 return default
@@ -90,4 +90,4 @@ class DbConfig(object):
         db = self.getDb()
         if db is not None:
             db.state.thdSetState(db.pool.engine, self.objectid, name, value)
-            db.pool.engine.close()
+            db.pool.engine.dispose()

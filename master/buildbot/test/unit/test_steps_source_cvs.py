@@ -27,6 +27,7 @@ from buildbot.test.fake.remotecommand import Expect
 from buildbot.test.fake.remotecommand import ExpectRemoteRef
 from buildbot.test.fake.remotecommand import ExpectShell
 from buildbot.test.util import sourcesteps
+from buildbot.test.util.misc import TestReactorMixin
 
 
 def uploadString(cvsroot):
@@ -37,16 +38,18 @@ def uploadString(cvsroot):
     return behavior
 
 
-class TestCVS(sourcesteps.SourceStepMixin, unittest.TestCase):
+class TestCVS(sourcesteps.SourceStepMixin, TestReactorMixin,
+              unittest.TestCase):
 
     def setUp(self):
+        self.setUpTestReactor()
         return self.setUpSourceStep()
 
     def tearDown(self):
         return self.tearDownSourceStep()
 
     def setupStep(self, step, *args, **kwargs):
-        sourcesteps.SourceStepMixin.setupStep(self, step, *args, **kwargs)
+        super().setupStep(step, *args, **kwargs)
 
         # make parseGotRevision return something consistent, patching the class
         # instead of the object since a new object is constructed by runTest.

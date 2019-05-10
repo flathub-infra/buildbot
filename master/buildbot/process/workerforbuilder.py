@@ -29,7 +29,7 @@ class States(Names):
     BUILDING = NamedConstant()
 
 
-class AbstractWorkerForBuilder(object):
+class AbstractWorkerForBuilder:
 
     def __init__(self):
         self.ping_watchers = []
@@ -88,6 +88,7 @@ class AbstractWorkerForBuilder(object):
         if self.worker:
             self.worker.buildFinished(self)
 
+    @defer.inlineCallbacks
     def attached(self, worker, commands):
         """
         @type  worker: L{buildbot.worker.Worker}
@@ -103,14 +104,9 @@ class AbstractWorkerForBuilder(object):
             assert self.worker == worker
         log.msg("Worker %s attached to %s" % (worker.workername,
                                               self.builder_name))
-        d = defer.succeed(None)
 
-        d.addCallback(lambda _:
-                      self.worker.conn.remotePrint(message="attached"))
-
-        d.addCallback(lambda _: self)
-
-        return d
+        yield self.worker.conn.remotePrint(message="attached")
+        return self
 
     def prepare(self, build):
         if not self.worker or not self.worker.acquireLocks():
@@ -189,22 +185,21 @@ class Ping:
 class WorkerForBuilder(AbstractWorkerForBuilder):
 
     def __init__(self):
-        AbstractWorkerForBuilder.__init__(self)
+        super().__init__()
         self.state = States.DETACHED
 
+    @defer.inlineCallbacks
     def attached(self, worker, commands):
-        d = AbstractWorkerForBuilder.attached(self, worker, commands)
+        wfb = yield super().attached(worker, commands)
 
-        @d.addCallback
-        def setAvailable(res):
-            # Only set available on non-latent workers, since latent workers
-            # only attach while a build is in progress.
-            self.state = States.AVAILABLE
-            return res
-        return d
+        # Only set available on non-latent workers, since latent workers
+        # only attach while a build is in progress.
+        self.state = States.AVAILABLE
+
+        return wfb
 
     def detached(self):
-        AbstractWorkerForBuilder.detached(self)
+        super().detached()
         if self.worker:
             self.worker.removeWorkerForBuilder(self)
         self.worker = None
@@ -214,7 +209,7 @@ class WorkerForBuilder(AbstractWorkerForBuilder):
 class LatentWorkerForBuilder(AbstractWorkerForBuilder):
 
     def __init__(self, worker, builder):
-        AbstractWorkerForBuilder.__init__(self)
+        super().__init__()
         self.worker = worker
         self.state = States.AVAILABLE
         self.setBuilder(builder)
@@ -236,7 +231,7 @@ class LatentWorkerForBuilder(AbstractWorkerForBuilder):
         # thus building and not available like for normal worker
         if self.state == States.DETACHED:
             self.state = States.BUILDING
-        return AbstractWorkerForBuilder.attached(self, worker, commands)
+        return super().attached(worker, commands)
 
     def substantiate(self, build):
         return self.worker.substantiate(self, build)
@@ -244,4 +239,4 @@ class LatentWorkerForBuilder(AbstractWorkerForBuilder):
     def ping(self, status=None):
         if not self.worker.substantiated:
             return defer.fail(PingException("worker is not substantiated"))
-        return AbstractWorkerForBuilder.ping(self, status)
+        return super().ping(status)

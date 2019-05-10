@@ -17,7 +17,6 @@
 import mock
 
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.trial import unittest
 
 from buildbot.data import builds
@@ -26,6 +25,7 @@ from buildbot.test.fake import fakedb
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import endpoint
 from buildbot.test.util import interfaces
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import epoch2datetime
 
 
@@ -250,7 +250,7 @@ class BuildsEndpoint(endpoint.EndpointMixin, unittest.TestCase):
         self.assertEqual(sorted([b['number'] for b in builds]), [3, 4])
 
 
-class Build(interfaces.InterfaceTests, unittest.TestCase):
+class Build(interfaces.InterfaceTests, TestReactorMixin, unittest.TestCase):
     new_build_event = {'builderid': 10,
                        'buildid': 100,
                        'buildrequestid': 13,
@@ -265,8 +265,9 @@ class Build(interfaces.InterfaceTests, unittest.TestCase):
                        'properties': {}}
 
     def setUp(self):
-        self.master = fakemaster.make_master(testcase=self,
-                                             wantMq=True, wantDb=True, wantData=True)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantMq=True, wantDb=True,
+                                             wantData=True)
         self.rtype = builds.Build(self.master)
 
     @defer.inlineCallbacks
@@ -282,9 +283,9 @@ class Build(interfaces.InterfaceTests, unittest.TestCase):
     @defer.inlineCallbacks
     def do_test_event(self, method, exp_events=None,
                       *args, **kwargs):
+        self.reactor.advance(1)
         if exp_events is None:
-                exp_events = []
-        self.patch(reactor, "seconds", lambda: 1)
+            exp_events = []
         yield method(*args, **kwargs)
         self.master.mq.assertProductions(exp_events)
 

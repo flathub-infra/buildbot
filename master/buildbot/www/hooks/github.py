@@ -26,6 +26,7 @@ from twisted.internet import defer
 from twisted.python import log
 
 from buildbot.changes.github import PullRequestMixin
+from buildbot.process.properties import Properties
 from buildbot.util import bytes2unicode
 from buildbot.util import httpclientservice
 from buildbot.util import unicode2bytes
@@ -74,7 +75,7 @@ class GitHubEventHandler(PullRequestMixin):
 
     @defer.inlineCallbacks
     def process(self, request):
-        payload = self._get_payload(request)
+        payload = yield self._get_payload(request)
 
         event_type = request.getHeader(_HEADER_EVENT)
         event_type = bytes2unicode(event_type)
@@ -89,6 +90,7 @@ class GitHubEventHandler(PullRequestMixin):
         result = yield defer.maybeDeferred(lambda: handler(payload, event_type))
         return result
 
+    @defer.inlineCallbacks
     def _get_payload(self, request):
         content = request.content.read()
         content = bytes2unicode(content)
@@ -109,7 +111,11 @@ class GitHubEventHandler(PullRequestMixin):
             if hash_type != 'sha1':
                 raise ValueError('Unknown hash type: {}'.format(hash_type))
 
-            mac = hmac.new(unicode2bytes(self._secret),
+            p = Properties()
+            p.master = self.master
+            rendered_secret = yield p.render(self._secret)
+
+            mac = hmac.new(unicode2bytes(rendered_secret),
                            msg=unicode2bytes(content),
                            digestmod=sha1)
 
@@ -165,6 +171,7 @@ class GitHubEventHandler(PullRequestMixin):
         changes = []
         number = payload['number']
         refname = 'refs/pull/{}/{}'.format(number, self.pullrequest_ref)
+        basename = payload['pull_request']['base']['ref']
         commits = payload['pull_request']['commits']
         title = payload['pull_request']['title']
         comments = payload['pull_request']['body']
@@ -187,6 +194,7 @@ class GitHubEventHandler(PullRequestMixin):
 
         properties = self.extractProperties(payload['pull_request'])
         properties.update({'event': event})
+        properties.update({'basename': basename})
         change = {
             'revision': payload['pull_request']['head']['sha'],
             'when_timestamp': dateparse(payload['pull_request']['created_at']),
@@ -326,7 +334,7 @@ class GitHubHandler(BaseHookHandler):
     def __init__(self, master, options):
         if options is None:
             options = {}
-        BaseHookHandler.__init__(self, master, options)
+        super().__init__(master, options)
 
         klass = options.get('class', GitHubEventHandler)
         klass_kwargs = {

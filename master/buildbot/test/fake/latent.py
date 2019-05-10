@@ -14,10 +14,13 @@
 # Copyright Buildbot Team Members
 
 
+import enum
+
 from twisted.internet import defer
 from twisted.python.filepath import FilePath
 from twisted.trial.unittest import SkipTest
 
+from buildbot.test.fake.worker import SeverWorkerConnectionMixin
 from buildbot.worker import AbstractLatentWorker
 
 try:
@@ -27,12 +30,25 @@ except ImportError:
     RemoteWorker = None
 
 
-class LatentController(object):
+class States(enum.Enum):
+    STOPPED = 0
+    STARTING = 1
+    STARTED = 2
+    STOPPING = 3
+
+
+class LatentController(SeverWorkerConnectionMixin):
 
     """
     A controller for ``ControllableLatentWorker``.
 
     https://glyph.twistedmatrix.com/2015/05/separate-your-fakes-and-your-inspectors.html
+
+    Note that by default workers will connect automatically if True is passed
+    to start_instance().
+
+    Also by default workers will disconnect automatically just as
+    stop_instance() is executed.
     """
 
     def __init__(self, case, name, kind=None, build_wait_timeout=600, **kwargs):
@@ -41,50 +57,67 @@ class LatentController(object):
         self.worker = ControllableLatentWorker(name, self, **kwargs)
         self.remote_worker = None
 
-        self.starting = False
-        self.started = False
-        self.stopping = False
+        self.state = States.STOPPED
         self.auto_stop_flag = False
         self.auto_start_flag = False
-        self.auto_connect_worker = False
+        self.auto_connect_worker = True
+        self.auto_disconnect_worker = True
 
         self.kind = kind
         self._started_kind = None
         self._started_kind_deferred = None
 
+    @property
+    def starting(self):
+        return self.state == States.STARTING
+
+    @property
+    def started(self):
+        return self.state == States.STARTED
+
+    @property
+    def stopping(self):
+        return self.state == States.STOPPING
+
+    @property
+    def stopped(self):
+        return self.state == States.STOPPED
+
     def auto_start(self, result):
         self.auto_start_flag = result
-        if self.auto_start_flag and self.starting:
+        if self.auto_start_flag and self.state == States.STARTING:
             self.start_instance(True)
 
     def start_instance(self, result):
-        self.do_start_instance()
+        self.do_start_instance(result)
         d, self._start_deferred = self._start_deferred, None
         d.callback(result)
 
-    def do_start_instance(self):
-        assert self.starting
-        assert not self.started or not self.remote_worker
-        self.starting = False
-        self.started = True
-        if self.auto_connect_worker:
+    def do_start_instance(self, result):
+        assert self.state == States.STARTING
+        self.state = States.STARTED
+        if self.auto_connect_worker and result is True:
             self.connect_worker()
 
+    @defer.inlineCallbacks
     def auto_stop(self, result):
         self.auto_stop_flag = result
-        if self.auto_stop_flag and self.stopping:
-            self.stop_instance(True)
+        if self.auto_stop_flag and self.state == States.STOPPING:
+            yield self.stop_instance(True)
 
+    @defer.inlineCallbacks
     def stop_instance(self, result):
-        self.do_stop_instance()
+        yield self.do_stop_instance()
         d, self._stop_deferred = self._stop_deferred, None
         d.callback(result)
 
+    @defer.inlineCallbacks
     def do_stop_instance(self):
-        assert self.stopping
-        self.stopping = False
+        assert self.state == States.STOPPING
+        self.state = States.STOPPED
         self._started_kind = None
-        self.disconnect_worker()
+        if self.auto_disconnect_worker:
+            yield self.disconnect_worker()
 
     def connect_worker(self):
         if self.remote_worker is not None:
@@ -97,17 +130,23 @@ class LatentController(object):
         self.remote_worker.setServiceParent(self.worker)
 
     def disconnect_worker(self):
+        super().disconnect_worker()
         if self.remote_worker is None:
             return
         self.worker.conn, conn = None, self.worker.conn
         self.remote_worker, worker = None, self.remote_worker
 
-        # LocalWorker does actually disconnect, so we must force disconnection via detached
-        conn.notifyDisconnected()
+        # LocalWorker does actually disconnect, so we must force disconnection
+        # via detached. Note that the worker may have already detached
+        if conn is not None:
+            conn.loseConnection()
         return worker.disownServiceParent()
 
     def setup_kind(self, build):
-        self._started_kind_deferred = build.render(self.kind)
+        if build:
+            self._started_kind_deferred = build.render(self.kind)
+        else:
+            self._started_kind_deferred = self.kind
 
     @defer.inlineCallbacks
     def get_started_kind(self):
@@ -145,7 +184,7 @@ class ControllableLatentWorker(AbstractLatentWorker):
 
     @defer.inlineCallbacks
     def isCompatibleWithBuild(self, build_props):
-        if not self._controller.starting and not self._controller.started:
+        if self._controller.state == States.STOPPED:
             return True
 
         requested_kind = yield build_props.render((self._controller.kind))
@@ -155,27 +194,23 @@ class ControllableLatentWorker(AbstractLatentWorker):
     def start_instance(self, build):
         self._controller.setup_kind(build)
 
-        assert not self._controller.stopping
+        assert self._controller.state == States.STOPPED
+        self._controller.state = States.STARTING
 
-        self._controller.starting = True
         if self._controller.auto_start_flag:
-            self._controller.do_start_instance()
+            self._controller.do_start_instance(True)
             return defer.succeed(True)
 
         self._controller._start_deferred = defer.Deferred()
         return self._controller._start_deferred
 
-    def stop_instance(self, build):
-        assert not self._controller.stopping
-        # TODO: we get duplicate stop_instance sometimes, this might indicate
-        # a bug in shutdown code path of AbstractWorkerController
-        # assert self._controller.started or self._controller.starting:
+    @defer.inlineCallbacks
+    def stop_instance(self, fast):
+        assert self._controller.state == States.STARTED
+        self._controller.state = States.STOPPING
 
-        self._controller.started = False
-        self._controller.starting = False
-        self._controller.stopping = True
         if self._controller.auto_stop_flag:
-            self._controller.do_stop_instance()
-            return defer.succeed(True)
+            yield self._controller.do_stop_instance()
+            return True
         self._controller._stop_deferred = defer.Deferred()
-        return self._controller._stop_deferred
+        return (yield self._controller._stop_deferred)

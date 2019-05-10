@@ -13,12 +13,9 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import text_type
-
 import mock
 
 from twisted.internet import defer
-from twisted.internet import task
 from twisted.python import log
 from twisted.trial import unittest
 
@@ -46,6 +43,7 @@ from buildbot.test.fake.remotecommand import ExpectShell
 from buildbot.test.util import config
 from buildbot.test.util import interfaces
 from buildbot.test.util import steps
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util.eventual import eventually
 
 
@@ -61,7 +59,9 @@ class NewStyleStep(buildstep.BuildStep):
         pass
 
 
-class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.TestCase):
+class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin,
+                    TestReactorMixin,
+                    unittest.TestCase):
 
     class FakeBuildStep(buildstep.BuildStep):
 
@@ -74,6 +74,7 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
             return SKIPPED
 
     def setUp(self):
+        self.setUpTestReactor()
         return self.setUpBuildStep()
 
     def tearDown(self):
@@ -402,15 +403,12 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         self.assertTrue(NewStyleStep().isNewStyle())
 
     def setup_summary_test(self):
-        self.clock = task.Clock()
         self.patch(NewStyleStep, 'getCurrentSummary',
                    lambda self: defer.succeed({'step': 'C'}))
         self.patch(NewStyleStep, 'getResultSummary',
                    lambda self: defer.succeed({'step': 'CS', 'build': 'CB'}))
         step = NewStyleStep()
-        step.master = fakemaster.make_master(testcase=self,
-                                             wantData=True, wantDb=True)
-        step.master.reactor = self.clock
+        step.master = fakemaster.make_master(self, wantData=True, wantDb=True)
         step.stepid = 13
         step.step_status = mock.Mock()
         step.build = fakebuild.FakeBuild()
@@ -420,7 +418,7 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         step = self.setup_summary_test()
         step._running = True
         step.updateSummary()
-        self.clock.advance(1)
+        self.reactor.advance(1)
         self.assertEqual(step.master.data.updates.stepStateString[13], 'C')
 
     def test_updateSummary_running_empty_dict(self):
@@ -428,7 +426,7 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         step.getCurrentSummary = lambda: {}
         step._running = True
         step.updateSummary()
-        self.clock.advance(1)
+        self.reactor.advance(1)
         self.assertEqual(step.master.data.updates.stepStateString[13],
                          'finished')
 
@@ -437,7 +435,7 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         step.getCurrentSummary = lambda: {'step': b'bytestring'}
         step._running = True
         step.updateSummary()
-        self.clock.advance(1)
+        self.reactor.advance(1)
         self.assertEqual(len(self.flushLoggedErrors(TypeError)), 1)
 
     def test_updateSummary_running_not_dict(self):
@@ -445,14 +443,14 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         step.getCurrentSummary = lambda: 'foo!'
         step._running = True
         step.updateSummary()
-        self.clock.advance(1)
+        self.reactor.advance(1)
         self.assertEqual(len(self.flushLoggedErrors(TypeError)), 1)
 
     def test_updateSummary_finished(self):
         step = self.setup_summary_test()
         step._running = False
         step.updateSummary()
-        self.clock.advance(1)
+        self.reactor.advance(1)
         self.assertEqual(step.master.data.updates.stepStateString[13], 'CS')
 
     def test_updateSummary_finished_empty_dict(self):
@@ -460,7 +458,7 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         step.getResultSummary = lambda: {}
         step._running = False
         step.updateSummary()
-        self.clock.advance(1)
+        self.reactor.advance(1)
         self.assertEqual(step.master.data.updates.stepStateString[13],
                          'finished')
 
@@ -469,7 +467,7 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         step.getResultSummary = lambda: 'foo!'
         step._running = False
         step.updateSummary()
-        self.clock.advance(1)
+        self.reactor.advance(1)
         self.assertEqual(len(self.flushLoggedErrors(TypeError)), 1)
 
     @defer.inlineCallbacks
@@ -482,8 +480,8 @@ class TestBuildStep(steps.BuildStepMixin, config.ConfigErrorsMixin, unittest.Tes
         self.assertEqual(len(self.flushLoggedErrors(AssertionError)), 1)
 
     def checkSummary(self, got, step, build=None):
-        self.assertTrue(all(isinstance(k, text_type) for k in got))
-        self.assertTrue(all(isinstance(k, text_type) for k in got.values()))
+        self.assertTrue(all(isinstance(k, str) for k in got))
+        self.assertTrue(all(isinstance(k, str) for k in got.values()))
         exp = {'step': step}
         if build:
             exp['build'] = build
@@ -788,9 +786,11 @@ class InterfaceTests(interfaces.InterfaceTests):
 
 
 class TestFakeItfc(unittest.TestCase,
-                   steps.BuildStepMixin, InterfaceTests):
+                   steps.BuildStepMixin, TestReactorMixin,
+                   InterfaceTests):
 
     def setUp(self):
+        self.setUpTestReactor()
         self.setupStep(buildstep.BuildStep())
 
 
@@ -810,10 +810,12 @@ class CommandMixinExample(buildstep.CommandMixin, buildstep.BuildStep):
         return SUCCESS
 
 
-class TestCommandMixin(steps.BuildStepMixin, unittest.TestCase):
+class TestCommandMixin(steps.BuildStepMixin, TestReactorMixin,
+                       unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
+        self.setUpTestReactor()
         yield self.setUpBuildStep()
         self.step = CommandMixinExample()
         self.setupStep(self.step)
@@ -936,7 +938,7 @@ class ShellMixinExample(buildstep.ShellMixin, buildstep.BuildStep):
     def __init__(self, cleanupScript='./cleanup.sh', **kwargs):
         self.cleanupScript = cleanupScript
         kwargs = self.setupShellMixin(kwargs, prohibitArgs=['command'])
-        buildstep.BuildStep.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     @defer.inlineCallbacks
     def run(self):
@@ -957,7 +959,7 @@ class SimpleShellCommand(buildstep.ShellMixin, buildstep.BuildStep):
         self.makeRemoteShellCommandKwargs = makeRemoteShellCommandKwargs or {}
 
         kwargs = self.setupShellMixin(kwargs)
-        buildstep.BuildStep.__init__(self, **kwargs)
+        super().__init__(**kwargs)
 
     @defer.inlineCallbacks
     def run(self):
@@ -968,10 +970,12 @@ class SimpleShellCommand(buildstep.ShellMixin, buildstep.BuildStep):
 
 class TestShellMixin(steps.BuildStepMixin,
                      config.ConfigErrorsMixin,
+                     TestReactorMixin,
                      unittest.TestCase):
 
     @defer.inlineCallbacks
     def setUp(self):
+        self.setUpTestReactor()
         yield self.setUpBuildStep()
 
     def tearDown(self):

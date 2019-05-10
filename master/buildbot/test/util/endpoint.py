@@ -21,10 +21,11 @@ from buildbot.data import resultspec
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import interfaces
 from buildbot.test.util import validation
+from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import pathmatch
 
 
-class EndpointMixin(interfaces.InterfaceTests):
+class EndpointMixin(TestReactorMixin, interfaces.InterfaceTests):
     # test mixin for testing Endpoint subclasses
 
     # class being tested
@@ -35,8 +36,9 @@ class EndpointMixin(interfaces.InterfaceTests):
     resourceTypeClass = None
 
     def setUpEndpoint(self):
-        self.master = fakemaster.make_master(wantMq=True, wantDb=True,
-                                             wantData=True, testcase=self)
+        self.setUpTestReactor()
+        self.master = fakemaster.make_master(self, wantMq=True, wantDb=True,
+                                             wantData=True)
         self.db = self.master.db
         self.mq = self.master.mq
         self.data = self.master.data

@@ -65,6 +65,7 @@ Several small utilities are available at the top-level :mod:`buildbot.util` pack
 
     Convert a UNIX epoch timestamp to a Python datetime object, in the UTC timezone.
     Note that timestamps specify UTC time (modulo leap seconds and a few other minor details).
+    If the argument is None, returns None.
 
 .. py:function:: datetime2epoch(datetime)
 
@@ -72,6 +73,7 @@ Several small utilities are available at the top-level :mod:`buildbot.util` pack
     :returns: equivalent epoch time (integer)
 
     Convert an arbitrary Python datetime object into a UNIX epoch timestamp.
+    If the argument is None, returns None.
 
 .. py:data:: UTC
 
@@ -1021,7 +1023,7 @@ For example, a particular daily scheduler could be configured on multiple master
     .. py:method:: __init__(self, *args, **kwargs)
 
         Constructor of the service.
-        The constructor initialize the service, and store the config arguments in private attributes.
+        The constructor initializes the service, calls checkConfig() and stores the config arguments in private attributes.
 
         This should *not* be overridden by subclasses, as they should rather override checkConfig.
 

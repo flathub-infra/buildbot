@@ -13,8 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from future.utils import text_type
-
 import inspect
 
 from twisted.internet import defer
@@ -27,12 +25,12 @@ from buildbot.util import pathmatch
 from buildbot.util import service
 
 
-class Updates(object):
+class Updates:
     # empty container object; see _scanModule, below
     pass
 
 
-class RTypes(object):
+class RTypes:
     # empty container object; see _scanModule, below
     pass
 
@@ -66,7 +64,7 @@ class DataConnector(service.AsyncService):
 
     @defer.inlineCallbacks
     def setServiceParent(self, parent):
-        yield service.AsyncService.setServiceParent(self, parent)
+        yield super().setServiceParent(parent)
         self._setup()
 
     def _scanModule(self, mod, _noSetattr=False):
@@ -143,7 +141,7 @@ class DataConnector(service.AsyncService):
         paths = []
         for k, v in sorted(self.matcher.iterPatterns()):
             paths.append(dict(path="/".join(k),
-                              plural=text_type(v.rtype.plural),
-                              type=text_type(v.rtype.entityType.name),
+                              plural=str(v.rtype.plural),
+                              type=str(v.rtype.entityType.name),
                               type_spec=v.rtype.entityType.getSpec()))
         return paths

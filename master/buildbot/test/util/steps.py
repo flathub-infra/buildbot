@@ -85,7 +85,7 @@ def _describe_cmd_difference(exp, command):
     return text
 
 
-class BuildStepMixin(object):
+class BuildStepMixin:
 
     """
     Support for testing build steps.  This class adds two capabilities:
@@ -169,8 +169,8 @@ class BuildStepMixin(object):
         factory = interfaces.IBuildStepFactory(step)
 
         step = self.step = factory.buildStep()
-        self.master = fakemaster.make_master(wantData=wantData, wantDb=wantDb,
-                                             wantMq=wantMq, testcase=self)
+        self.master = fakemaster.make_master(self, wantData=wantData,
+                                             wantDb=wantDb, wantMq=wantMq)
 
         # mock out the reactor for updateSummary's debouncing
         self.debounceClock = task.Clock()

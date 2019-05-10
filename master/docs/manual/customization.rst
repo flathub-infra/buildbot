@@ -543,8 +543,8 @@ Writing a new latent worker should only require subclassing :class:`buildbot.wor
 
 .. bb:worker:: AbstractWorkerController
 
-AbstractLatentController
-~~~~~~~~~~~~~~~~~~~~~~~~
+AbstractLatentWorker
+~~~~~~~~~~~~~~~~~~~~
 
 .. py:class:: buildbot.worker.AbstractLatentWorker
 
@@ -563,6 +563,8 @@ Overriding these members ensures that builds aren't ran on incompatible workers 
         A deferred should be returned.
         Any problems should use an errback.
         The callback value can be ``None``, or can be an iterable of short strings to include in the "substantiate success" status message, such as identifying the instance that started.
+        Buildbot will ensure that a single worker will never have its ``start_instance`` called before any previous calls to ``start_instance`` or ``stop_instance`` finish.
+        Additionally, for each ``start_instance`` call, exactly one corresponding call to ``stop_instance`` will be done eventually.
 
     .. py:method:: stop_instance(self, fast=False)
 
@@ -570,6 +572,8 @@ Overriding these members ensures that builds aren't ran on incompatible workers 
         A deferred should be returned.
         If ``fast`` is ``True`` then the function should call back as soon as it is safe to do so, as, for example, the master may be shutting down.
         The value returned by the callback is ignored.
+        Buildbot will ensure that a single worker will never have its ``stop_instance`` called before any previous calls to ``stop_instance`` finish.
+        During master shutdown any pending calls to ``start_instance`` or ``stop_instance`` will be waited upon finish.
 
     .. py:attribute:: builds_may_be_incompatible
 
@@ -709,7 +713,7 @@ The whole thing looks like this::
             kwargs['parentOpt'] = 'xyz'
 
             # call parent
-            LoggingBuildStep.__init__(self, **kwargs)
+            super().__init__(**kwargs)
 
             # set Frobnify attributes
             self.frob_what = frob_what
@@ -720,7 +724,7 @@ The whole thing looks like this::
         def __init__(self,
                 speed=5,
                 **kwargs):
-            Frobnify.__init__(self, **kwargs)
+            super().__init__(**kwargs)
             self.speed = speed
 
 Step Execution Process
@@ -754,7 +758,7 @@ A simple example of a step using the shell mixin is::
         def __init__(self, cleanupScript='./cleanup.sh', **kwargs):
             self.cleanupScript = cleanupScript
             kwargs = self.setupShellMixin(kwargs, prohibitArgs=['command'])
-            buildstep.BuildStep.__init__(self, **kwargs)
+            super().__init__(**kwargs)
 
         @defer.inlineCallbacks
         def run(self):
@@ -955,7 +959,7 @@ For example::
                 self.setCommand([ ... ]) # windows-only command
             else:
                 self.setCommand([ ... ]) # equivalent for other systems
-            ShellCommand.start(self)
+            super().start()
 
 Remember that properties set in a step may not be available until the next step begins.
 In particular, any :class:`Property` or :class:`Interpolate` instances for the current step are interpolated before the step starts, so they cannot use the value of any properties determined in that step.
@@ -1061,7 +1065,7 @@ If the path does not exist (or anything fails) we mark the step as failed; if th
     class MyBuildStep(steps.BuildStep):
 
         def __init__(self, dirname, **kwargs):
-            buildstep.BuildStep.__init__(self, **kwargs)
+            super().__init__(**kwargs)
             self.dirname = dirname
 
         def start(self):
@@ -1226,7 +1230,7 @@ The :class:`BuildStep` class definition itself will look something like this::
         command = ["framboozler"]
 
         def __init__(self, **kwargs):
-            steps.ShellCommand.__init__(self, **kwargs)   # always upcall!
+            super().__init__(**kwargs)   # always upcall!
             counter = FNURRRGHCounter()
             self.addLogObserver('stdio', counter)
             self.progressMetrics += ('tests',)

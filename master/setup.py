@@ -66,10 +66,10 @@ class install_data_twisted(install_data):
         self.set_undefined_options('install',
                                    ('install_lib', 'install_dir'),
                                    )
-        install_data.finalize_options(self)
+        super().finalize_options()
 
     def run(self):
-        install_data.run(self)
+        super().run()
         # ensure there's a buildbot/VERSION file
         fn = os.path.join(self.install_dir, 'buildbot', 'VERSION')
         open(fn, 'w').write(version)
@@ -129,6 +129,7 @@ def define_plugin_entries(groups):
 
     return result
 
+
 __file__ = inspect.getframeinfo(inspect.currentframe()).filename
 
 with open(os.path.join(os.path.dirname(__file__), 'README.rst')) as long_d_f:
@@ -169,6 +170,7 @@ setup_args = {
         "buildbot.db",
         "buildbot.db.migrate.versions",
         "buildbot.db.types",
+        "buildbot.machine",
         "buildbot.monkeypatches",
         "buildbot.mq",
         "buildbot.plugins",
@@ -219,6 +221,8 @@ setup_args = {
         include("buildbot/spec/types", "*.raml"),
         include("buildbot/test/unit/test_templates_dir", "*.html"),
         include("buildbot/test/unit/test_templates_dir/plugin", "*.*"),
+        include("buildbot/test/integration/pki", "*.*"),
+        include("buildbot/test/integration/pki/ca", "*.*"),
     ] + include_statics("buildbot/www/static"),
     'cmdclass': {'install_data': install_data_twisted,
                  'sdist': our_sdist},
@@ -262,6 +266,9 @@ setup_args = {
             ('buildbot.worker.kubernetes', ['KubeLatentWorker']),
             ('buildbot.worker.local', ['LocalWorker']),
         ]),
+        ('buildbot.machine', [
+            ('buildbot.machine.base', ['Machine']),
+        ]),
         ('buildbot.steps', [
             ('buildbot.process.buildstep', ['BuildStep']),
             ('buildbot.steps.cmake', ['CMake']),
@@ -296,7 +303,7 @@ setup_args = {
             ('buildbot.steps.source.cvs', ['CVS']),
             ('buildbot.steps.source.darcs', ['Darcs']),
             ('buildbot.steps.source.gerrit', ['Gerrit']),
-            ('buildbot.steps.source.git', ['Git']),
+            ('buildbot.steps.source.git', ['Git', 'GitCommit', 'GitPush', 'GitTag']),
             ('buildbot.steps.source.github', ['GitHub']),
             ('buildbot.steps.source.gitlab', ['GitLab']),
             ('buildbot.steps.source.mercurial', ['Mercurial']),
@@ -334,6 +341,7 @@ setup_args = {
             ('buildbot.reporters.bitbucketserver', ['BitbucketServerStatusPush', 'BitbucketServerPRCommentPush']),
             ('buildbot.reporters.bitbucket', ['BitbucketStatusPush']),
             ('buildbot.reporters.irc', ['IRC']),
+            ('buildbot.reporters.zulip', ['ZulipStatusPush']),
         ]),
         ('buildbot.util', [
             # Connection seems to be a way too generic name, though
@@ -465,8 +473,6 @@ setup_args['install_requires'] = [
     'Jinja2 >= 2.1',
     # required for tests, but Twisted requires this anyway
     'zope.interface >= 4.1.1',
-    # python-future required for py2/3 compatibility
-    'future',
     'sqlalchemy>=1.1.0',
     'sqlalchemy-migrate>=0.9',
     'python-dateutil>=1.5',

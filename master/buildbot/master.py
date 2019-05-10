@@ -34,6 +34,7 @@ from buildbot.changes.manager import ChangeManager
 from buildbot.data import connector as dataconnector
 from buildbot.db import connector as dbconnector
 from buildbot.db import exceptions
+from buildbot.machine.manager import MachineManager
 from buildbot.mq import connector as mqconnector
 from buildbot.process import cache
 from buildbot.process import debug
@@ -51,7 +52,7 @@ from buildbot.worker import manager as workermanager
 from buildbot.www import service as wwwservice
 
 
-class LogRotation(object):
+class LogRotation:
 
     def __init__(self):
         self.rotateLength = 1 * 1000 * 1000
@@ -65,7 +66,7 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
     UNCLAIMED_BUILD_FACTOR = 6
 
     def __init__(self, basedir, configFileName=None, umask=None, reactor=None, config_loader=None):
-        service.AsyncMultiService.__init__(self)
+        super().__init__()
 
         if reactor is None:
             from twisted.internet import reactor
@@ -83,7 +84,7 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
             raise config.ConfigErrors([
                 "Can't specify both `config_loader` and `configFilename`.",
             ])
-        elif config_loader is None:
+        if config_loader is None:
             if configFileName is None:
                 configFileName = 'master.cfg'
             config_loader = config.FileLoader(self.basedir, configFileName)
@@ -150,6 +151,9 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
 
         self.botmaster = BotMaster()
         self.botmaster.setServiceParent(self)
+
+        self.machine_manager = MachineManager()
+        self.machine_manager.setServiceParent(self)
 
         self.scheduler_manager = SchedulerManager()
         self.scheduler_manager.setServiceParent(self)
@@ -280,7 +284,7 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
                                                   masterid=self.masterid)
 
             # call the parent method
-            yield service.AsyncMultiService.startService(self)
+            yield super().startService()
 
             # We make sure the housekeeping is done before configuring in order to cleanup
             # any remaining claimed schedulers or change sources from zombie
@@ -331,7 +335,7 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
             if self.running:
                 yield self.botmaster.cleanShutdown(
                     quickMode=True, stopReactor=False)
-                yield service.AsyncMultiService.stopService(self)
+                yield super().stopService()
 
             log.msg("BuildMaster is stopped")
             self._master_initialized = False
@@ -426,8 +430,7 @@ class BuildMaster(service.ReconfigurableServiceMixin, service.MasterService):
                 "Cannot change c['mq']['type'] after the master has started",
             ])
 
-        return service.ReconfigurableServiceMixin.reconfigServiceWithBuildbotConfig(self,
-                                                                                    new_config)
+        return super().reconfigServiceWithBuildbotConfig(new_config)
 
     # informational methods
     def allSchedulers(self):

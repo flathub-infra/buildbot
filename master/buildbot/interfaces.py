@@ -123,7 +123,6 @@ class IEmailSender(Interface):
 
     """I know how to send email, and can be used by other parts of the
     Buildbot to contact developers."""
-    pass
 
 
 class IEmailLookup(Interface):
@@ -186,6 +185,15 @@ class ILatentWorker(IWorker):
         @param wfb: a L{LatentWorkerForBuilder}.  The wfb is the one for whom the
         build finished.
         """
+
+
+class IMachine(Interface):
+    pass
+
+
+class ILatentMachine(IMachine):
+    """ A machine that is not always running, but can be started when requested.
+    """
 
 
 class IRenderable(Interface):
