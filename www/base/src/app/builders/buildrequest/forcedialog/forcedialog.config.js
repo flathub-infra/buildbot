@@ -35,9 +35,16 @@ class ForceDialogState {
                         );
                     }
                 };
-                const goUp = result => $state.go("^");
+                const goCancel = function (result) {
+                    if ($stateParams.buildname != null)
+                        return $state.go("app", {
+                            "app": $stateParams.buildname
+                        });
+                    else
+                        return $state.go("^");
+                }
 
-                return modal.modal.result.then(goBuild, goUp);
+                return modal.modal.result.then(goBuild, goCancel);
             }]
         }
         );
