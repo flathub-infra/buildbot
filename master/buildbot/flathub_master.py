@@ -1064,7 +1064,8 @@ def create_build_factory():
         steps.ShellCommand(
             name='Run strict validation on AppData file',
             doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
-            haltOnFailure=False,
+            flunkOnFailure=False,
+            warnOnFailure=True,
             logEnviron=False,
             command=util.Interpolate('flatpak run org.freedesktop.appstream-glib validate-strict builddir/*/share/appdata/%(prop:flathub_id)s.appdata.xml')),
         steps.ShellCommand(
