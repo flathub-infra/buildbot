@@ -7,7 +7,7 @@ class LogState {
         // Configuration
         const cfg = {
             tabid: 'builders',
-            pageTitle: _.template("Flahub: log: <%= log %>")
+            pageTitle: _.template("Flathub: log: <%= log %>")
         };
 
         // Register new state
