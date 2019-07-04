@@ -142,6 +142,7 @@ class FlathubConfig():
         self.num_master_workers = getConfig(config_data, 'num-master-workers', 4)
         self.buildbot_uri = getConfig(config_data, 'buildbot-uri')
         self.upstream_repo = getConfig(config_data, 'flathub-repo')
+        self.upstream_beta_repo = getConfig(config_data, 'flathub-beta-repo')
         self.upstream_sources_uri = getConfig(config_data, 'flathub-sources-uri', os.path.join (self.upstream_repo, "sources" ))
         self.upstream_sources_path = getConfig(config_data, 'flathub-sources-path')
         self.admin_password = getConfig(config_data, 'admin-password')
@@ -1031,8 +1032,11 @@ def create_build_factory():
                 # Add flathub remote
                 shellArg(['flatpak', '--user', 'remote-add', '--if-not-exists', '--gpg-import=flathub.gpg',
                           'flathub', config.upstream_repo]),
-                # Update flathub remote url
                 shellArg(['flatpak', '--user', 'remote-modify', '--url='+ config.upstream_repo, 'flathub']),
+                # Add flathub-beta remote
+                shellArg(['flatpak', '--user', 'remote-add', '--if-not-exists', '--gpg-import=flathub.gpg',
+                          'flathub-beta', config.upstream_beta_repo]),
+                shellArg(['flatpak', '--user', 'remote-modify', '--url='+ config.upstream_beta_repo, 'flathub-beta']),
             ]),
         FlatpakBuildStep(name='Build'),
         steps.SetPropertyFromCommand(name='Extract built tags',
@@ -1878,6 +1882,7 @@ def computeConfig():
                                    workernames=flathub_arch_workers[arch],
                                    properties={'flathub_arch': arch, 'extra_fb_args': extra_fb_args },
                                    factory=build_factory))
+
     c['builders'].append(
         util.BuilderConfig(name='download-sources',
                            workernames=flathub_download_sources_workers,
