@@ -940,16 +940,20 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
         self.result_title = u"Failed to build %s" % id
         self.updateSummary()
 
+        fb_deps_args = ["--install-deps-from=flathub"]
+        if props.getProperty('flathub_default_branch') in ('beta', 'test'):
+            fb_deps_args.append("--install-deps-from=flathub-beta")
+
         if props.getProperty("flathub_custom_buildcmd", False):
             command = ['./build.sh',
                        util.Property('flathub_arch'),
                        'repo',
                        '',
-                       util.Interpolate('--sandbox --delete-build-dirs --user --install-deps-from=flathub --extra-sources-url='+ config.upstream_sources_uri +' --extra-sources=%(prop:builddir)s/../downloads '),
+                       util.Interpolate('--sandbox --delete-build-dirs --user ' + ' '.join(fb_deps_args) + ' --extra-sources-url='+ config.upstream_sources_uri +' --extra-sources=%(prop:builddir)s/../downloads '),
                        util.Property('flathub_subject')]
         else:
             command = ['flatpak-builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
-                       '--user', '--install-deps-from=flathub',
+                       '--user', fb_deps_args,
                        util.Property('extra_fb_args'),
                        '--mirror-screenshots-url=https://flathub.org/repo/screenshots', '--repo', 'repo',
                        '--extra-sources-url=' + config.upstream_sources_uri,
