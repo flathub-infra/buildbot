@@ -271,9 +271,12 @@ def computeExtraIdArgs(props):
 def computeCommitArgs(props):
     flathub_config = props.getProperty ('flathub_config', {})
     eol = flathub_config.get("end-of-life", None)
+    eol_rebase = flathub_config.get("end-of-life-rebase", None)
     args = [flathub_repoclient_path, 'commit', '--wait']
     if eol:
         args = args + [ "--end-of-life=%s" % (eol) ]
+    if eol_rebase:
+        args = args + [ "--end-of-life-rebase=%s" % (eol) ]
     args = args + [util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)]
     return args
 
