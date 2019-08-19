@@ -276,7 +276,7 @@ def computeCommitArgs(props):
     if eol:
         args = args + [ "--end-of-life=%s" % (eol) ]
     if eol_rebase:
-        args = args + [ "--end-of-life-rebase=%s" % (eol) ]
+        args = args + [ "--end-of-life-rebase=%s" % (eol_rebase) ]
     args = args + [util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)]
     return args
 
