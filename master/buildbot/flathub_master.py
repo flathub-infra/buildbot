@@ -43,6 +43,7 @@ import txrequests
 import logging
 from buildbot.flathub_builds import Builds
 import sys
+import yaml
 
 # Global configuration
 config = None
@@ -96,7 +97,7 @@ inherited_properties=[
     # Optionally from Change, or from FlathubPropertiesStep
     'flathub_arches',           # Arches to build on ('flathub_arch' is also set on the sub-builds)
     # Set by FlathubPropertiesStep
-    'flathub_name',             # id[/branch] 
+    'flathub_name',             # id[/branch]
     'flathub_default_branch',   # The default branch for the build (always set, might now be correct for non-apps, i.e. be stable for icon theme 1.0 branch)
     'flathub_subject',          # Subject to use for commit
     'flathub_buildnumber',      # Buildnumber of the main build (used to order builds)
@@ -1277,6 +1278,25 @@ def create_periodic_purge_factory():
     ])
     return periodic_purge_factory
 
+def get_runtimes(remote):
+    runtimes_command = "flatpak remote-ls --runtime --columns=application,branch,arch --arch='*' {}"
+    runtimes_run = subprocess.Popen(runtimes_command.format(remote), shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+    output, _ = runtimes_run.communicate()
+    runtimes = {}
+
+    for line in output.split('\n'):
+        if len(line):
+            runtime, version, arch = line.split('\t')
+
+            if runtime not in runtimes:
+                runtimes[runtime] = {}
+            if version not in runtimes[runtime]:
+                runtimes[runtime][version] = [arch]
+            else:
+                runtimes[runtime][version].append(arch)
+
+    return runtimes
+
 class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
     def __init__(self, **kwargs):
         steps.BuildStep.__init__(self, **kwargs)
@@ -1287,9 +1307,9 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
         props = self.build.properties
 
         flathub_config = {}
-        content = yield self.getFileContentFromWorker("flathub.json")
-        if content != None:
-            flathub_config = json.loads(content)
+        flathub_config_content = yield self.getFileContentFromWorker("flathub.json")
+        if flathub_config_content is not None:
+            flathub_config = json.loads(flathub_config_content)
 
         flathub_id = props.getProperty('flathub_id')
         official_build = props.getProperty('flathub_official_build', False)
@@ -1299,18 +1319,53 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
             flathub_name = flathub_name + "/" + flathub_branch
         git_subject = props.getProperty('git-subject')
         buildnumber = props.getProperty('buildnumber')
-        git_repository = props.getProperty('repository')
-        git_branch = props.getProperty('branch')
+
+        if flathub_branch:
+            flathub_default_branch = flathub_branch
+        elif official_build:
+            flathub_default_branch = u'stable'
+        else:
+            flathub_default_branch = u'test'
+
+        manifest_filename = "%s.yaml" % flathub_id
+        hasYaml = yield self.pathExists("build/" + manifest_filename)
+        if not hasYaml:
+            manifest_filename = "%s.yml" % flathub_id
+            hasYml = yield self.pathExists("build/" + manifest_filename)
+            if not hasYml:
+                manifest_filename = "%s.json" % flathub_id
+
+        manifest_content = yield self.getFileContentFromWorker(manifest_filename)
+        if hasYaml or hasYml:
+            manifest = yaml.load(manifest_content)
+        else:
+            # This strips /* comments */
+            manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
+
+        # Get all runtimes to check for available architectures later
+        runtimes = get_runtimes('flathub')
+        if not runtimes.get(manifest["sdk"], {}).get(manifest["runtime-version"], []) and flathub_branch in ('test', 'beta'):
+            # Check also in flathub-beta for test and beta builds
+            runtimes = get_runtimes('flathub-beta')
+
+        sdk_arches = set(runtimes.get(manifest["sdk"], {}).get(manifest["runtime-version"], []))
+        if "sdk-extensions" in manifest:
+            for extension in manifest["sdk-extensions"]:
+                if runtimes.get(extension, {}).get(manifest["runtime-version"], []):
+                    sdk_arches = sdk_arches & set(runtimes[extension][manifest["runtime-version"]])
 
         # This could have been set by the change event, otherwise look in config or default
         flathub_arches_prop = props.getProperty('flathub_arches', None)
         if not flathub_arches_prop:
-            arches = set(flathub_arches)
+            # Build architectures for which there is available SDK
+            arches = set(flathub_arches) & sdk_arches
+
             if "only-arches" in flathub_config:
                 arches = arches & set(flathub_config["only-arches"])
 
             if "skip-arches" in flathub_config:
                 arches = arches - set(flathub_config["skip-arches"])
+
             flathub_arches_prop = list(arches)
 
         for arch in flathub_arches_prop:
@@ -1320,7 +1375,7 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
                 return
 
         if len(flathub_arches_prop) == 0:
-            self.descriptionDone = ["No build arch specified"]
+            self.descriptionDone = ["No build arch specified or no compatible SDK has been found"]
             defer.returnValue(FAILURE)
             return
 
@@ -1328,29 +1383,13 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
         if not flathub_config:
             flathub_config["empty"] = True
 
-        if content != None:
-            flathub_config = json.loads(content)
-
-        manifest = "%s.yaml" % flathub_id
-        hasYaml = yield self.pathExists("build/" + manifest)
-        if not hasYaml:
-            manifest = "%s.yml" % flathub_id
-            hasYml = yield self.pathExists("build/" + manifest)
-            if not hasYml:
-                manifest = "%s.json" % flathub_id
-
-        if official_build:
-            default_branch = u'stable'
-        else:
-            default_branch = u'test'
-
         p = {
             "flathub_name": flathub_name,
-            "flathub_default_branch": flathub_branch if flathub_branch else default_branch,
+            "flathub_default_branch": flathub_default_branch,
             "flathub_subject": "%s (%s)" % (git_subject, props.getProperty('got_revision')[:8]),
             "flathub_arches": flathub_arches_prop,
             "flathub_buildnumber": buildnumber,
-            "flathub_manifest": manifest,
+            "flathub_manifest": manifest_filename,
             "flathub_config": flathub_config
         }
 
