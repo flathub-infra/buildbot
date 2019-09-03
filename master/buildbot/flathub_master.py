@@ -1342,9 +1342,17 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
             # This strips /* comments */
             manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
 
+        sdk_name = manifest["sdk"]
+
+        # Check if SDK version is specified in ref form
+        if "//" in sdk_name:
+            sdk_version = manifest["sdk"].split("//")[-1]
+        else:
+            sdk_version = manifest["runtime-version"]
+
         # Get all runtimes to check for available architectures later
         runtimes = get_runtimes('flathub')
-        if not runtimes.get(manifest["sdk"], {}).get(manifest["runtime-version"], []) and flathub_branch in ('test', 'beta'):
+        if not runtimes.get(sdk_name, {}).get(sdk_version, []) and flathub_branch in ('test', 'beta'):
             # Check also in flathub-beta for test and beta builds
             runtimes = get_runtimes('flathub-beta')
 
