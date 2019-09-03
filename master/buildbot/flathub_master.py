@@ -1357,10 +1357,20 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
             runtimes = get_runtimes('flathub-beta')
 
         sdk_arches = set(runtimes.get(manifest["sdk"], {}).get(manifest["runtime-version"], []))
+        if len(sdk_arches) == 0:
+            self.descriptionDone = ["Could not find requested SDK"]
+            defer.returnValue(FAILURE)
+            return
+
         if "sdk-extensions" in manifest:
             for extension in manifest["sdk-extensions"]:
-                if runtimes.get(extension, {}).get(manifest["runtime-version"], []):
-                    sdk_arches = sdk_arches & set(runtimes[extension][manifest["runtime-version"]])
+                if runtimes.get(extension, {}).get(sdk_version, []):
+                    sdk_arches = sdk_arches & set(runtimes[extension][sdk_version])
+
+            if len(sdk_arches) == 0:
+                self.descriptionDone = ["Could not find requested SDK extensions"]
+                defer.returnValue(FAILURE)
+                return
 
         # This could have been set by the change event, otherwise look in config or default
         flathub_arches_prop = props.getProperty('flathub_arches', None)
@@ -1383,7 +1393,7 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
                 return
 
         if len(flathub_arches_prop) == 0:
-            self.descriptionDone = ["No build arch specified or no compatible SDK has been found"]
+            self.descriptionDone = ["No compatible architectures found for required SDK or SDK extensions"]
             defer.returnValue(FAILURE)
             return
 
