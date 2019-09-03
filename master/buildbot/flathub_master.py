@@ -1352,7 +1352,7 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
 
         # Get all runtimes to check for available architectures later
         runtimes = get_runtimes('flathub')
-        if not runtimes.get(sdk_name, {}).get(sdk_version, []) and flathub_branch in ('test', 'beta'):
+        if not runtimes.get(sdk_name, {}).get(sdk_version, []) and flathub_default_branch in ('test', 'beta'):
             # Check also in flathub-beta for test and beta builds
             runtimes = get_runtimes('flathub-beta')
 
