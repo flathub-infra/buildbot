@@ -1319,6 +1319,7 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
             flathub_name = flathub_name + "/" + flathub_branch
         git_subject = props.getProperty('git-subject')
         buildnumber = props.getProperty('buildnumber')
+        flathub_custom_buildcmd = props.getProperty("flathub_custom_buildcmd", False)
 
         if flathub_branch:
             flathub_default_branch = flathub_branch
@@ -1327,61 +1328,68 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
         else:
             flathub_default_branch = u'test'
 
-        manifest_filename = "%s.yaml" % flathub_id
-        hasYaml = yield self.pathExists("build/" + manifest_filename)
-        if not hasYaml:
-            manifest_filename = "%s.yml" % flathub_id
-            hasYml = yield self.pathExists("build/" + manifest_filename)
-            if not hasYml:
-                manifest_filename = "%s.json" % flathub_id
-
-        manifest_content = yield self.getFileContentFromWorker(manifest_filename)
-        if hasYaml or hasYml:
-            manifest = yaml.load(manifest_content)
+        for ext in ("yml", "yaml", "json"):
+            has_file = yield self.pathExists("build/{}.{}".format(flathub_id, ext))
+            if has_file:
+                manifest_filename = "{}/{}".format(flathub_id, ext)
+                manifest_ext = ext
+                break
         else:
-            try:
-                # This strips /* comments */
-                manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
-            except json.decoder.JSONDecodeError:
-                self.descriptionDone = ["JSON syntax error in the manifest"]
-                defer.returnValue(FAILURE)
-                return
+            manifest_filename = None
 
-        sdk_name = manifest["sdk"]
+        # Skip runtime availability check if no manifest has been found and app
+        # uses custom build command
+        if manifest_filename and not flathub_custom_buildcmd:
+            manifest_content = yield self.getFileContentFromWorker(manifest_filename)
+            if manifest_ext in ("yml", "yaml"):
+                manifest = yaml.load(manifest_content)
+            else:
+                try:
+                    # This strips /* comments */
+                    manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
+                except json.decoder.JSONDecodeError:
+                    self.descriptionDone = ["JSON syntax error in the manifest"]
+                    defer.returnValue(FAILURE)
+                    return
 
-        # Check if SDK version is specified in ref form
-        if "//" in sdk_name:
-            sdk_version = manifest["sdk"].split("//")[-1]
-        else:
-            sdk_version = manifest["runtime-version"]
+            sdk_name = manifest["sdk"]
 
-        # Get all runtimes to check for available architectures later
-        runtimes = get_runtimes('flathub')
-        if not runtimes.get(sdk_name, {}).get(sdk_version, []) and flathub_default_branch in ('test', 'beta'):
-            # Check also in flathub-beta for test and beta builds
-            runtimes = get_runtimes('flathub-beta')
+            # Check if SDK version is specified in ref form
+            if "//" in sdk_name:
+                sdk_version = manifest["sdk"].split("//")[-1]
+            else:
+                sdk_version = manifest["runtime-version"]
 
-        sdk_arches = set(runtimes.get(manifest["sdk"], {}).get(manifest["runtime-version"], []))
-        if len(sdk_arches) == 0:
-            self.descriptionDone = ["Could not find requested SDK"]
-            defer.returnValue(FAILURE)
-            return
+            # Get all runtimes to check for available architectures later
+            runtimes = get_runtimes('flathub')
+            if not runtimes.get(sdk_name, {}).get(sdk_version, []) and flathub_default_branch in ('test', 'beta'):
+                # Check also in flathub-beta for test and beta builds
+                runtimes = get_runtimes('flathub-beta')
 
-        if "sdk-extensions" in manifest:
-            for extension in manifest["sdk-extensions"]:
-                if runtimes.get(extension, {}).get(sdk_version, []):
-                    sdk_arches = sdk_arches & set(runtimes[extension][sdk_version])
-
+            sdk_arches = set(runtimes.get(manifest["sdk"], {}).get(manifest["runtime-version"], []))
             if len(sdk_arches) == 0:
-                self.descriptionDone = ["Could not find requested SDK extensions"]
+                self.descriptionDone = ["Could not find requested SDK"]
                 defer.returnValue(FAILURE)
                 return
+
+            if "sdk-extensions" in manifest:
+                for extension in manifest["sdk-extensions"]:
+                    if runtimes.get(extension, {}).get(sdk_version, []):
+                        sdk_arches = sdk_arches & set(runtimes[extension][sdk_version])
+
+                if len(sdk_arches) == 0:
+                    self.descriptionDone = ["Could not find requested SDK extensions"]
+                    defer.returnValue(FAILURE)
+                    return
 
         # This could have been set by the change event, otherwise look in config or default
         flathub_arches_prop = props.getProperty('flathub_arches', None)
         if not flathub_arches_prop:
-            # Build architectures for which there is available SDK
-            arches = set(flathub_arches) & sdk_arches
+            if manifest_filename and not flathub_custom_buildcmd:
+                # Build architectures for which there is available SDK
+                arches = set(flathub_arches) & sdk_arches
+            else:
+                arches = set(flathub_arches)
 
             if "only-arches" in flathub_config:
                 arches = arches & set(flathub_config["only-arches"])
