@@ -1331,7 +1331,7 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
         for ext in ("yml", "yaml", "json"):
             has_file = yield self.pathExists("build/{}.{}".format(flathub_id, ext))
             if has_file:
-                manifest_filename = "{}/{}".format(flathub_id, ext)
+                manifest_filename = "{}.{}".format(flathub_id, ext)
                 manifest_ext = ext
                 break
         else:
