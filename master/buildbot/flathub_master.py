@@ -1340,9 +1340,12 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
             manifest = yaml.load(manifest_content)
         else:
             try:
-                manifest = json.loads(manifest_content)
-            except json.decoder.JSONDecodeError:
+                # This strips /* comments */
                 manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
+            except json.decoder.JSONDecodeError:
+                self.descriptionDone = ["JSON syntax error in the manifest"]
+                defer.returnValue(FAILURE)
+                return
 
         sdk_name = manifest["sdk"]
 
