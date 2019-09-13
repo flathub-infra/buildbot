@@ -1341,9 +1341,18 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
         else:
             try:
                 # This strips /* comments */
-                manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
-            except json.decoder.JSONDecodeError:
+                manifest_content = re.sub(r'/\*.*?\*/', '', manifest_content, flags=re.DOTALL)
+
+                # Also strip newlines because json-glib allows multi-line strings
+                # which are also not valid JSON. Strictly, this "mangles" these
+                # strings, but hopefully none of the properties we need to access
+                # are multi-line.
+                manifest_content = re.sub(r'\n', ' ', manifest_content)
+
+                manifest = json.loads(manifest_content)
+            except json.decoder.JSONDecodeError as e:
                 self.descriptionDone = ["JSON syntax error in the manifest"]
+                self.addLogWithException(e)
                 defer.returnValue(FAILURE)
                 return
 
