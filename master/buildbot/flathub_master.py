@@ -1297,7 +1297,20 @@ def get_runtimes(remote):
 
     return runtimes
 
-class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
+def lookup_runtime(runtimes, name, version):
+    return runtimes.get(name, {}).get(version, [])
+
+def split_pref(pref, default_branch):
+    parts = pref.split('/')
+    if len(parts) == 1:
+        parts.append("")
+    if len(parts) == 2:
+        parts.append("")
+    if parts[2] == "":
+        parts[2] = default_branch
+    return parts
+
+class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin, buildbot.process.buildstep.ShellMixin):
     def __init__(self, **kwargs):
         steps.BuildStep.__init__(self, **kwargs)
         self.logEnviron = False
@@ -1335,45 +1348,31 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
             if not hasYml:
                 manifest_filename = "%s.json" % flathub_id
 
-        manifest_content = yield self.getFileContentFromWorker(manifest_filename)
-        if hasYaml or hasYml:
-            manifest = yaml.load(manifest_content)
-        else:
-            try:
-                # This strips /* comments */
-                manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
-            except json.decoder.JSONDecodeError:
-                self.descriptionDone = ["JSON syntax error in the manifest"]
-                defer.returnValue(FAILURE)
-                return
+        sdk_arches = set(flathub_arches) # Default for custom builds
+        if not props.getProperty("flathub_custom_buildcmd", False):
+            manifest_content = yield self.getFileContentFromWorker(manifest_filename)
+            if hasYaml or hasYml:
+                manifest = yaml.load(manifest_content)
+            else:
+                try:
+                    # This strips /* comments */
+                    manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
+                except json.decoder.JSONDecodeError:
+                    self.descriptionDone = ["JSON syntax error in the manifest"]
+                    defer.returnValue(FAILURE)
+                    return
 
-        sdk_name = manifest["sdk"]
+            (sdk_name, _, sdk_version) = split_pref(manifest["sdk"], manifest["runtime-version"])
 
-        # Check if SDK version is specified in ref form
-        if "//" in sdk_name:
-            sdk_version = manifest["sdk"].split("//")[-1]
-        else:
-            sdk_version = manifest["runtime-version"]
+            # Get all runtimes to check for available architectures later
+            runtimes = get_runtimes('flathub')
+            if not lookup_runtime (runtimes, sdk_name, sdk_version) and flathub_default_branch in ('test', 'beta'):
+                # Check also in flathub-beta for test and beta builds
+                runtimes = get_runtimes('flathub-beta')
 
-        # Get all runtimes to check for available architectures later
-        runtimes = get_runtimes('flathub')
-        if not runtimes.get(sdk_name, {}).get(sdk_version, []) and flathub_default_branch in ('test', 'beta'):
-            # Check also in flathub-beta for test and beta builds
-            runtimes = get_runtimes('flathub-beta')
-
-        sdk_arches = set(runtimes.get(manifest["sdk"], {}).get(manifest["runtime-version"], []))
-        if len(sdk_arches) == 0:
-            self.descriptionDone = ["Could not find requested SDK"]
-            defer.returnValue(FAILURE)
-            return
-
-        if "sdk-extensions" in manifest:
-            for extension in manifest["sdk-extensions"]:
-                if runtimes.get(extension, {}).get(sdk_version, []):
-                    sdk_arches = sdk_arches & set(runtimes[extension][sdk_version])
-
+            sdk_arches = set(lookup_runtime (runtimes, sdk_name, sdk_version))
             if len(sdk_arches) == 0:
-                self.descriptionDone = ["Could not find requested SDK extensions"]
+                self.descriptionDone = ["Could not find requested SDK %s//%s" % (sdk_name, sdk_version)]
                 defer.returnValue(FAILURE)
                 return
 
@@ -1398,7 +1397,7 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin):
                 return
 
         if len(flathub_arches_prop) == 0:
-            self.descriptionDone = ["No compatible architectures found for required SDK or SDK extensions"]
+            self.descriptionDone = ["No compatible architectures found for build"]
             defer.returnValue(FAILURE)
             return
 
