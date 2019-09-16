@@ -18,7 +18,7 @@ Then each time you can
 
 Releases are done with:
   REL=...new release number..
-  git tag v2.3.0.flathub${REL}
-  git push origin v2.3.0.flathub${REL}
+  git tag v2.3.1.flathub${REL}
+  git push origin v2.3.1.flathub${REL}
   make tarballs
 Then upload the files from dist/*.whl
