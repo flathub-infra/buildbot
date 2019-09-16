@@ -1350,17 +1350,14 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin, buildbot.proces
 
         sdk_arches = set(flathub_arches) # Default for custom builds
         if not props.getProperty("flathub_custom_buildcmd", False):
-            manifest_content = yield self.getFileContentFromWorker(manifest_filename)
-            if hasYaml or hasYml:
-                manifest = yaml.load(manifest_content)
-            else:
-                try:
-                    # This strips /* comments */
-                    manifest = json.loads(re.sub(r'/\*.*?\*/', '', manifest_content))
-                except json.decoder.JSONDecodeError:
-                    self.descriptionDone = ["JSON syntax error in the manifest"]
-                    defer.returnValue(FAILURE)
-                    return
+            showManifestCmd = yield self.makeRemoteShellCommand(command=['flatpak-builder', '--show-manifest', manifest_filename],
+                                                                collectStdout=True)
+            yield self.runCommand(showManifestCmd)
+            if showManifestCmd.didFail():
+                self.result_title = "Failed to load manifest file %s" % manifest_filename
+                defer.returnValue(FAILURE)
+                return
+            manifest = json.loads(showManifestCmd.stdout)
 
             (sdk_name, _, sdk_version) = split_pref(manifest["sdk"], manifest["runtime-version"])
 
