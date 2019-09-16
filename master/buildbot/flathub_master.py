@@ -1279,7 +1279,7 @@ def create_periodic_purge_factory():
     return periodic_purge_factory
 
 def get_runtimes(remote):
-    runtimes_command = "flatpak remote-ls --runtime --columns=application,branch,arch --arch='*' {}"
+    runtimes_command = "flatpak remote-ls --user --runtime --columns=application,branch,arch --arch='*' {}"
     runtimes_run = subprocess.Popen(runtimes_command.format(remote), shell=True, stdout=subprocess.PIPE, universal_newlines=True)
     output, _ = runtimes_run.communicate()
     runtimes = {}
