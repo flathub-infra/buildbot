@@ -1473,7 +1473,7 @@ def create_build_app_factory():
                                 hideStepIf=hide_on_success),
         steps.Git(name="checkout manifest",
                   repourl=util.Property('repository'),
-                  mode='incremental', branch='master', submodules=False, logEnviron=False),
+                  mode='incremental', branch='master', submodules=True, logEnviron=False),
         steps.SetPropertyFromCommand(name="Getting git status for subject",
                                      command="git show --format=%s -s $(git rev-list --no-merges -n 1 HEAD)",
                                      property="git-subject", logEnviron=False,
