@@ -1045,6 +1045,9 @@ def create_build_factory():
                 shellArg(['flatpak', '--user', 'remote-add', '--if-not-exists', '--gpg-import=flathub.gpg',
                           'flathub-beta', config.upstream_beta_repo]),
                 shellArg(['flatpak', '--user', 'remote-modify', '--url='+ config.upstream_beta_repo, 'flathub-beta']),
+                # Install or update org.freedesktop.appstream-glib
+                shellArg(['flatpak', '--user', 'install', '--noninteractive', 'flathub', 'org.freedesktop.appstream-glib']),
+                shellArg(['flatpak', '--user', 'update', '--noninteractive', 'org.freedesktop.appstream-glib']),
             ]),
         FlatpakBuildStep(name='Build'),
         steps.SetPropertyFromCommand(name='Extract built tags',
