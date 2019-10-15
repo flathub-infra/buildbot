@@ -1019,12 +1019,6 @@ def create_build_factory():
                            hideStepIf=hide_on_success,
                            mastersrc="flathub.gpg",
                            workerdest="flathub.gpg"),
-        steps.FileDownload(name='downloading flat-manager-client',
-                           haltOnFailure=True,
-                           hideStepIf=hide_on_success,
-                           mode=0o755,
-                           mastersrc=flathub_repoclient_path,
-                           workerdest="flat-manager-client"),
         steps.FileDownload(name='downloading merge-sources.sh',
                            haltOnFailure=True,
                            hideStepIf=hide_on_success,
@@ -1048,6 +1042,9 @@ def create_build_factory():
                 # Install or update org.freedesktop.appstream-glib
                 shellArg(['flatpak', '--user', 'install', '--noninteractive', 'flathub', 'org.freedesktop.appstream-glib']),
                 shellArg(['flatpak', '--user', 'update', '--noninteractive', 'org.freedesktop.appstream-glib']),
+                # Install or update org.flatpak.flat-manager-client
+                shellArg(['flatpak', '--user', 'install', '--noninteractive', 'flathub', 'org.flatpak.flat-manager-client']),
+                shellArg(['flatpak', '--user', 'update', '--noninteractive', 'org.flatpak.flat-manager-client']),
             ]),
         FlatpakBuildStep(name='Build'),
         steps.SetPropertyFromCommand(name='Extract built tags',
@@ -1094,7 +1091,7 @@ def create_build_factory():
                 shellArg(['mkdir', '-p', 'builddir/screenshots']),
                 shellArg(['ostree', 'commit', '--repo=repo', '--canonical-permissions', util.Interpolate('--branch=screenshots/%(prop:flathub_arch)s'), 'builddir/screenshots']),
                 # Push to repo
-                shellArg(util.FlattenList(['./flat-manager-client', 'push', computeExtraIdArgs,
+                shellArg(util.FlattenList(['flatpak', 'run', 'org.flatpak.flat-manager-client', 'push', computeExtraIdArgs,
                                            util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri),
                                            "repo"]))
             ]),
