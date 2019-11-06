@@ -61,7 +61,7 @@ flathub_download_sources_workers = []   # Worker names for source downloaders
 # These keeps track of subset tokens for uploads by the workers
 flathub_upload_tokens = {}
 
-flathub_repoclient_path = pyutil.sibpath(__file__, "scripts/flat-manager-client")
+flatmgr_client = ["flatpak", "run", "org.flatpak.flat-manager-client"]
 
 adminsGithubGroup='flathub'
 
@@ -273,7 +273,7 @@ def computeCommitArgs(props):
     flathub_config = props.getProperty ('flathub_config', {})
     eol = flathub_config.get("end-of-life", None)
     eol_rebase = flathub_config.get("end-of-life-rebase", None)
-    args = [flathub_repoclient_path, 'commit', '--wait']
+    args = [*flatmgr_client, 'commit', '--wait']
     if eol:
         args = args + [ "--end-of-life=%s" % (eol) ]
     if eol_rebase:
@@ -713,7 +713,7 @@ class PurgeOldBuildsStep(steps.BuildStep):
                                     usePTY=True,
                                     env={"REPO_TOKEN": config.repo_manager_token},
                                     commands=[
-                                        shellArg([flathub_repoclient_path, 'purge',
+                                        shellArg([*flatmgr_client, 'purge',
                                                   "%s/api/v1/build/%s" % (config.repo_manager_uri, b['flathub_repo_id'])])
                                     ]),
                 SetRepoStateStep(3, buildid=b['buildid'], name='Marking old build id %d as deleted' % b['number']),
@@ -1213,7 +1213,7 @@ def create_publish_factory():
                             usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
-                                shellArg([flathub_repoclient_path, '--output=output.json', 'publish', '--wait',
+                                shellArg([*flatmgr_client, '--output=output.json', 'publish', '--wait',
                                           util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
                             ]),
         HandleUpdateRepoStep(name='Handling update repo'),
@@ -1224,7 +1224,7 @@ def create_publish_factory():
                             usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
-                                shellArg([flathub_repoclient_path, 'purge',
+                                shellArg([*flatmgr_client, 'purge',
                                           util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
                             ]),
         PurgeOldBuildsStep(name='Getting old builds'),
@@ -1242,7 +1242,7 @@ def create_update_repo_factory():
                             usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
-                                shellArg([flathub_repoclient_path, 'follow-job',
+                                shellArg([*flatmgr_client, 'follow-job',
                                           util.Interpolate("%(kw:url)s/api/v1/job/%(prop:flathub_update_job_id)s", url=config.repo_manager_uri)])
                             ])
     ])
@@ -1257,7 +1257,7 @@ def create_purge_factory():
                             usePTY=True,
                             env={"REPO_TOKEN": config.repo_manager_token},
                             commands=[
-                                shellArg([flathub_repoclient_path, 'purge',
+                                shellArg([*flatmgr_client, 'purge',
                                           util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri)])
                             ]),
         SetRepoStateStep(3, name='Marking build as deleted'),
