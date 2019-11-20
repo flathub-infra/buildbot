@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-from __future__ import print_function
+#!/usr/bin/env python3
 
 import os
 
@@ -15,6 +14,7 @@ def download(url, fn):
         r = s.get(url, stream=True)
         for c in r.iter_content(1024):
             f.write(c)
+
 
 def main():
     global s
@@ -61,5 +61,7 @@ def main():
     # remove files so that twine upload do not upload them
     os.unlink(sigfn)
     os.unlink(fn)
+
+
 if __name__ == '__main__':
     main()

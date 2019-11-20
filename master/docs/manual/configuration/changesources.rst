@@ -205,7 +205,7 @@ For more advanced configurations, the parameter can be a list of change sources:
     source1 = ...
     source2 = ...
     c['change_source'] = [
-        source1, source1
+        source1, source2
     ]
 
 Repository and Project
@@ -1002,6 +1002,11 @@ The :bb:chsrc:`HgPoller` accepts the following arguments:
     Set encoding will be used to parse author's name and commit message.
     Default encoding is ``'utf-8'``.
 
+``revlink``
+    A function that maps branch and revision to a valid url (e.g. hgweb), stored along with the change.
+    This function must be a callable which takes two arguments, the branch and the revision.
+    Defaults to lambda branch, revision: (u'')
+
 A configuration for the Mercurial poller might look like this:
 
 .. code-block:: python
@@ -1170,6 +1175,8 @@ GerritChangeSource
 
 The :bb:chsrc:`GerritChangeSource` class connects to a Gerrit server by its SSH interface and uses its event source mechanism, `gerrit stream-events <https://gerrit-documentation.storage.googleapis.com/Documentation/2.2.1/cmd-stream-events.html>`_.
 
+Note that the Gerrit event stream is stateless and any events that occur while buildbot is not connected to Gerrit will be lost. See :bb:chsrc:`GerritEventLogPoller` for a stateful change source.
+
 The :bb:chsrc:`GerritChangeSource` accepts the following arguments:
 
 ``gerritserver``
@@ -1188,6 +1195,10 @@ The :bb:chsrc:`GerritChangeSource` accepts the following arguments:
 ``handled_events``
     event to be handled (optional).
     By default processes `patchset-created` and `ref-updated`
+
+``get_files``
+    Populate the `files` attribute of emitted changes (default `False`).
+    Buildbot will run an extra query command for each handled event to determine the changed files.
 
 ``debug``
     Print Gerrit event in the log (default `False`).
@@ -1336,15 +1347,27 @@ GerritEventLogPoller
 
 The :bb:chsrc:`GerritEventLogPoller` class is similar to :bb:chsrc:`GerritChangeSource` but connects to the Gerrit server by its HTTP interface and uses the events-log_ plugin.
 
+Note that the decision of whether to use :bb:chsrc:`GerritEventLogPoller` and :bb:chsrc:`GerritChangeSource` will depend on your needs. The trade off is:
+
+1. :bb:chsrc:`GerritChangeSource` is low-overhead and reacts instantaneously to events, but a broken connection to Gerrit will lead to missed changes
+2. :bb:chsrc:`GerritEventLogPoller` is subject to polling overhead and reacts only at it's polling rate, but is robust to a broken connection to Gerrit and missed changes will be discovered when a connection is restored.
+
+However, you probably do not want use both at the same time as they do not coordinate and changes will be duplicated in this case.
+
+.. note::
+
+    The :bb:chsrc:`GerritEventLogPoller` requires either the ``txrequest`` or the ``treq`` package.
+
 The :bb:chsrc:`GerritEventLogPoller` accepts the following arguments:
 
 ``baseURL``
-    the HTTP url where to find Gerrit
+    the HTTP url where to find Gerrit. If the URL of the events-log endpoint for your server is ``https://example.com/a/plugins/events-log/events/`` then the ``baseURL`` is ``https://example.com/a``. Note that ``/a`` is included.
 
 ``auth``
     a requests authentication configuration.
     if Gerrit is configured with ``BasicAuth``, then it shall be ``('login', 'password')``
     if Gerrit is configured with ``DigestAuth``, then it shall be ``requests.auth.HTTPDigestAuth('login', 'password')`` from the requests module.
+    However, note that usage of ``requests.auth.HTTPDigestAuth`` is incompatible with ``treq``.
 
 ``handled_events``
     event to be handled (optional).
@@ -1359,6 +1382,10 @@ The :bb:chsrc:`GerritEventLogPoller` accepts the following arguments:
 
 ``gitBaseURL``
     The git URL where Gerrit is accessible via git+ssh protocol
+
+``get_files``
+    Populate the `files` attribute of emitted changes (default `False`).
+    Buildbot will run an extra query command for each handled event to determine the changed files.
 
 ``debug``
     Print Gerrit event in the log (default `False`).
@@ -1438,7 +1465,9 @@ Files
 ~~~~~
 
 It also has a list of :attr:`files`, which are just the tree-relative filenames of any files that were added, deleted, or modified for this :class:`Change`.
-These filenames are used by the :func:`fileIsImportant` function (in the scheduler) to decide whether it is worth triggering a new build or not, e.g. the function could use the following function to only run a build if a C file were checked in::
+These filenames are used by the :func:`fileIsImportant` function (in the scheduler) to decide whether it is worth triggering a new build or not, e.g. the function could use the following function to only run a build if a C file were checked in:
+
+.. code-block:: python
 
     def has_C_files(change):
         for name in change.files:
@@ -1548,4 +1577,3 @@ Change Properties
 
 A Change may have one or more properties attached to it, usually specified through the Force Build form or :bb:cmdline:`sendchange`.
 Properties are discussed in detail in the :ref:`Build-Properties` section.
-

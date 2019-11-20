@@ -105,7 +105,9 @@ class TestDockerLatentWorker(unittest.SynchronousTestCase, TestReactorMixin):
         # Volumes have their own tests
         bs = self.setupWorker('bot', 'pass', 'unix:///var/run/docker.sock', 'worker_img', ['/bin/sh'],
                               dockerfile="FROM ubuntu", version='1.9', tls=True,
-                              hostconfig={'network_mode': 'fake', 'dns': ['1.1.1.1', '1.2.3.4']})
+                              hostconfig={'network_mode': 'fake', 'dns': ['1.1.1.1', '1.2.3.4']},
+                              custom_context=False, buildargs=None,
+                              encoding='gzip')
         self.assertEqual(bs.workername, 'bot')
         self.assertEqual(bs.password, 'pass')
         self.assertEqual(bs.image, 'worker_img')
@@ -116,6 +118,9 @@ class TestDockerLatentWorker(unittest.SynchronousTestCase, TestReactorMixin):
                          'base_url': 'unix:///var/run/docker.sock', 'version': '1.9', 'tls': True})
         self.assertEqual(
             bs.hostconfig, {'network_mode': 'fake', 'dns': ['1.1.1.1', '1.2.3.4']})
+        self.assertFalse(bs.custom_context)
+        self.assertEqual(bs.buildargs, None)
+        self.assertEqual(bs.encoding, 'gzip')
 
     def test_start_instance_volume_renderable(self):
         bs = self.setupWorker(
@@ -138,7 +143,7 @@ class TestDockerLatentWorker(unittest.SynchronousTestCase, TestReactorMixin):
         self.assertEqual(client.call_args_create_container[0]['volumes'],
                          ['/opt/webapp'])
         self.assertEqual(client.call_args_create_host_config[0]['binds'],
-                         {'/src/webapp': {'bind': '/opt/webapp', 'ro': False}})
+                         ["/src/webapp:/opt/webapp"])
 
     def test_volume_ro_rw(self):
         bs = self.setupWorker('bot', 'pass', 'tcp://1234:2375', 'worker', ['bin/bash'],
@@ -151,8 +156,7 @@ class TestDockerLatentWorker(unittest.SynchronousTestCase, TestReactorMixin):
         self.assertEqual(client.call_args_create_container[0]['volumes'],
                          ['/opt/webapp', '/backup'])
         self.assertEqual(client.call_args_create_host_config[0]['binds'],
-                         {'/src/webapp': {'bind': '/opt/webapp', 'ro': True},
-                          '~': {'bind': '/backup', 'ro': False}})
+                         ['/src/webapp:/opt/webapp:ro', '~:/backup:rw'])
 
     def test_volume_bad_format(self):
         with self.assertRaises(config.ConfigErrors):
@@ -247,6 +251,30 @@ class TestDockerLatentWorker(unittest.SynchronousTestCase, TestReactorMixin):
                                    distro=Property('distro')))
         id, name = self.successResultOf(bs.start_instance(self.build))
         self.assertEqual(name, 'customworker')
+
+    def test_start_instance_custom_context_and_buildargs(self):
+        bs = self.setupWorker(
+            'bot', 'pass', 'tcp://1234:2375', 'tester:latest',
+            dockerfile=Interpolate('FROM debian:latest'), custom_context=True,
+            buildargs={'sample_arg1': 'test_val1'})
+        id, name = self.successResultOf(bs.start_instance(self.build))
+        self.assertEqual(name, 'tester:latest')
+
+    def test_start_instance_custom_context_no_buildargs(self):
+        bs = self.setupWorker(
+            'bot', 'pass', 'tcp://1234:2375', 'tester:latest',
+            dockerfile=Interpolate('FROM debian:latest'),
+            custom_context=True)
+        id, name = self.successResultOf(bs.start_instance(self.build))
+        self.assertEqual(name, 'tester:latest')
+
+    def test_start_instance_buildargs_no_custom_context(self):
+        bs = self.setupWorker(
+            'bot', 'pass', 'tcp://1234:2375', 'tester:latest',
+            dockerfile=Interpolate('FROM debian:latest'),
+            buildargs={'sample_arg1': 'test_val1'})
+        id, name = self.successResultOf(bs.start_instance(self.build))
+        self.assertEqual(name, 'tester:latest')
 
     def test_start_worker_but_already_created_with_same_name(self):
         bs = self.setupWorker(

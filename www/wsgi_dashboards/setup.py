@@ -15,10 +15,6 @@
 #
 # Copyright Buildbot Team Members
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 try:
     from buildbot_pkg import setup_www_plugin
 except ImportError:
@@ -35,7 +31,6 @@ setup_www_plugin(
     author=u'Buildbot maintainers',
     author_email=u'devel@buildbot.net',
     url='http://buildbot.net/',
-    license='GNU GPL',
     packages=['buildbot_wsgi_dashboards'],
     package_data={
         '': [
@@ -47,4 +42,7 @@ setup_www_plugin(
         [buildbot.www]
         wsgi_dashboards = buildbot_wsgi_dashboards:ep
     """,
+    classifiers=[
+        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)'
+    ],
 )

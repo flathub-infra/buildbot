@@ -15,10 +15,6 @@
 #
 # Copyright Buildbot Team Members
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 try:
     from buildbot_pkg import setup_www_plugin
     import mock  # noqa
@@ -37,7 +33,6 @@ setup_www_plugin(
     author_email=u'tardyp@gmail.com',
     setup_requires=['buildbot', 'buildbot_pkg', 'mock'],
     url='http://buildbot.net/',
-    license='GNU GPL',
     packages=['buildbot_www'],
     package_data={
         '': [
@@ -50,5 +45,8 @@ setup_www_plugin(
     entry_points="""
         [buildbot.www]
         base = buildbot_www:ep
-    """
+    """,
+    classifiers=[
+        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)'
+    ],
 )

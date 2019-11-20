@@ -21,10 +21,11 @@ class WaterfallState {
         const state = {
             controller: `${name}Controller`,
             controllerAs: "w",
-            templateUrl: `waterfall_view/views/${name}.html`,
+            template: require('./waterfall.tpl.jade'),
             name,
-            url: `/${name}`,
-            data: cfg
+            url: `/${name}?tags`,
+            data: cfg,
+            reloadOnSearch: false
         };
 
         $stateProvider.state(state);
@@ -32,4 +33,14 @@ class WaterfallState {
 }
 
 angular.module('waterfall_view')
-.config(['$stateProvider', 'glMenuServiceProvider', WaterfallState]);
+.config(['$stateProvider', 'glMenuServiceProvider', WaterfallState])
+.config(['$locationProvider', function($locationProvider) {
+    $locationProvider.hashPrefix('');
+}])
+.run([
+    '$rootScope',
+    '$location',
+    function($rootScope, $location) {
+      $rootScope.location = $location
+    }
+])

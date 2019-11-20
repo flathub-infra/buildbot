@@ -7,7 +7,7 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
  */
 class forceDialog {
-    constructor($scope, config, $state, modal, schedulerid, $rootScope, builderid, dataService, buildname) {
+    constructor($scope, config, $state, modal, schedulerid, $rootScope, builderid, dataService) {
         dataService.getForceschedulers(schedulerid, {subscribe: false}).onChange = function(schedulers) {
             const scheduler = schedulers[0];
             const all_fields_by_name = {};
@@ -15,15 +15,6 @@ class forceDialog {
             // prepare default values
             var prepareFields = fields => {
                 for (let field of Array.from(fields)) {
-                    if (field.fullName == "buildname") {
-                        if (buildname) {
-                                field.hide = true;
-                                field.default = buildname;
-                        } else {
-                                field.hide = false;
-                                field.default = null;
-                        }
-                    }
                     all_fields_by_name[field.fullName] = field;
                     // give a reference of other fields to easily implement
                     // autopopulate
@@ -49,11 +40,7 @@ class forceDialog {
             };
 
             prepareFields(scheduler.all_fields);
-            var label = scheduler.label;
-            if (buildname) {
-                label = label + " for " + buildname;
-            }
-            return angular.extend($scope, {
+            angular.extend($scope, {
                 rootfield: {
                     type: 'nested',
                     layout: 'simple',
@@ -61,8 +48,13 @@ class forceDialog {
                     columns: 1
                 },
                 sch: scheduler,
-                sch_label: label,
+                startDisabled: false,
                 ok() {
+                    if ($scope.startDisabled == true) {
+                        // prevent multiple executions of scheduler
+                        return null;
+                    };
+                    $scope.startDisabled = true;
                     const params =
                         {builderid};
                     for (let name in all_fields_by_name) {
@@ -71,8 +63,8 @@ class forceDialog {
                     }
 
                     return scheduler.control('force', params)
-                    .then(res => modal.modal.close(res.result)
-                    ,   function(err) {
+                    .then(res => modal.modal.close(res.result), function(err) {
+                        $scope.startDisabled = false;
                         if (err === null) {
                             return;
                         }
@@ -82,9 +74,8 @@ class forceDialog {
                                 all_fields_by_name[k].errors = v;
                                 all_fields_by_name[k].haserrors = true;
                             }
-                            return null;
                         } else {
-                            return $scope.error = err.error.message;
+                            $scope.error = err.error.message;
                         }
                     });
                 },
@@ -99,4 +90,4 @@ class forceDialog {
 
 
 angular.module('app')
-.controller('forceDialogController', ['$scope', 'config', '$state', 'modal', 'schedulerid', '$rootScope', 'builderid', 'dataService', 'buildname', forceDialog]);
+.controller('forceDialogController', ['$scope', 'config', '$state', 'modal', 'schedulerid', '$rootScope', 'builderid', 'dataService', forceDialog]);

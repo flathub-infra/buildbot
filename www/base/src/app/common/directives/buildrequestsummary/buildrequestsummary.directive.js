@@ -9,7 +9,7 @@ class Buildrequestsummary {
             replace: true,
             restrict: 'E',
             scope: {buildrequestid: '=?'},
-            templateUrl: 'views/buildrequestsummary.html',
+            template: require('./buildrequestsummary.tpl.jade'),
             compile: RecursionHelper.compile,
             controller: '_buildrequestsummaryController'
         };
@@ -21,8 +21,7 @@ class _buildrequestsummary {
         _.mixin($scope, resultsService);
         $scope.$watch("buildrequest.claimed", function(n, o) {
             if (n) {  // if it is unclaimed, then claimed, we need to try again
-                return findBuilds($scope,
-                    $scope.buildrequest.buildrequestid);
+                findBuilds($scope, $scope.buildrequest.buildrequestid);
             }
         });
 
@@ -31,7 +30,7 @@ class _buildrequestsummary {
             $scope.buildrequest = buildrequest;
             data.getBuildsets(buildrequest.buildsetid).onNew = buildset => $scope.buildset = buildset;
 
-            return $scope.builder = buildersService.getBuilder(buildrequest.builderid);
+            $scope.builder = buildersService.getBuilder(buildrequest.builderid);
         };
     }
 }

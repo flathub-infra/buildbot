@@ -7,7 +7,7 @@ class BuildState {
         // Register new state
         const state = {
             controller: `${name}Controller`,
-            templateUrl: `views/${name}.html`,
+            template: require('./build.tpl.jade'),
             name,
             url: '/builders/:builder/builds/:build',
             data: {
@@ -36,6 +36,16 @@ class BuildState {
                 name:'expand_logs',
                 caption:'Expand logs with these names (use ; as separator)',
                 default_value: 'summary'
+            }
+            ]});
+        bbSettingsServiceProvider.addSettingsGroup({
+            name:'TriggerStep',
+            caption: 'Builds per page',
+            items:[{
+                type:'integer',
+                name:'page_size',
+                caption:'Number of builds to show per page in trigger step',
+                default_value: 20
             }
             ]});
     }

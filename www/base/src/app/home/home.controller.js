@@ -5,81 +5,35 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
  */
 class Home {
-    constructor($scope, dataService, config, $location, $state, glTopbarContextualActionsService) {
+    constructor($scope, dataService, config, $location) {
         $scope.baseurl = $location.absUrl().split("#")[0];
         $scope.config = config;
 
         const data = dataService.open().closeOnDestroy($scope);
-        data.getBuilders('Builds').onNew = function(builder) {
-            $scope.mainBuilder = builder;
-            var refreshContextMenu = function () {
-                if ($scope.$$destroyed) {
-                    return;
+        $scope.buildsRunning = data.getBuilds({order: '-started_at', complete: false});
+        $scope.recentBuilds = data.getBuilds({order: '-buildid', complete: true, limit:20});
+        $scope.builders = data.getBuilders();
+        $scope.hasBuilds = b => (b.builds != null ? b.builds.length : undefined) > 0;
+
+        const updateBuilds = function() {
+            const byNumber = (a, b) => a.number - b.number;
+            return $scope.recentBuilds.forEach(function(build) {
+                const builder = $scope.builders.get(build.builderid);
+                if (builder != null) {
+                    if (builder.builds == null) { builder.builds = []; }
+                    if (builder.builds.indexOf(build) < 0) {
+                        builder.builds.push(build);
+                        builder.builds.sort(byNumber);
+                    }
                 }
-                const actions = [];
-                _.forEach($scope.forceschedulers, sch =>
-                    actions.push({
-                        caption: sch.button_name,
-                        extra_class: "btn-primary",
-                        action() {
-                            return $state.go("builder.forcebuilder", {
-                                    scheduler: sch.name,
-                                    builder:$scope.mainBuilder.builderid
-                                });
-                        }
-                    })
-                );
-
-                return glTopbarContextualActionsService.setContextualActions(actions);
-            };
-
-            $scope.mainRunningBuilds = builder.getBuilds({
-                complete: false,
-                property: ["owners"],
-                order: '-number'
-            });
-            $scope.mainUpublishedBuilds = builder.getBuilds({
-                complete: true,
-                flathub_repo_status__eq: 1, // Commited
-                flathub_build_type__eq: 1, // Official
-                property: ["owners"],
-                order: '-number'
-            });
-            $scope.mainRecentBuilds = builder.getBuilds({
-                complete: true,
-                property: ["owners"],
-                limit: $scope.numbuilds,
-                order: '-number'
-            });
-
-            builder.getForceschedulers().onChange = function(forceschedulers) {
-                $scope.forceschedulers = forceschedulers;
-                refreshContextMenu();
-                // reinstall contextual actions when coming back from forcesched
-                return $scope.$on('$stateChangeSuccess', () => refreshContextMenu());
-            };
-        };
-
-        data.getBuilders('publish').onNew = function(builder) {
-            $scope.publishBuilder = builder;
-            $scope.publishBuilds = builder.getBuilds({
-                complete: false,
-                property: ["owners"],
-                order: '-number'
             });
         };
 
-        data.getBuilders('purge').onNew = function(builder) {
-            $scope.purgeBuilder = builder;
-            $scope.purgeBuilds = builder.getBuilds({
-                complete: false,
-                property: ["owners"],
-                order: '-number'
-            });
-        };
+        $scope.recentBuilds.onChange = updateBuilds;
+        $scope.builders.onChange = updateBuilds;
     }
 }
 
 
 angular.module('app')
-.controller('homeController', ['$scope', 'dataService', 'config', '$location', '$state', 'glTopbarContextualActionsService', Home]);
+.controller('homeController', ['$scope', 'dataService', 'config', '$location', Home]);

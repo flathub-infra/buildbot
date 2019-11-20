@@ -13,7 +13,7 @@ class PendingBuildRequestsState {
         // Register new state
         const state = {
             controller: `${name}Controller`,
-            templateUrl: `views/${name}.html`,
+            template: require('./pendingbuildrequests.tpl.jade'),
             name,
             url: '/pendingbuildrequests',
             data: cfg
@@ -23,7 +23,7 @@ class PendingBuildRequestsState {
 
         bbSettingsServiceProvider.addSettingsGroup({
             name:'BuildRequests',
-            caption: 'Buildreqests page related settings',
+            caption: 'Buildrequests page related settings',
             items:[{
                 type:'integer',
                 name:'buildrequestFetchLimit',

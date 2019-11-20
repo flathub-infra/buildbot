@@ -145,13 +145,12 @@ setup_args = {
     'maintainer': "Dustin J. Mitchell",
     'maintainer_email': "dustin@v.igoro.us",
     'url': "http://buildbot.net/",
-    'license': "GNU GPL",
     'classifiers': [
         'Development Status :: 5 - Production/Stable',
         'Environment :: No Input/Output (Daemon)',
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: GNU General Public License (GPL)',
+        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
         'Topic :: Software Development :: Build Tools',
         'Topic :: Software Development :: Testing',
         'Programming Language :: Python :: 3',
@@ -255,6 +254,7 @@ setup_args = {
         ]),
         ('buildbot.secrets', [
             ('buildbot.secrets.providers.file', ['SecretInAFile']),
+            ('buildbot.secrets.providers.passwordstore', ['SecretInPass']),
             ('buildbot.secrets.providers.vault', ['HashiCorpVaultSecretProvider'])
         ]),
         ('buildbot.worker', [
@@ -341,6 +341,7 @@ setup_args = {
             ('buildbot.reporters.bitbucketserver', ['BitbucketServerStatusPush', 'BitbucketServerPRCommentPush']),
             ('buildbot.reporters.bitbucket', ['BitbucketStatusPush']),
             ('buildbot.reporters.irc', ['IRC']),
+            ('buildbot.reporters.telegram', ['TelegramBot']),
             ('buildbot.reporters.zulip', ['ZulipStatusPush']),
         ]),
         ('buildbot.util', [
@@ -531,7 +532,7 @@ setup_args['extras_require'] = {
     ],
     'docs': [
         'docutils<0.13.0',
-        'sphinx>1.4.0',
+        'sphinx>1.4.0,<2.1.0',
         'sphinxcontrib-blockdiag',
         'sphinxcontrib-spelling',
         'pyenchant',

@@ -374,6 +374,9 @@ class Model(base.DBConnectorComponent):
         # author's name (usually an email address)
         sa.Column('author', sa.String(255), nullable=False),
 
+        # committer's name
+        sa.Column('committer', sa.String(255), nullable=True),
+
         # commit comment
         sa.Column('comments', sa.Text, nullable=False),
 
@@ -764,6 +767,8 @@ class Model(base.DBConnectorComponent):
              unique=True)
     sa.Index('steps_name', steps.c.buildid, steps.c.name,
              unique=True)
+    sa.Index('steps_started_at',
+             steps.c.started_at)
     sa.Index('logs_slug', logs.c.stepid, logs.c.slug, unique=True)
     sa.Index('logchunks_firstline', logchunks.c.logid, logchunks.c.first_line)
     sa.Index('logchunks_lastline', logchunks.c.logid, logchunks.c.last_line)

@@ -15,10 +15,6 @@
 #
 # Copyright Buildbot Team Members
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 try:
     from buildbot_pkg import setup_www_plugin
 except ImportError:
@@ -34,7 +30,6 @@ setup_www_plugin(
     author=u'Buildbot Team Members',
     author_email=u'users@buildbot.net',
     url='http://buildbot.net/',
-    license='GNU GPL',
     packages=['buildbot_badges'],
     install_requires=[
         'klein',
@@ -51,4 +46,7 @@ setup_www_plugin(
         [buildbot.www]
         badges = buildbot_badges:ep
     """,
+    classifiers=[
+        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)'
+    ],
 )

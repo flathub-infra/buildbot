@@ -41,7 +41,7 @@ _.each(['verticallayout', 'simplelayout', 'tabslayout'],
             ({
                 replace: true,
                 restrict: 'E',
-                templateUrl: `views/${fieldtype}.html`,
+                template: require(`./${fieldtype}.tpl.jade`),
                 controller: [ "$scope", function($scope) {
                     // filter out hidden fields, and nested params empty of full of hidden fields
                     const filtered = [];
@@ -78,7 +78,7 @@ _.each([ 'textfield' , 'intfield', 'textareafield', 'listfield', 'boolfield'],
                 replace: false,
                 restrict: 'E',
                 scope: false,
-                templateUrl: `views/${fieldtype}.html`
+                template: require(`./${fieldtype}.tpl.jade`),
             })
         )
 );
@@ -91,22 +91,22 @@ angular.module('common').directive('filefield', () =>
         // the template uses custom file input styling using trick from
         // https://tympanus.net/codrops/2015/09/15/styling-customizing-file-inputs-smart-way/
         // which basically uses label(for="<id>") to capture the click event and the ugly input(type="file") is just hidden
-        templateUrl: "views/filefield.html",
+        template: require('./filefield.tpl.jade'),
         controller: [ "$scope", function($scope) {
             // If user selects a big file, then the UI will be completely blocked
             // while browser tries to display it in the textarea
             // so to avoid that we go through a safe value, and play the double binding game
             $scope.$watch("field.value", function(value) {
                 if ((value != null ? value.length : undefined) > 10000) {
-                    return $scope.field.safevalue = false;
+                    $scope.field.safevalue = false;
                 } else {
-                    return $scope.field.safevalue = value;
+                    $scope.field.safevalue = value;
                 }
             });
 
-            return $scope.$watch("field.safevalue", function(value) {
+            $scope.$watch("field.safevalue", function(value) {
                 if ((value != null) && (value !== false)) {
-                    return $scope.field.value = value;
+                    $scope.field.value = value;
                 }
             });
         }
@@ -121,7 +121,7 @@ angular.module('common').directive('fileread', () =>
         // load the file's text via html5 FileReader API
         // note that for simplicity, we don't bother supporting older browsers
         link(scope, element, attributes) {
-            return element.bind("change", function(changeEvent) {
+            element.bind("change", function(changeEvent) {
                 const reader = new FileReader();
                 reader.onload = e =>
                     scope.$apply(() => scope.fileread = e.target.result)
