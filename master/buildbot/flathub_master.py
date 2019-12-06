@@ -1079,6 +1079,12 @@ def create_build_factory():
             haltOnFailure=True,
             logEnviron=False,
             command=util.Interpolate('test ! -d repo/refs/heads/app -o -f repo/refs/heads/app/%(prop:flathub_id)s/%(prop:flathub_arch)s/%(prop:flathub_default_branch)s')),
+        steps.ShellCommand(
+            name='Check for icons',
+            doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-icons-check"),
+            haltOnFailure=True,
+            logEnviron=False,
+            command=util.Interpolate('test -f /app/share/icons/hicolor/scalable/apps/%(prop:flathub_id).svg -o \( -f /app/share/icons/hicolor/64x64/apps/%(prop:flathub_id).png -a -f /app/share/icons/hicolor/128x128/apps/%(prop:flathub_id).png \)'))
         steps.ShellSequence(
             name='Upload build',
             logEnviron=False,
