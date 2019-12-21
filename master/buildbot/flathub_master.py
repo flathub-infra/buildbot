@@ -1090,7 +1090,7 @@ def create_build_factory():
             doStepIf=should_skip_icons_check,
             haltOnFailure=True,
             logEnviron=False,
-            command=util.Interpolate('test -f /app/share/icons/hicolor/scalable/apps/%(prop:flathub_id).svg -o \( -f /app/share/icons/hicolor/64x64/apps/%(prop:flathub_id).png -a -f /app/share/icons/hicolor/128x128/apps/%(prop:flathub_id).png \)'))
+            command=util.Interpolate('test -f builddir/export/share/icons/hicolor/scalable/apps/%(prop:flathub_id)s.svg -o -f builddir/export/share/icons/hicolor/128x128/apps/%(prop:flathub_id)s.png')),
         steps.ShellSequence(
             name='Upload build',
             logEnviron=False,
