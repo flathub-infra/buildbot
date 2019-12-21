@@ -321,6 +321,12 @@ def shellArgOptional(commands):
 def shellArg(commands):
     return util.ShellArg(logfile='stdio', haltOnFailure=True, command=commands)
 
+def should_skip_icons_check(step):
+    skip_icons_check = step.build.getProperty('flathub_config', {}).get('skip-icons-check')
+    skip_appstream_check = step.build.getProperty('flathub_config', {}).get('skip-appstream-check')
+
+    return not skip_icons_check or not skip_appstream_check
+
 class TitleObserver(logobserver.LogObserver):
     title_re = re.compile (r"\x1b]2;[\s\w!/\\#$%&'*+-.^_`|~:~]*\x07")
 
@@ -1081,7 +1087,7 @@ def create_build_factory():
             command=util.Interpolate('test ! -d repo/refs/heads/app -o -f repo/refs/heads/app/%(prop:flathub_id)s/%(prop:flathub_arch)s/%(prop:flathub_default_branch)s')),
         steps.ShellCommand(
             name='Check for icons',
-            doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-icons-check"),
+            doStepIf=should_skip_icons_check,
             haltOnFailure=True,
             logEnviron=False,
             command=util.Interpolate('test -f /app/share/icons/hicolor/scalable/apps/%(prop:flathub_id).svg -o \( -f /app/share/icons/hicolor/64x64/apps/%(prop:flathub_id).png -a -f /app/share/icons/hicolor/128x128/apps/%(prop:flathub_id).png \)'))
