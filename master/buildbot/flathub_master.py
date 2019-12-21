@@ -1055,11 +1055,6 @@ def create_build_factory():
                                      command="grep -s ^tags= builddir/metadata || true",
                                      extract_fn=extract_tags_from_metadata),
         steps.ShellCommand(
-            name='Generate deltas',
-            haltOnFailure=True,
-            logEnviron=False,
-            command=util.Interpolate('flatpak build-update-repo --generate-static-deltas --static-delta-ignore-ref=*.Debug  --static-delta-ignore-ref=*.Sources repo')),
-        steps.ShellCommand(
             name='Check for AppStream xml',
             doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
             haltOnFailure=True,
@@ -1089,6 +1084,11 @@ def create_build_factory():
             haltOnFailure=True,
             logEnviron=False,
             command=util.Interpolate('test -f builddir/export/share/icons/hicolor/scalable/apps/%(prop:flathub_id)s.svg -o -f builddir/export/share/icons/hicolor/128x128/apps/%(prop:flathub_id)s.png')),
+        steps.ShellCommand(
+            name='Generate deltas',
+            haltOnFailure=True,
+            logEnviron=False,
+            command=util.Interpolate('flatpak build-update-repo --generate-static-deltas --static-delta-ignore-ref=*.Debug  --static-delta-ignore-ref=*.Sources repo')),
         steps.ShellSequence(
             name='Upload build',
             logEnviron=False,
