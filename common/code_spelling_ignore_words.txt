@@ -27,9 +27,10 @@ addsourcestampset
 addstep
 addsuppression
 admin
-admins
 admin's
+admins
 agenced
+aiohttp
 allard
 allen
 allfiles
@@ -79,6 +80,7 @@ atm
 atomicity
 attachscheduler
 attr
+attrs
 attributeerror
 aug
 auth
@@ -144,8 +146,8 @@ breq
 breqs
 brian
 brid
-brids
 brid's
+brids
 brs
 bruheim
 bsd
@@ -156,12 +158,13 @@ buidlrequestcompletions
 buidlsets
 builbot
 buildable
+buildargs
 buildbot
 buildbotnetusagedata
 buildbotNetUsageData
 buildbotoptions
-buildbots
 buildbot's
+buildbots
 buildbotting
 buildboturl
 buildclass
@@ -179,14 +182,14 @@ buildfactory
 buildfinished
 buildid
 buildmaster
-buildmasters
 buildmaster's
+buildmasters
 buildnum
 buildot
 buildreq
 buildrequest
-buildrequestdistributor
 buildrequestcompletions
+buildrequestdistributor
 buildrequestresults
 buildrequests
 buildrequestsconnectorcomponent
@@ -195,8 +198,8 @@ buildroot
 build's
 buildset
 buildsetcomplete
-buildsets
 buildset's
+buildsets
 buildsetsubmitted
 buildslave
 buildslaves
@@ -217,6 +220,7 @@ bwaitall
 bwverbose
 bytestring
 bytestrings
+bzip
 bzr
 caas
 calderone
@@ -229,6 +233,7 @@ callwhenrunning
 cancelcleanshutdown
 cancelled
 cancelling
+canonicalize
 canstartbuild
 canstartwithworkerforbuilder
 cb
@@ -298,6 +303,7 @@ commandname
 commitish
 committer
 committers
+committer's
 compability
 comparablemixin
 comparaison
@@ -316,6 +322,7 @@ configfunc
 configs
 configurator
 configurators
+configjson
 conn
 connectedness
 connectionmade
@@ -355,6 +362,7 @@ dateutil's
 dave
 david
 dbapi
+DBConnector
 dbpool
 dbs
 ddl
@@ -369,8 +377,8 @@ defaultbranch
 defaultdeny
 defaultwhenfalse
 deferredlist
-deferreds
 deferred's
+deferreds
 defertothread
 delayedcall
 denormalized
@@ -378,6 +386,7 @@ deprecatedmoduleattribute
 descriptionsuffix
 desynchronization
 dev
+DEVNULL
 dict
 dicts
 dicttype
@@ -502,13 +511,14 @@ foo
 foobar
 foogit
 foreignkey
-formatinterval
 formatargspec
+formatinterval
 fp
 fqdn
 freebsd
 freshcvs
 fri
+frontend
 fromchdict
 fromdir
 fs
@@ -518,9 +528,9 @@ funcname
 gardiner
 gatherresults
 gayton
+gc
 gcc
 gc'd
-gc
 gerrit
 getaddress
 getargspec
@@ -601,6 +611,7 @@ gracefulshutdown
 gravatar
 groupmemberpattern
 gtk
+guanlecoja
 gz
 gzip
 haltonfailure
@@ -667,8 +678,9 @@ instantiation
 instantiations
 insubstantiate
 insubstantiated
-insubstantiation
 insubstantiating
+insubstantiation
+insubstantiations
 integrations
 internet
 interoperability
@@ -717,6 +729,7 @@ jobfiles
 jobid
 joe
 jonathan
+js
 json
 jsonable
 jsonapi
@@ -762,8 +775,8 @@ ldapuserinfo
 lefkowitz
 legator
 len
-lifecycle
 libvirt
+lifecycle
 lintian
 linux
 listdir
@@ -867,9 +880,9 @@ milner
 mingw
 minidom
 minidom's
+minikube
 minimalistic
 mintime
-minikube
 mispelling
 misr
 mit
@@ -1456,6 +1469,7 @@ txrequests
 txt
 tz
 ubuntu
+ufffd
 ui
 uid
 umask
@@ -1530,6 +1544,7 @@ usepty
 usererrors
 username
 usetestcasenames
+usetls
 usr
 utc
 utf
@@ -1570,11 +1585,13 @@ warnonwarnings
 wb
 weakref
 webclient
+webdriver
 webhook
 webhooks
 webserver
-werzeug
+websocket
 wehn
+werzeug
 wfb
 wget
 whatever's

@@ -1,17 +1,10 @@
-#!/usr/bin/env python
-from __future__ import absolute_import
-from __future__ import print_function
+#!/usr/bin/env python3
 
 import argparse
-import os
 import re
-import sys
-from subprocess import PIPE
-from subprocess import STDOUT
+from subprocess import DEVNULL
 from subprocess import check_call
 from subprocess import check_output
-
-import requests
 
 
 def parse_chrome_major_version(output):
@@ -28,9 +21,9 @@ def parse_chrome_major_version(output):
 def get_chrome_version(browsers):
     for browser in browsers:
         try:
-            # FIXME: Use subprocess.DEVNULL on python3
-            output = check_output([browser + ' --version'],
-                                  stderr=None, shell=True)
+            print([browser, ' --version'])
+            output = check_output([browser, ' --version'],
+                                  stderr=DEVNULL)
             output = output.decode('utf-8', errors='ignore')
 
             version = parse_chrome_major_version(output)
@@ -39,24 +32,6 @@ def get_chrome_version(browsers):
         except Exception:
             pass
     return (None, None)
-
-
-def get_chromedriver_compatibility_map():
-    chromedriver_root = 'https://chromedriver.storage.googleapis.com'
-
-    r = requests.get('{0}/LATEST_RELEASE'.format(chromedriver_root))
-    if r.status_code != 200:
-        raise Exception('Could not get newest chromedriver version')
-
-    chromedriver_newest_release = r.text
-
-    r = requests.get('{0}/{1}/notes.txt'.format(chromedriver_root,
-                                                chromedriver_newest_release))
-    if r.status_code != 200:
-        raise Exception('Could not get chromedriver v{0} notes.txt'.format(
-            chromedriver_newest_release))
-
-    return parse_chromedriver_compatibility_map(r.text)
 
 
 def main():

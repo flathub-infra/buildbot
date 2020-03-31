@@ -21,7 +21,7 @@ class AppsState {
         // Register new state
         const state = {
             controller: `${name}Controller`,
-            templateUrl: `views/${name}.html`,
+            template: require('./apps.tpl.jade'),
             name,
             url: '/apps',
             data: cfg,

@@ -3,10 +3,9 @@
 Database
 ========
 
-As of version 0.8.0, Buildbot has used a database as part of its storage
-backend.  This section describes the database connector classes, which allow
-other parts of Buildbot to access the database.  It also describes how to
-modify the database schema and the connector classes themselves.
+BuildBot stores most of its state in a database.
+This section describes the database connector classes, which allow other parts of Buildbot to access the database.
+It also describes how to modify the database schema and the connector classes themselves.
 
 
 Database Overview
@@ -775,6 +774,7 @@ changes
     * ``changeid`` (the ID of this change)
     * ``parent_changeids`` (list of ID; change's parents)
     * ``author`` (unicode; the author of the change)
+    * ``committer`` (unicode; the committer of the change)
     * ``files`` (list of unicode; source-code filenames changed)
     * ``comments`` (unicode; user comments)
     * ``is_dir`` (deprecated)
@@ -807,10 +807,12 @@ changes
 
         return the last changeID which matches the repository/project/codebase
 
-    .. py:method:: addChange(author=None, files=None, comments=None, is_dir=0, links=None, revision=None, when_timestamp=None, branch=None, category=None, revlink='', properties={}, repository='', project='', uid=None)
+    .. py:method:: addChange(author=None, committer=None, files=None, comments=None, is_dir=0, links=None, revision=None, when_timestamp=None, branch=None, category=None, revlink='', properties={}, repository='', project='', uid=None)
 
         :param author: the author of this change
         :type author: unicode string
+        :param committer: the committer of this change
+        :type committer: unicode string
         :param files: a list of filenames that were changed
         :type branch: list of unicode strings
         :param comments: user comments on the change
@@ -911,6 +913,13 @@ changes
         :returns: list of dictionaries via Deferred
 
         Get the "blame" list of changes for a build.
+
+    .. py:method:: getBuildsForChange(changeid)
+
+        :param changeid: ID of the change
+        :returns: list of buildDict via Deferred
+
+        Get builds related to a change
 
     .. py:method:: getChangeFromSSid(sourcestampid)
 

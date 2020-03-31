@@ -26,6 +26,7 @@ import requests
 from twisted.internet import defer
 from twisted.internet import threads
 
+import buildbot
 from buildbot import config
 from buildbot.process.properties import Properties
 from buildbot.util import bytes2unicode
@@ -283,6 +284,15 @@ class GitHubAuth(OAuth2Auth):
                     email=user['email'],
                     username=user['login'],
                     groups=[org['login'] for org in orgs])
+
+    def createSessionFromToken(self, token):
+        s = requests.Session()
+        s.headers = {
+            'Authorization': 'token ' + token['access_token'],
+            'User-Agent': 'buildbot/%s' % buildbot.version,
+        }
+        s.verify = self.sslVerify
+        return s
 
     def getUserInfoFromOAuthClient_v4(self, c):
         graphql_query = textwrap.dedent('''

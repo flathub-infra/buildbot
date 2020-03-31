@@ -13,6 +13,11 @@ If you would like in to be officially exposed, open a bug report on the `Buildbo
     :maxdepth: 2
 
     quickstart
+    pull-request
     general
-    apis
+    rest
+    raml/index
+    data
+    database
+    mq
     classes

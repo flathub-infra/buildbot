@@ -46,8 +46,9 @@ components.registerAdapter(
     mock.Mock, interfaces.IHttpResponse)
 
 
-class HTTPClientServiceTestBase(unittest.SynchronousTestCase):
+class HTTPClientServiceTestBase(unittest.TestCase):
 
+    @defer.inlineCallbacks
     def setUp(self):
         if httpclientservice.txrequests is None or httpclientservice.treq is None:
             raise unittest.SkipTest('this test requires txrequests and treq')
@@ -56,16 +57,16 @@ class HTTPClientServiceTestBase(unittest.SynchronousTestCase):
         self.parent = service.MasterService()
         self.parent.reactor = reactor
         self.base_headers = {}
-        self.successResultOf(self.parent.startService())
+        yield self.parent.startService()
 
 
 class HTTPClientServiceTestTxRequest(HTTPClientServiceTestBase):
 
+    @defer.inlineCallbacks
     def setUp(self):
-        super().setUp()
-        self._http = self.successResultOf(
-            httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
-                                                           headers=self.base_headers))
+        yield super().setUp()
+        self._http = yield httpclientservice.HTTPClientService.getService(
+            self.parent, 'http://foo', headers=self.base_headers)
 
     def test_get(self):
         self._http.get('/bar')
@@ -108,10 +109,10 @@ class HTTPClientServiceTestTxRequest(HTTPClientServiceTestBase):
                                                                 'X-TOKEN': 'XXXYYY',
                                                                 'Content-Type': 'application/json'})
 
+    @defer.inlineCallbacks
     def test_post_auth(self):
-        self._http = self.successResultOf(
-            httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
-                                                           auth=('user', 'pa$$')))
+        self._http = yield httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
+                                                                          auth=('user', 'pa$$'))
         self._http.post('/bar', json={'foo': 'bar'})
         jsonStr = json.dumps(dict(foo='bar'))
         jsonBytes = unicode2bytes(jsonStr)
@@ -125,14 +126,40 @@ class HTTPClientServiceTestTxRequest(HTTPClientServiceTestBase):
                                                             })
 
 
-class HTTPClientServiceTestTReq(HTTPClientServiceTestBase):
+class HTTPClientServiceTestTxRequestNoEncoding(HTTPClientServiceTestBase):
 
     def setUp(self):
         super().setUp()
-        self.patch(httpclientservice.HTTPClientService, 'PREFER_TREQ', True)
         self._http = self.successResultOf(
             httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
-                                                           headers=self.base_headers))
+                                                           headers=self.base_headers,
+                                                           skipEncoding=True))
+
+    def test_post_raw(self):
+        self._http.post('/bar', json={'foo': 'bar'})
+        jsonStr = json.dumps(dict(foo='bar'))
+        self._http._session.request.assert_called_once_with('post', 'http://foo/bar',
+                                                            background_callback=mock.ANY,
+                                                            data=jsonStr,
+                                                            headers={'Content-Type': 'application/json'})
+
+    def test_post_rawlist(self):
+        self._http.post('/bar', json=[{'foo': 'bar'}])
+        jsonStr = json.dumps([dict(foo='bar')])
+        self._http._session.request.assert_called_once_with('post', 'http://foo/bar',
+                                                            background_callback=mock.ANY,
+                                                            data=jsonStr,
+                                                            headers={'Content-Type': 'application/json'})
+
+
+class HTTPClientServiceTestTReq(HTTPClientServiceTestBase):
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        yield super().setUp()
+        self.patch(httpclientservice.HTTPClientService, 'PREFER_TREQ', True)
+        self._http = yield httpclientservice.HTTPClientService.getService(
+            self.parent, 'http://foo', headers=self.base_headers)
 
     def test_get(self):
         self._http.get('/bar')
@@ -170,10 +197,10 @@ class HTTPClientServiceTestTReq(HTTPClientServiceTestBase):
                                                                 'Content-Type': ['application/json'],
                                                                 'X-TOKEN': ['XXXYYY']})
 
+    @defer.inlineCallbacks
     def test_post_auth(self):
-        self._http = self.successResultOf(
-            httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
-                                                           auth=('user', 'pa$$')))
+        self._http = yield httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
+                                                                          auth=('user', 'pa$$'))
         self._http.post('/bar', json={'foo': 'bar'})
         httpclientservice.treq.post.assert_called_once_with('http://foo/bar',
                                                             agent=mock.ANY,
@@ -184,11 +211,11 @@ class HTTPClientServiceTestTReq(HTTPClientServiceTestBase):
                                                                 'Content-Type': ['application/json'],
                                                             })
 
+    @defer.inlineCallbacks
     def test_post_auth_digest(self):
         auth = HTTPDigestAuth('user', 'pa$$')
-        self._http = self.successResultOf(
-            httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
-                                                           auth=auth))
+        self._http = yield httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
+                                                                          auth=auth)
         self._http.post('/bar', data={'foo': 'bar'})
         # if digest auth, we don't use treq! we use txrequests
         self._http._session.request.assert_called_once_with('post', 'http://foo/bar',
@@ -198,6 +225,33 @@ class HTTPClientServiceTestTReq(HTTPClientServiceTestBase):
                                                             auth=auth,
                                                             headers={
                                                             })
+
+
+class HTTPClientServiceTestTReqNoEncoding(HTTPClientServiceTestBase):
+
+    def setUp(self):
+        super().setUp()
+        self.patch(httpclientservice.HTTPClientService, 'PREFER_TREQ', True)
+        self._http = self.successResultOf(
+            httpclientservice.HTTPClientService.getService(self.parent, 'http://foo',
+                                                           headers=self.base_headers,
+                                                           skipEncoding=True))
+
+    def test_post_raw(self):
+        self._http.post('/bar', json={'foo': 'bar'})
+        json_str = json.dumps(dict(foo='bar'))
+        httpclientservice.treq.post.assert_called_once_with('http://foo/bar',
+                                                            agent=mock.ANY,
+                                                            data=json_str,
+                                                            headers={'Content-Type': ['application/json']})
+
+    def test_post_rawlist(self):
+        self._http.post('/bar', json=[{'foo': 'bar'}])
+        json_str = json.dumps([dict(foo='bar')])
+        httpclientservice.treq.post.assert_called_once_with('http://foo/bar',
+                                                            agent=mock.ANY,
+                                                            data=json_str,
+                                                            headers={'Content-Type': ['application/json']})
 
 
 class MyResource(resource.Resource):
@@ -362,9 +416,10 @@ class HTTPClientServiceTestTxRequestE2E(unittest.TestCase):
 
 class HTTPClientServiceTestTReqE2E(HTTPClientServiceTestTxRequestE2E):
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.patch(httpclientservice.HTTPClientService, 'PREFER_TREQ', True)
-        return super().setUp()
+        yield super().setUp()
 
 
 class HTTPClientServiceTestFakeE2E(HTTPClientServiceTestTxRequestE2E):

@@ -43,7 +43,9 @@ Web interface plugins are not used directly: as described in :doc:`web server co
 
 .. note::
 
-    If you are not very familiar with Python and you need to use different kinds of components, start your ``master.cfg`` file with::
+    If you are not very familiar with Python and you need to use different kinds of components, start your ``master.cfg`` file with:
+
+    .. code-block:: python
 
         from buildbot.plugins import *
 
@@ -53,17 +55,17 @@ Web interface plugins are not used directly: as described in :doc:`web server co
 Finding Plugins
 ===============
 
-Buildbot maintains a list of plugins at http://trac.buildbot.net/wiki/Plugins.
+Buildbot maintains a list of plugins at https://github.com/buildbot/buildbot/wiki/PluginList.
 
 Developing Plugins
 ==================
 
 :ref:`Plugin-Module` contains all necessary information for you to develop new plugins.
-Please edit http://trac.buildbot.net/wiki/Plugins to add a link to your plugin!
+Please edit https://github.com/buildbot/buildbot/wiki/PluginList to add a link to your plugin!
 
 Plugins of note
 ===============
 
 Plugins were introduced in Buildbot-0.8.11, so as of this writing, only components that are bundled with Buildbot are available as plugins.
 
-If you have an idea/need about extending Buildbot, head to :doc:`../developer/plugins-publish`, create your own plugins and let the world now how Buildbot can be made even more useful.
+If you have an idea/need about extending Buildbot, head to :doc:`../developer/plugins-publish`, create your own plugins and let the world know how Buildbot can be made even more useful.

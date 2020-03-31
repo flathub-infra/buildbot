@@ -13,6 +13,9 @@
 #
 # Copyright Buildbot Team Members
 
+import bz2
+import zlib
+
 import sqlalchemy as sa
 
 from twisted.internet import defer
@@ -39,22 +42,18 @@ except ImportError:
 
 
 def dumps_gzip(data):
-    import zlib
     return zlib.compress(data, 9)
 
 
 def read_gzip(data):
-    import zlib
     return zlib.decompress(data)
 
 
 def dumps_bz2(data):
-    import bz2
     return bz2.compress(data, 9)
 
 
 def read_bz2(data):
-    import bz2
     return bz2.decompress(data)
 
 
@@ -350,33 +349,58 @@ class LogsConnectorComponent(base.DBConnectorComponent):
     def deleteOldLogChunks(self, older_than_timestamp):
         def thddeleteOldLogs(conn):
             model = self.db.model
-            res = conn.execute(sa.select([sa.func.count(model.logchunks.c.content)]))
+            res = conn.execute(sa.select([sa.func.count(model.logchunks.c.logid)]))
             count1 = res.fetchone()[0]
             res.close()
 
             # update log types older than timestamps
             # we do it first to avoid having UI discrepancy
+
+            # N.B.: we utilize the fact that steps.id is auto-increment, thus steps.started_at
+            # times are effectively sorted and we only need to find the steps.id at the upper
+            # bound of steps to update.
+
+            # SELECT steps.id from steps WHERE steps.started_at < older_than_timestamp ORDER BY steps.id DESC LIMIT 1;
             res = conn.execute(
-                model.logs.update()
-                .where(model.logs.c.stepid.in_(
-                    sa.select([model.steps.c.id])
-                    .where(model.steps.c.started_at < older_than_timestamp)))
-                .values(type='d')
+                sa.select([model.steps.c.id])
+                .where(model.steps.c.started_at < older_than_timestamp)
+                .order_by(model.steps.c.id.desc())
+                .limit(1)
             )
+            res_list = res.fetchone()
+            stepid_max = None
+            if res_list:
+                stepid_max = res_list[0]
             res.close()
+
+            # UPDATE logs SET logs.type = 'd' WHERE logs.stepid <= stepid_max AND type != 'd';
+            if stepid_max:
+                res = conn.execute(
+                    model.logs.update()
+                    .where(sa.and_(model.logs.c.stepid <= stepid_max,
+                                   model.logs.c.type != 'd'))
+                    .values(type='d')
+                )
+                res.close()
 
             # query all logs with type 'd' and delete their chunks.
-            q = sa.select([model.logs.c.id])
-            q = q.select_from(model.logs)
-            q = q.where(model.logs.c.type == 'd')
+            if self.db._engine.dialect.name == 'sqlite':
+                # sqlite does not support delete with a join, so for this case we use a subquery,
+                # which is much slower
+                q = sa.select([model.logs.c.id])
+                q = q.select_from(model.logs)
+                q = q.where(model.logs.c.type == 'd')
 
-            # delete their logchunks
-            res = conn.execute(
-                model.logchunks.delete()
-                .where(model.logchunks.c.logid.in_(q))
-            )
+                # delete their logchunks
+                q = model.logchunks.delete().where(model.logchunks.c.logid.in_(q))
+            else:
+                q = model.logchunks.delete()
+                q = q.where(model.logs.c.id == model.logchunks.c.logid)
+                q = q.where(model.logs.c.type == 'd')
+
+            res = conn.execute(q)
             res.close()
-            res = conn.execute(sa.select([sa.func.count(model.logchunks.c.content)]))
+            res = conn.execute(sa.select([sa.func.count(model.logchunks.c.logid)]))
             count2 = res.fetchone()[0]
             res.close()
             return count1 - count2

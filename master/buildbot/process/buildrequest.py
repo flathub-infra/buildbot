@@ -125,7 +125,7 @@ class TempSourceStamp:
         # SourceStampsConnectorComponent.findSourceStampId
         result = {}
         for attr in self.ATTRS:
-            result[attr] = self._ssdict[attr]
+            result[attr] = self._ssdict.get(attr)
 
         patch = self._ssdict.get('patch') or {}
         for attr in self.PATCH_ATTRS:
@@ -296,14 +296,15 @@ class BuildRequest:
             # if both have changes, proceed, else fail - if no changes check revision instead
             if selfChanges and otherChanges:
                 continue
-            elif selfChanges and not otherChanges:
+
+            if selfChanges and not otherChanges:
                 return False
 
-            elif not selfChanges and otherChanges:
+            if not selfChanges and otherChanges:
                 return False
 
             # else check revisions
-            elif selfSS['revision'] != otherSS['revision']:
+            if selfSS['revision'] != otherSS['revision']:
                 return False
 
         return True

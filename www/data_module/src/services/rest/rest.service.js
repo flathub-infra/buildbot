@@ -10,14 +10,14 @@ class Rest {
         return new (RestService = class RestService {
             execute(config) {
                 return $q((resolve, reject) =>
-                    $http(config)
-                    .success(function(response) {
+                    $http(config).then(function(response) {
                         try {
-                            const data = angular.fromJson(response);
-                            return resolve(data);
+                            const data = angular.fromJson(response.data);
+                            resolve(data);
                         } catch (e) {
-                            return reject(e);
-                        }}).error(reason => reject(reason))
+                            reject(e);
+                        }
+                    }, function(response) { reject(response.data); })
                 );
             }
 

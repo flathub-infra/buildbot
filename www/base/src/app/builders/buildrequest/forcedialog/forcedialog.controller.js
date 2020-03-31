@@ -53,7 +53,7 @@ class forceDialog {
             if (buildname) {
                 label = label + " for " + buildname;
             }
-            return angular.extend($scope, {
+            angular.extend($scope, {
                 rootfield: {
                     type: 'nested',
                     layout: 'simple',
@@ -62,7 +62,13 @@ class forceDialog {
                 },
                 sch: scheduler,
                 sch_label: label,
+                startDisabled: false,
                 ok() {
+                    if ($scope.startDisabled == true) {
+                        // prevent multiple executions of scheduler
+                        return null;
+                    };
+                    $scope.startDisabled = true;
                     const params =
                         {builderid};
                     for (let name in all_fields_by_name) {
@@ -71,8 +77,8 @@ class forceDialog {
                     }
 
                     return scheduler.control('force', params)
-                    .then(res => modal.modal.close(res.result)
-                    ,   function(err) {
+                    .then(res => modal.modal.close(res.result), function(err) {
+                        $scope.startDisabled = false;
                         if (err === null) {
                             return;
                         }
@@ -82,9 +88,8 @@ class forceDialog {
                                 all_fields_by_name[k].errors = v;
                                 all_fields_by_name[k].haserrors = true;
                             }
-                            return null;
                         } else {
-                            return $scope.error = err.error.message;
+                            $scope.error = err.error.message;
                         }
                     });
                 },

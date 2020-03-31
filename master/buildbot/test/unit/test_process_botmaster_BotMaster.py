@@ -29,11 +29,12 @@ from buildbot.test.util.misc import TestReactorMixin
 
 class TestCleanShutdown(TestReactorMixin, unittest.TestCase):
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.setUpTestReactor()
         self.master = fakemaster.make_master(self, wantData=True)
         self.botmaster = BotMaster()
-        self.botmaster.setServiceParent(self.master)
+        yield self.botmaster.setServiceParent(self.master)
         self.botmaster.startService()
 
     def assertReactorStopped(self, _=None):
@@ -72,20 +73,20 @@ class TestCleanShutdown(TestReactorMixin, unittest.TestCase):
 
     def test_shutdown_idle(self):
         """Test that the master shuts down when it's idle"""
-        self.botmaster.cleanShutdown(_reactor=self.reactor)
+        self.botmaster.cleanShutdown()
         self.assertReactorStopped()
 
     def test_shutdown_busy(self):
         """Test that the master shuts down after builds finish"""
         self.makeFakeBuild()
 
-        self.botmaster.cleanShutdown(_reactor=self.reactor)
+        self.botmaster.cleanShutdown()
 
         # check that we haven't stopped yet, since there's a running build
         self.assertReactorNotStopped()
 
         # try to shut it down again, just to check that this does not fail
-        self.botmaster.cleanShutdown(_reactor=self.reactor)
+        self.botmaster.cleanShutdown()
 
         # Now we cause the build to finish
         self.finishFakeBuild()
@@ -97,7 +98,7 @@ class TestCleanShutdown(TestReactorMixin, unittest.TestCase):
         """Test that the master shuts down after builds finish"""
         self.makeFakeBuild()
 
-        self.botmaster.cleanShutdown(quickMode=True, _reactor=self.reactor)
+        self.botmaster.cleanShutdown(quickMode=True)
 
         # And now we should be stopped
         self.assertReactorStopped()
@@ -107,7 +108,7 @@ class TestCleanShutdown(TestReactorMixin, unittest.TestCase):
         """Test that the master shuts down after builds finish"""
         self.makeFakeBuild(waitedFor=True)
 
-        self.botmaster.cleanShutdown(quickMode=True, _reactor=self.reactor)
+        self.botmaster.cleanShutdown(quickMode=True)
 
         # And now we should be stopped
         self.assertReactorStopped()
@@ -123,7 +124,7 @@ class TestCleanShutdown(TestReactorMixin, unittest.TestCase):
         """Test that we can cancel a shutdown"""
         self.makeFakeBuild()
 
-        self.botmaster.cleanShutdown(_reactor=self.reactor)
+        self.botmaster.cleanShutdown()
 
         # Next we check that we haven't stopped yet, since there's a running
         # build.
@@ -147,13 +148,14 @@ class TestCleanShutdown(TestReactorMixin, unittest.TestCase):
 
 class TestBotMaster(TestReactorMixin, unittest.TestCase):
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.setUpTestReactor()
         self.master = fakemaster.make_master(self, wantMq=True, wantData=True)
         self.master.mq = self.master.mq
         self.master.botmaster.disownServiceParent()
         self.botmaster = BotMaster()
-        self.botmaster.setServiceParent(self.master)
+        yield self.botmaster.setServiceParent(self.master)
         self.new_config = mock.Mock()
         self.botmaster.startService()
 

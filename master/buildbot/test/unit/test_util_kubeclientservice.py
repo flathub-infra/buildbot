@@ -13,9 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from __future__ import absolute_import
-from __future__ import print_function
-
 import base64
 import copy
 import os
@@ -62,7 +59,7 @@ class MockFileBase:
 
 
 class KubeClientServiceTestClusterConfig(
-        MockFileBase, config.ConfigErrorsMixin, unittest.SynchronousTestCase):
+        MockFileBase, config.ConfigErrorsMixin, unittest.TestCase):
 
     file_mock_config = {
         'token': 'BASE64_TOKEN',
@@ -82,10 +79,11 @@ class KubeClientServiceTestClusterConfig(
         with self.assertRaisesConfigError('kube_dir not found:'):
             kubeclientservice.KubeInClusterConfigLoader()
 
+    @defer.inlineCallbacks
     def test_basic(self):
         self.patchExist(True)
         config = kubeclientservice.KubeInClusterConfigLoader()
-        self.successResultOf(config.startService())
+        yield config.startService()
         self.assertEqual(
             config.getConfig(), {
                 'headers': {
@@ -99,7 +97,6 @@ class KubeClientServiceTestClusterConfig(
 
 
 KUBE_CTL_PROXY_FAKE = """
-from __future__ import print_function
 import time
 import sys
 
@@ -109,7 +106,6 @@ time.sleep(1000)
 """
 
 KUBE_CTL_PROXY_FAKE_ERROR = """
-from __future__ import print_function
 import time
 import sys
 
@@ -270,12 +266,13 @@ class RealKubeClientServiceTest(TestReactorMixin, unittest.TestCase):
     def expect(self, *args, **kwargs):
         pass
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.setUpTestReactor()
         self.master = fakemaster.make_master(self)
         self.createKube()
-        self.kube.setServiceParent(self.master)
-        return self.master.startService()
+        yield self.kube.setServiceParent(self.master)
+        yield self.master.startService()
 
     def tearDown(self):
         return self.master.stopService()

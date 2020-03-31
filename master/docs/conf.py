@@ -24,10 +24,12 @@ sys.path.insert(1, os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from buildbot.util.raml import RamlSpec
+    from buildbot.reporters.telegram import TelegramContact
 except ImportError:
     sys.path.insert(2, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     os.pardir))
     from buildbot.util.raml import RamlSpec
+    from buildbot.reporters.telegram import TelegramContact
 
 # -- General configuration -----------------------------------------------
 try:
@@ -55,6 +57,7 @@ extensions = [
     'bbdocs.highlighterrors',
     'sphinxcontrib.blockdiag',
     'sphinxcontrib.jinja',
+    'sphinx_rtd_theme',
 ]
 todo_include_todos = True
 
@@ -192,7 +195,7 @@ linkcheck_workers = 20
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'qtile'
+html_theme = 'sphinx_rtd_theme'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -321,8 +324,21 @@ man_pages = [
 ]
 
 jinja_contexts = {
-    "data_api": {'raml': RamlSpec()}
+    "data_api": {'raml': RamlSpec()},
+    "telegram": {'commands': TelegramContact.describe_commands()},
 }
+
+raml_spec = RamlSpec()
+for raml_typename, raml_type in sorted(raml_spec.types.items()):
+    jinja_contexts['data_api_' + raml_typename] = {
+        'raml': raml_spec,
+        'name': raml_typename,
+        'type': raml_type,
+    }
+
+    doc_path = 'developer/raml/{}.rst'.format(raml_typename)
+    if not os.path.exists(doc_path):
+        raise Exception('File {} for RAML type {} does not exist'.format(doc_path, raml_typename))
 
 # Spell checker.
 try:

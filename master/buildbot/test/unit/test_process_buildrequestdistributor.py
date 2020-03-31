@@ -13,10 +13,11 @@
 #
 # Copyright Buildbot Team Members
 
+import random
+
 import mock
 
 from twisted.internet import defer
-from twisted.internet import reactor
 from twisted.python import failure
 from twisted.trial import unittest
 
@@ -109,7 +110,7 @@ class TestBRDBase(TestReactorMixin, unittest.TestCase):
         def maybeStartBuild(worker, builds):
             self.startedBuilds.append((worker.name, builds))
             d = defer.Deferred()
-            reactor.callLater(0, d.callback, True)
+            self.reactor.callLater(0, d.callback, True)
             return d
         bldr.maybeStartBuild = maybeStartBuild
         bldr.getCollapseRequestsFn = lambda: False
@@ -191,7 +192,7 @@ class Test(TestBRDBase):
         def slow_sorter(master, bldrs):
             bldrs.sort(key=lambda b1: b1.name)
             d = defer.Deferred()
-            reactor.callLater(0, d.callback, bldrs)
+            self.reactor.callLater(0, d.callback, bldrs)
 
             def done(_):
                 return _
@@ -215,8 +216,7 @@ class Test(TestBRDBase):
         def _maybeStartBuildsOnBuilder(n):
             # fail slowly, so that the activity loop doesn't exit too soon
             d = defer.Deferred()
-            reactor.callLater(0,
-                              d.errback, failure.Failure(RuntimeError("oh noes")))
+            self.reactor.callLater(0, d.errback, failure.Failure(RuntimeError("oh noes")))
             return d
         self.brd._maybeStartBuildsOnBuilder = _maybeStartBuildsOnBuilder
 
@@ -396,7 +396,7 @@ class TestMaybeStartBuilds(TestBRDBase):
         self.assertBuildsStarted(exp_builds)
 
     @defer.inlineCallbacks
-    def test_no_buildreqests(self):
+    def test_no_buildrequests(self):
         self.addWorkers({'test-worker11': 1})
         yield self.do_test_maybeStartBuildsOnBuilder(exp_claims=[], exp_builds=[])
 
@@ -458,7 +458,7 @@ class TestMaybeStartBuilds(TestBRDBase):
             res_d = old_getBuildRequests(*args, **kwargs)
             long_d = defer.Deferred()
             long_d.addCallback(lambda _: res_d)
-            reactor.callLater(0, long_d.callback, None)
+            self.reactor.callLater(0, long_d.callback, None)
             return long_d
         self.master.db.buildrequests.getBuildRequests = longGetBuildRequests
 
@@ -775,7 +775,6 @@ class TestMaybeStartBuilds(TestBRDBase):
         return self.do_test_nextWorker(nextWorker, exp_choice=0, exp_warning=True)
 
     def test_nextWorker_default(self):
-        import random
         self.patch(random, 'choice', nth_worker(2))
         return self.do_test_nextWorker(None, exp_choice=2)
 

@@ -53,7 +53,7 @@ class Tests(interfaces.InterfaceTests):
 
     def test_signature_updates_addChange(self):
         @self.assertArgSpecMatches(self.data.updates.addChange)
-        def addChange(self, files=None, comments=None, author=None,
+        def addChange(self, files=None, comments=None, author=None, committer=None,
                       revision=None, when_timestamp=None, branch=None, category=None,
                       revlink='', properties=None, repository='', codebase=None,
                       project='', src=None):
@@ -99,22 +99,24 @@ class TestFakeData(TestReactorMixin, unittest.TestCase, Tests):
 
 class TestDataConnector(TestReactorMixin, unittest.TestCase, Tests):
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.setUpTestReactor()
         self.master = fakemaster.make_master(self, wantMq=True)
         self.data = connector.DataConnector()
-        self.data.setServiceParent(self.master)
+        yield self.data.setServiceParent(self.master)
 
 
 class DataConnector(TestReactorMixin, unittest.TestCase):
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.setUpTestReactor()
         self.master = fakemaster.make_master(self)
         # don't load by default
         self.patch(connector.DataConnector, 'submodules', [])
         self.data = connector.DataConnector()
-        self.data.setServiceParent(self.master)
+        yield self.data.setServiceParent(self.master)
 
     def patchFooPattern(self):
         cls = type('FooEndpoint', (base.Endpoint,), {})

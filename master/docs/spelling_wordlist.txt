@@ -4,10 +4,11 @@ addCallbacks
 admin
 admins
 afterwards
+aiohttp
 al
 Allura
-amongst
 AMIs
+amongst
 analyse
 angularjs
 angularJS
@@ -15,6 +16,7 @@ ansible
 apache
 api
 apis
+apiVersion
 app
 apparmor
 appart
@@ -27,12 +29,13 @@ argv
 ascii
 AssertionFailed
 asymmetrics
-Async
 async
+Async
 Atlassian
 attrs
 auth
 Auth
+authorisation
 authUri
 authz
 autoconf
@@ -45,6 +48,7 @@ backends
 Backends
 backoff
 backported
+badgeio
 balancer
 balancers
 basedir
@@ -85,6 +89,7 @@ buildbot
 Buildbot
 buildCacheSize
 builddir
+buildDict
 builderid
 builderids
 buildername
@@ -164,12 +169,13 @@ codebase
 Codebase
 codebaseGenerator
 codebases
+Codecov
 coffeelint
 Coffeelint
 coffeescript
 coffeeScript
-collapseRequests
 collapser
+collapseRequests
 commandId
 commandline
 committer
@@ -267,6 +273,7 @@ doesn
 dom
 downloadFile
 dropdown
+dumpMailsToLog
 durations
 dustin
 ec
@@ -279,6 +286,7 @@ Encodings
 endsWith
 entityType
 entrypoint
+ep
 eq
 errback
 errbacks
@@ -346,6 +354,7 @@ gtk
 guanlecoja
 Guanlecoja
 gz
+gzip
 hackability
 hardcode
 hardcoded
@@ -353,6 +362,8 @@ hardcodes
 hardcoding
 hasn
 Hassler
+hgpoller
+hgweb
 highlevel
 hipchat
 Hipchat
@@ -384,6 +395,7 @@ inlineCallbacks
 inrepo
 inrepos
 instantiation
+insubstantiating
 insubstantiation
 integrators
 interCaps
@@ -396,8 +408,9 @@ io
 ip
 iPhone
 IProperties
-IPv
 iptables
+IPv
+ipv
 irc
 Irc
 IRenderable
@@ -443,6 +456,7 @@ lifecycle
 lighttpd
 lineboundaries
 linenumber
+Linter
 linux
 listdir
 localhost
@@ -480,6 +494,7 @@ MaxQ
 maxWarnCount
 mbcs
 md
+mergeability
 mergeable
 metabuildbot
 metacharacters
@@ -526,6 +541,7 @@ netstrings
 Nevow
 newcred
 newfeature
+newsfragments
 newstyle
 nextBuild
 nextWorker
@@ -609,6 +625,7 @@ procmail
 prois
 propertiesDict
 propKey
+proxying
 psycopg
 Psycopg
 pubDate
@@ -626,8 +643,8 @@ Pythonic
 Pywin
 qcow
 qmail
-queuedir
 queried
+queuedir
 queueing
 Queueing
 Raml
@@ -685,15 +702,17 @@ runtests
 runtime
 runtimes
 sautils
-scalable
 scalability
+scalable
 sched
 schedulerid
 schedulerName
 schedulerNames
 schemas
 scp
+sdist
 searchable
+secretsmount
 sed
 selectable
 sendchange
@@ -749,8 +768,8 @@ stepid
 stopService
 storages
 subclassed
-subclassing
 subclasses
+subclassing
 subcommand
 subcommands
 subdir
@@ -796,6 +815,7 @@ testsuite
 textarea
 tgrid
 tgz
+tls
 th
 timestamp
 Todo
@@ -806,10 +826,10 @@ tracebacks
 tradeoffs
 travelled
 travis
-trustRoot
 triallog
 triggerable
 Triggerable
+trustRoot
 tryclient
 tuple
 tuples
@@ -817,6 +837,8 @@ Tuples
 twistd
 Twistd
 txgithub
+txt
+ubuntu
 Ubuntu
 ues
 ui
@@ -830,8 +852,8 @@ Unclaim
 unclaiming
 uncollectable
 uncomment
-unescaped
 unencrypted
+unescaped
 unhandled
 unices
 unicode
@@ -868,6 +890,7 @@ userlist
 username
 Username
 usernames
+useTls
 utf
 UTF
 util
@@ -908,16 +931,19 @@ websvn
 wgetrc
 Whent
 whereclause
+whitelist
 whitelists
 whitespace
 Whitespace
 Whlie
 wich
+wiki
 wikis
 wil
 wildcard
 wildcards
 Wildcards
+wordlist
 workdir
 Workdir
 workdirs

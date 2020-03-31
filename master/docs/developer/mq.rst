@@ -3,7 +3,7 @@
 Messaging and Queues
 ====================
 
-As of version 0.9.0, Buildbot uses a message-queueing structure to handle asynchronous notifications in a distributed fashion.
+Buildbot uses a message-queueing structure to handle asynchronous notifications in a distributed fashion.
 This avoids, for the most part, the need for each master to poll the database, allowing masters to react to events as they happen.
 
 Overview
@@ -107,6 +107,8 @@ For a filter to match a routing key, it must have the same length, and each elem
 
         Stop invoking the ``callback`` passed to :py:meth:`~MQConnector.startConsuming`.
         This method can be called multiple times for the same :py:class:`QueueRef` instance without harm.
+
+        This method potentially returns a Deferred.
 
         After the first call to this method has returned, the callback will not be invoked.
 

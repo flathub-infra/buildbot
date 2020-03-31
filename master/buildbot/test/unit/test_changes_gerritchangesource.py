@@ -20,6 +20,7 @@ import types
 from twisted.internet import defer
 from twisted.internet import error
 from twisted.internet import reactor
+from twisted.internet import utils
 from twisted.python import failure
 from twisted.trial import unittest
 
@@ -124,6 +125,7 @@ class TestGerritChangeSource(changesource.ChangeSourceMixin,
                        'files': ['unknown'],
                        'repository': 'ssh://someuser@somehost:29418/pr',
                        'author': 'Dustin <dustin@mozilla.com>',
+                       'committer': None,
                        'comments': 'fix 1234',
                        'project': 'pr',
                        'branch': 'br/4321',
@@ -141,7 +143,8 @@ class TestGerritChangeSource(changesource.ChangeSourceMixin,
                                       'event.change.branch': 'br',
                                       'event.type': 'patchset-created',
                                       'event.patchSet.revision': 'abcdef',
-                                      'event.patchSet.number': '12'}}
+                                      'event.patchSet.number': '12',
+                                      'event.source': 'GerritChangeSource'}}
 
     @defer.inlineCallbacks
     def test_lineReceived_patchset_created(self):
@@ -163,6 +166,63 @@ class TestGerritChangeSource(changesource.ChangeSourceMixin,
         c = self.master.data.updates.changesAdded[0]
         for k, v in c.items():
             self.assertEqual(self.expected_change[k], v)
+
+    @defer.inlineCallbacks
+    def test_duplicate_events_ignored(self):
+        s = self.newChangeSource('somehost', 'someuser')
+        yield s.lineReceived(json.dumps(dict(
+            type="patchset-created",
+            change=dict(
+                branch="br",
+                project="pr",
+                number="4321",
+                owner=dict(name="Dustin", email="dustin@mozilla.com"),
+                url="http://buildbot.net",
+                subject="fix 1234"
+            ),
+            patchSet=dict(revision="abcdef", number="12")
+        )))
+        self.assertEqual(len(self.master.data.updates.changesAdded), 1)
+
+        yield s.lineReceived(json.dumps(dict(
+            type="patchset-created",
+            change=dict(
+                branch="br",
+                # Note that this time "project" is a dictionary
+                project=dict(name="pr"),
+                number="4321",
+                owner=dict(name="Dustin", email="dustin@mozilla.com"),
+                url="http://buildbot.net",
+                subject="fix 1234"
+            ),
+            patchSet=dict(revision="abcdef", number="12")
+        )))
+        self.assertEqual(len(self.master.data.updates.changesAdded), 1)
+
+    @defer.inlineCallbacks
+    def test_malformed_events_ignored(self):
+        s = self.newChangeSource('somehost', 'someuser')
+        # "change" not in event
+        yield s.lineReceived(json.dumps(dict(
+            type="patchset-created",
+            patchSet=dict(revision="abcdef", number="12")
+        )))
+        self.assertEqual(len(self.master.data.updates.changesAdded), 0)
+
+        # "patchSet" not in event
+        yield s.lineReceived(json.dumps(dict(
+            type="patchset-created",
+            change=dict(
+                branch="br",
+                # Note that this time "project" is a dictionary
+                project=dict(name="pr"),
+                number="4321",
+                owner=dict(name="Dustin", email="dustin@mozilla.com"),
+                url="http://buildbot.net",
+                subject="fix 1234"
+            ),
+        )))
+        self.assertEqual(len(self.master.data.updates.changesAdded), 0)
 
     change_merged_event = {
         "type": "change-merged",
@@ -189,10 +249,8 @@ class TestGerritChangeSource(changesource.ChangeSourceMixin,
 
     @defer.inlineCallbacks
     def test_handled_events_filter_false(self):
-        s = self.newChangeSource(
-            'somehost', 'some_choosy_user')
+        s = self.newChangeSource('somehost', 'some_choosy_user')
         yield s.lineReceived(json.dumps(self.change_merged_event))
-
         self.assertEqual(len(self.master.data.updates.changesAdded), 0)
 
     @defer.inlineCallbacks
@@ -229,14 +287,83 @@ class TestGerritChangeSource(changesource.ChangeSourceMixin,
 
         s.startStreamProcess()
 
+    # -------------------------------------------------------------------------
+    # Test data for getFiles()
+    # -------------------------------------------------------------------------
+    query_files_success_line1 = {
+        "patchSets": [
+            {
+                "number": 1,
+                "files": [
+                    {"file": "/COMMIT_MSG", "type": "ADDED", "insertions": 13, "deletions": 0},
+                ],
+            },
+            {
+                "number": 13,
+                "files": [
+                    {"file": "/COMMIT_MSG", "type": "ADDED", "insertions": 13, "deletions": 0},
+                    {"file": "file1", "type": "MODIFIED", "insertions": 7, "deletions": 0},
+                    {"file": "file2", "type": "MODIFIED", "insertions": 2, "deletions": -2},
+                ],
+            }
+        ]
+    }
+
+    query_files_success_line2 = {
+        "type": "stats", "rowCount": 1
+    }
+
+    query_files_success = '\n'.join([
+        json.dumps(query_files_success_line1),
+        json.dumps(query_files_success_line2)
+    ]).encode('utf8')
+
+    query_files_failure = b'{"type":"stats","rowCount":0}'
+
+    @defer.inlineCallbacks
+    def test_getFiles(self):
+        s = self.newChangeSource('host', 'user', gerritport=2222)
+        exp_argv = [
+            'ssh', 'user@host', '-p', '2222', 'gerrit', 'query', '1000',
+            '--format', 'JSON', '--files', '--patch-sets'
+        ]
+
+        def getoutput_success(cmd, argv, env):
+            self.assertEqual([cmd, argv], [exp_argv[0], exp_argv[1:]])
+            return self.query_files_success
+
+        def getoutput_failure(cmd, argv, env):
+            return self.query_files_failure
+
+        self.patch(utils, 'getProcessOutput', getoutput_success)
+        res = yield s.getFiles(1000, 13)
+        self.assertEqual(set(res), {'/COMMIT_MSG', 'file1', 'file2'})
+
+        self.patch(utils, 'getProcessOutput', getoutput_failure)
+        res = yield s.getFiles(1000, 13)
+        self.assertEqual(res, ['unknown'])
+
+    @defer.inlineCallbacks
+    def test_getFilesFromEvent(self):
+        s = self.newChangeSource('host', 'user', get_files=True,
+                                 handled_events=["change-merged"])
+
+        def getoutput(cmd, argv, env):
+            return self.query_files_success
+        self.patch(utils, 'getProcessOutput', getoutput)
+
+        yield s.lineReceived(json.dumps(self.change_merged_event))
+        c = self.master.data.updates.changesAdded[0]
+        self.assertEqual(set(c['files']), {'/COMMIT_MSG', 'file1', 'file2'})
+
 
 class TestGerritEventLogPoller(changesource.ChangeSourceMixin,
                                TestReactorMixin,
                                unittest.TestCase):
     NOW_TIMESTAMP = 1479302598
     EVENT_TIMESTAMP = 1479302599
-    NOW_FORMATTED = '2016-16-11 13:23:18'
-    EVENT_FORMATTED = '2016-16-11 13:23:19'
+    NOW_FORMATTED = '2016-11-16 13:23:18'
+    EVENT_FORMATTED = '2016-11-16 13:23:19'
     OBJECTID = 1234
 
     @defer.inlineCallbacks
@@ -287,11 +414,15 @@ class TestGerritEventLogPoller(changesource.ChangeSourceMixin,
         self.master.db.insertTestData([
             fakedb.Object(id=self.OBJECTID, name='GerritEventLogPoller:gerrit',
                           class_name='GerritEventLogPoller')])
-        yield self.newChangeSource()
+        yield self.newChangeSource(get_files=True)
         self.changesource.now = lambda: datetime.datetime.utcfromtimestamp(
             self.NOW_TIMESTAMP)
+        thirty_days_ago = (
+            datetime.datetime.utcfromtimestamp(self.NOW_TIMESTAMP)
+            - datetime.timedelta(days=30))
         self._http.expect(method='get', ep='/plugins/events-log/events/',
-                          params={'t1': self.NOW_FORMATTED},
+                          params={'t1':
+                              thirty_days_ago.strftime("%Y-%m-%d %H:%M:%S")},
                           content_json=dict(
                               type="patchset-created",
                               change=dict(
@@ -306,14 +437,29 @@ class TestGerritEventLogPoller(changesource.ChangeSourceMixin,
                               eventCreatedOn=self.EVENT_TIMESTAMP,
                               patchSet=dict(revision="abcdef", number="12")))
 
+        self._http.expect(
+            method='get',
+            ep='/changes/4321/revisions/12/files/',
+            content=self.change_revision_resp,
+        )
+
         yield self.startChangeSource()
         yield self.changesource.poll()
+
         self.assertEqual(len(self.master.data.updates.changesAdded), 1)
+
         c = self.master.data.updates.changesAdded[0]
+        expected_change = dict(TestGerritChangeSource.expected_change)
+        expected_change['properties'] = dict(expected_change['properties'])
+        expected_change['properties']['event.source'] = 'GerritEventLogPoller'
         for k, v in c.items():
-            self.assertEqual(TestGerritChangeSource.expected_change[k], v)
+            if k == 'files':
+                continue
+            self.assertEqual(expected_change[k], v)
         self.master.db.state.assertState(
             self.OBJECTID, last_event_ts=self.EVENT_TIMESTAMP)
+
+        self.assertEqual(set(c['files']), {'/COMMIT_MSG', 'file1'})
 
         # do a second poll, it should ask for the next events
         self._http.expect(method='get', ep='/plugins/events-log/events/',
@@ -332,9 +478,35 @@ class TestGerritEventLogPoller(changesource.ChangeSourceMixin,
                               eventCreatedOn=self.EVENT_TIMESTAMP + 1,
                               patchSet=dict(revision="abcdef", number="12")))
 
+        self._http.expect(
+            method='get',
+            ep='/changes/4321/revisions/12/files/',
+            content=self.change_revision_resp,
+        )
+
         yield self.changesource.poll()
         self.master.db.state.assertState(
             self.OBJECTID, last_event_ts=self.EVENT_TIMESTAMP + 1)
+
+    change_revision_dict = {
+        '/COMMIT_MSG': {'status': 'A', 'lines_inserted': 9, 'size_delta': 1, 'size': 1},
+        'file1': {'lines_inserted': 9, 'lines_deleted': 2, 'size_delta': 1, 'size': 1},
+    }
+    change_revision_resp = b')]}\n' + json.dumps(change_revision_dict).encode('utf8')
+
+    @defer.inlineCallbacks
+    def test_getFiles(self):
+        yield self.newChangeSource(get_files=True)
+        yield self.startChangeSource()
+
+        self._http.expect(
+            method='get',
+            ep='/changes/100/revisions/1/files/',
+            content=self.change_revision_resp,
+        )
+
+        files = yield self.changesource.getFiles(100, 1)
+        self.assertEqual(set(files), {'/COMMIT_MSG', 'file1'})
 
 
 class TestGerritChangeFilter(unittest.TestCase):

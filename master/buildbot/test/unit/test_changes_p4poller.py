@@ -194,6 +194,7 @@ class TestP4Poller(changesource.ChangeSourceMixin,
             changesAdded[1:] = reversed(changesAdded[1:])
         self.assertEqual(self.master.data.updates.changesAdded, [{
             'author': 'slamb',
+            'committer': None,
             'branch': 'trunk',
             'category': None,
             'codebase': None,
@@ -208,6 +209,7 @@ class TestP4Poller(changesource.ChangeSourceMixin,
             'when_timestamp': datetime2epoch(when1),
         }, {
             'author': 'bob',
+            'committer': None,
             'branch': 'branch_b',
             'category': None,
             'codebase': None,
@@ -224,6 +226,7 @@ class TestP4Poller(changesource.ChangeSourceMixin,
             'when_timestamp': datetime2epoch(when2),
         }, {
             'author': 'bob',
+            'committer': None,
             'branch': 'branch_c',
             'category': None,
             'codebase': None,
@@ -321,13 +324,13 @@ class TestP4Poller(changesource.ChangeSourceMixin,
     @defer.inlineCallbacks
     def test_acquire_ticket_auth(self):
         self.attachChangeSource(
-            P4Source(p4port=None, p4user=None, p4passwd='pass',
+            P4Source(p4port=None, p4user='buildbot_user', p4passwd='pass',
                      p4base='//depot/myproject/',
                      split_file=lambda x: x.split('/', 1),
                      use_tickets=True))
         self.expectCommands(
-            gpo.Expect('p4', '-P', 'TICKET_ID_GOES_HERE',
-                       'changes', '-m', '1', '//depot/myproject/...').stdout(first_p4changes)
+            gpo.Expect(
+                'p4', 'changes', '-m', '1', '//depot/myproject/...').stdout(first_p4changes)
         )
 
         transport = FakeTransport()
@@ -335,29 +338,26 @@ class TestP4Poller(changesource.ChangeSourceMixin,
         # p4poller uses only those arguments at the moment
         def spawnProcess(pp, cmd, argv, env):
             self.assertEqual([cmd, argv],
-                             ['p4', [b'p4', b'login', b'-p']])
+                             ['p4', [b'p4', b'-u', b'buildbot_user', b'login']])
             pp.makeConnection(transport)
-            self.assertEqual('pass\n', transport.msg)
-            pp.outReceived('Enter password:\nSuccess:  Password verified.\nTICKET_ID_GOES_HERE\n')
+            self.assertEqual(b'pass\n', transport.msg)
+            pp.outReceived(b'Enter password:\nUser buildbot_user logged in.\n')
             so = error.ProcessDone(None)
             pp.processEnded(failure.Failure(so))
         self.patch(reactor, 'spawnProcess', spawnProcess)
 
         yield self.changesource.poll()
 
-        self.assertEqual(
-            self.changesource._ticket_passwd, 'TICKET_ID_GOES_HERE')
-
     @defer.inlineCallbacks
-    def test_acquire_ticket_auth2(self):
+    def test_acquire_ticket_auth_fail(self):
         self.attachChangeSource(
             P4Source(p4port=None, p4user=None, p4passwd='pass',
                      p4base='//depot/myproject/',
                      split_file=lambda x: x.split('/', 1),
                      use_tickets=True))
         self.expectCommands(
-            gpo.Expect('p4', '-P', 'TICKET_ID_GOES_HERE',
-                       'changes', '-m', '1', '//depot/myproject/...').stdout(first_p4changes)
+            gpo.Expect(
+                'p4', 'changes', '-m', '1', '//depot/myproject/...').stdout(first_p4changes)
         )
 
         transport = FakeTransport()
@@ -365,49 +365,16 @@ class TestP4Poller(changesource.ChangeSourceMixin,
         # p4poller uses only those arguments at the moment
         def spawnProcess(pp, cmd, argv, env):
             self.assertEqual([cmd, argv],
-                             ['p4', [b'p4', b'login', b'-p']])
+                             ['p4', [b'p4', b'login']])
             pp.makeConnection(transport)
-            self.assertEqual('pass\n', transport.msg)
-            pp.outReceived('Enter password:\nTICKET_ID_GOES_HERE\n')
-            so = error.ProcessDone(None)
-            pp.processEnded(failure.Failure(so))
-        self.patch(reactor, 'spawnProcess', spawnProcess)
-
-        yield self.changesource.poll()
-
-        self.assertEqual(
-            self.changesource._ticket_passwd, 'TICKET_ID_GOES_HERE')
-
-    @defer.inlineCallbacks
-    def test_acquire_ticket_auth2_fail(self):
-        self.attachChangeSource(
-            P4Source(p4port=None, p4user=None, p4passwd='pass',
-                     p4base='//depot/myproject/',
-                     split_file=lambda x: x.split('/', 1),
-                     use_tickets=True))
-        self.expectCommands(
-            gpo.Expect('p4', '-P', None,
-                       'changes', '-m', '1', '//depot/myproject/...').stdout(first_p4changes)
-        )
-
-        transport = FakeTransport()
-
-        # p4poller uses only those arguments at the moment
-        def spawnProcess(pp, cmd, argv, env):
-            self.assertEqual([cmd, argv],
-                             ['p4', [b'p4', b'login', b'-p']])
-            pp.makeConnection(transport)
-            self.assertEqual('pass\n', transport.msg)
-            pp.outReceived('Enter password:\n')
-            pp.errReceived("Password invalid.\n'auth-check' validation failed: Incorrect password!\n")
+            self.assertEqual(b'pass\n', transport.msg)
+            pp.outReceived(b'Enter password:\n')
+            pp.errReceived(b"Password invalid.\n")
             so = error.ProcessDone(status=1)
             pp.processEnded(failure.Failure(so))
         self.patch(reactor, 'spawnProcess', spawnProcess)
 
         yield self.changesource.poll()
-
-        self.assertEqual(
-            self.changesource._ticket_passwd, None)
 
     @defer.inlineCallbacks
     def test_poll_split_file(self):
@@ -439,6 +406,7 @@ class TestP4Poller(changesource.ChangeSourceMixin,
         self.assertEqual(sorted(self.master.data.updates.changesAdded, key=changeKey),
             sorted([{
             'author': 'mpatel',
+            'committer': None,
             'branch': 'branch_c',
             'category': None,
             'codebase': None,
@@ -453,6 +421,7 @@ class TestP4Poller(changesource.ChangeSourceMixin,
             'when_timestamp': datetime2epoch(when),
         }, {
             'author': 'mpatel',
+            'committer': None,
             'branch': 'branch_b',
             'category': None,
             'codebase': None,

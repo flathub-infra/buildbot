@@ -7,6 +7,11 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
  */
 
+import 'angular-animate';
+import '@uirouter/angularjs';
+import 'guanlecoja-ui';
+import 'buildbot-data-js';
+
 class ConsoleState {
     constructor($stateProvider, glMenuServiceProvider, bbSettingsServiceProvider) {
 
@@ -31,7 +36,7 @@ class ConsoleState {
         const state = {
             controller: `${name}Controller`,
             controllerAs: "c",
-            templateUrl: `console_view/views/${name}.html`,
+            template: require('./console.tpl.jade'),
             name,
             url: `/${name}`,
             data: cfg
@@ -101,7 +106,10 @@ class Console {
         this.buildrequests = this.dataAccessor.getBuildrequests({limit: this.buildLimit, order: '-submitted_at'});
         this.buildsets = this.dataAccessor.getBuildsets({limit: this.buildLimit, order: '-submitted_at'});
 
-        this.builds.onChange = (this.changes.onChange = (this.buildrequests.onChange = (this.buildsets.onChange = this.onChange)));
+        this.builds.onChange = this.onChange;
+        this.changes.onChange = this.onChange;
+        this.buildrequests.onChange = this.onChange;
+        this.buildsets.onChange = this.onChange;
     }
 
     onChange(s) {
@@ -111,7 +119,7 @@ class Console {
             return;
         }
         if ((this.onchange_debounce == null)) {
-            return this.onchange_debounce = this.$timeout(this._onChange, 100);
+            this.onchange_debounce = this.$timeout(this._onChange, 100);
         }
     }
 
@@ -467,7 +475,7 @@ class Console {
     selectBuild(build) {
         let modal;
         return modal = this.$uibModal.open({
-            templateUrl: 'console_view/views/modal.html',
+            template: require('./view/modal/modal.tpl.jade'),
             controller: 'consoleModalController as modal',
             windowClass: 'modal-big',
             resolve: {
@@ -494,3 +502,5 @@ angular.module('console_view', [
     'ui.router', 'ui.bootstrap', 'ngAnimate', 'guanlecoja.ui', 'bbData'])
 .config(['$stateProvider', 'glMenuServiceProvider', 'bbSettingsServiceProvider', ConsoleState])
 .controller('consoleController', ['$scope', '$q', '$window', 'dataService', 'bbSettingsService', 'resultsService', '$uibModal', '$timeout', Console]);
+
+require('./view/modal/modal.controller.js');

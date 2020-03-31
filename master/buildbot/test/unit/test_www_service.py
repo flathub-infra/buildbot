@@ -37,6 +37,19 @@ from buildbot.www import rest
 from buildbot.www import service
 
 
+class FakeChannel:
+    transport = None
+
+    def isSecure(self):
+        return False
+
+    def getPeer(self):
+        return None
+
+    def getHost(self):
+        return None
+
+
 class NeedsReconfigResource(resource.Resource):
 
     needsReconfig = True
@@ -48,11 +61,12 @@ class NeedsReconfigResource(resource.Resource):
 
 class Test(TestReactorMixin, www.WwwTestMixin, unittest.TestCase):
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.setUpTestReactor()
         self.master = self.make_master(url='h:/a/b/')
         self.svc = self.master.www = service.WWWService()
-        self.svc.setServiceParent(self.master)
+        yield self.svc.setServiceParent(self.master)
 
     def makeConfig(self, **kwargs):
         w = dict(port=None, auth=auth.NoAuth(), logfileName='l')
@@ -252,19 +266,6 @@ class TestBuildbotSite(unittest.SynchronousTestCase):
 
     def test_updateSession(self):
         session = self.site.makeSession()
-
-        class FakeChannel:
-            transport = None
-
-            def isSecure(self):
-                return False
-
-            def getPeer(self):
-                return None
-
-            def getHost(self):
-                return None
-
         request = Request(FakeChannel(), False)
         request.sitepath = [b"bb"]
         session.updateSession(request)
@@ -274,3 +275,7 @@ class TestBuildbotSite(unittest.SynchronousTestCase):
                              algorithms=[service.SESSION_SECRET_ALGORITHM])
         self.assertEqual(decoded['user_info'], {'anonymous': True})
         self.assertIn('exp', decoded)
+
+    def test_absentServerHeader(self):
+        request = Request(FakeChannel(), False)
+        self.assertEqual(request.responseHeaders.hasHeader('Server'), False)

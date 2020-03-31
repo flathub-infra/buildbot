@@ -389,6 +389,15 @@ class MasterConfig(util.ComparableMixin):
                        check_type=(str,), check_type_name='a string')
 
         copy_str_param('title', alt_key='projectName')
+
+        max_title_len = 18
+        if len(self.title) > max_title_len:
+            # Warn if the title length limiting logic in www/base/src/app/app.route.js
+            # would hide the title.
+            warnings.warn('WARNING: Title is too long to be displayed. ' +
+                          '"Buildbot" will be used instead.',
+                          category=ConfigWarning)
+
         copy_str_param('titleURL', alt_key='projectURL')
         copy_str_param('buildbotURL')
 
@@ -436,8 +445,7 @@ class MasterConfig(util.ComparableMixin):
 
         if self.logCompressionMethod == "lz4":
             try:
-
-                import lz4
+                import lz4  # pylint: disable=import-outside-toplevel
                 [lz4]
             except ImportError:
                 error(
@@ -759,6 +767,7 @@ class MasterConfig(util.ComparableMixin):
                    'plugins', 'auth', 'authz', 'avatar_methods', 'logfileName',
                    'logRotateLength', 'maxRotatedFiles', 'versions',
                    'change_hook_dialects', 'change_hook_auth',
+                   'default_page',
                    'custom_templates_dir', 'cookie_expiration_time',
                    'ui_default_config'}
         unknown = set(list(www_cfg)) - allowed

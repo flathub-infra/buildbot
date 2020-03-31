@@ -190,15 +190,16 @@ class Trigger(BuildStep):
             if isinstance(results, tuple):
                 results, brids_dict = results
 
+                # brids_dict.values() represents the list of brids kicked by a certain scheduler.
+                # We want to ignore the result of ANY brid that was kicked off
+                # by an UNimportant scheduler.
+                if set(unimportant_brids).issuperset(set(brids_dict.values())):
+                    continue
+
             if not was_cb:
                 yield self.addLogWithFailure(results)
                 results = EXCEPTION
 
-            # brids_dict.values() represents the list of brids kicked by a certain scheduler.
-            # We want to ignore the result of ANY brid that was kicked off
-            # by an UNimportant scheduler.
-            if set(unimportant_brids).issuperset(set(brids_dict.values())):
-                continue
             overall_results = worst_status(overall_results, results)
         return overall_results
 
@@ -237,15 +238,14 @@ class Trigger(BuildStep):
             if isinstance(element, dict):
                 schedulers_and_props_list = schedulers_and_props
                 break
-            else:
-                # Old-style back compatibility: Convert tuple to dict and make
-                # it important
-                d = {
-                    'sched_name': element[0],
-                    'props_to_set': element[1],
-                    'unimportant': False
-                }
-                schedulers_and_props_list.append(d)
+            # Old-style back compatibility: Convert tuple to dict and make
+            # it important
+            d = {
+                'sched_name': element[0],
+                'props_to_set': element[1],
+                'unimportant': False
+            }
+            schedulers_and_props_list.append(d)
 
         # post process the schedulernames, and raw properties
         # we do this out of the loop, as this can result in errors

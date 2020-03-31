@@ -26,7 +26,9 @@ The password exists to prevent evildoers from interfering with the Buildbot by i
 
 Workers with an unrecognized ``workername`` or a non-matching password will be rejected when they attempt to connect, and a message describing the problem will be written to the log file (see :ref:`Logfiles`).
 
-A configuration for two workers would look like::
+A configuration for two workers would look like:
+
+.. code-block:: python
 
     from buildbot.plugins import worker
     c['workers'] = [
@@ -43,7 +45,9 @@ Properties
 .. index:: Properties; from worker
 
 :class:`Worker` objects can also be created with an optional ``properties`` argument, a dictionary specifying properties that will be available to any builds performed on this worker.
-For example::
+For example:
+
+.. code-block:: python
 
     c['workers'] = [
         worker.Worker('bot-solaris', 'solarispasswd',
@@ -51,19 +55,28 @@ For example::
     ]
 
 :class:`Worker` properties have priority over other sources (:class:`Builder`, :class:`Scheduler`, etc.).
-You may use the ``defaultProperties`` parameter that will only be added to :ref:`Build-Properties` if they are not already set by :ref:`another source <Properties>`::
+You may use the ``defaultProperties`` parameter that will only be added to :ref:`Build-Properties` if they are not already set by :ref:`another source <Properties>`:
+
+.. code-block:: python
 
    c['workers'] = [
        worker.Worker('fast-bot', 'fast-passwd',
                      defaultProperties={'parallel_make': 10}),
    ]
 
+:class:`Worker` collects and exposes ``/etc/os-release`` fields for :ref:<interpolation `Interpolate-DictStyle`>.
+These can be used to determine details about the running operating system, such as distribution and version.
+See https://www.linux.org/docs/man5/os-release.html for details on possible fields.
+Each field is imported with ``os_`` prefix and in lower case. ``os_id``, ``os_id_like``, ``os_version_id`` and ``os_version_codename`` are always set, but can be null.
+
 Limiting Concurrency
 ++++++++++++++++++++
 
 .. index:: Workers; limiting concurrency
 
-The :class:`Worker` constructor can also take an optional ``max_builds`` parameter to limit the number of builds that it will execute simultaneously::
+The :class:`Worker` constructor can also take an optional ``max_builds`` parameter to limit the number of builds that it will execute simultaneously:
+
+.. code-block:: python
 
     c['workers'] = [
         worker.Worker('bot-linux', 'linuxpassword',
@@ -80,7 +93,9 @@ Master-Worker TCP Keepalive
 By default, the buildmaster sends a simple, non-blocking message to each worker every hour.
 These keepalives ensure that traffic is flowing over the underlying TCP connection, allowing the system's network stack to detect any problems before a build is started.
 
-The interval can be modified by specifying the interval in seconds using the ``keepalive_interval`` parameter of :class:`Worker` (defaults to 3600)::
+The interval can be modified by specifying the interval in seconds using the ``keepalive_interval`` parameter of :class:`Worker` (defaults to 3600):
+
+.. code-block:: python
 
     c['workers'] = [
         worker.Worker('bot-linux', 'linuxpasswd',
@@ -98,7 +113,9 @@ Sometimes, the workers go away.
 One very common reason for this is when the worker process is started once (manually) and left running, but then later the machine reboots and the process is not automatically restarted.
 
 If you'd like to have the administrator of the worker (or other people) be notified by email when the worker has been missing for too long, just add the ``notify_on_missing=`` argument to the :class:`Worker` definition.
-This value can be a single email address, or a list of addresses::
+This value can be a single email address, or a list of addresses:
+
+.. code-block:: python
 
     c['workers'] = [
         worker.Worker('bot-solaris', 'solarispasswd',
@@ -109,7 +126,9 @@ By default, this will send email when the worker has been disconnected for more 
 Only one email per connection-loss event will be sent.
 To change the timeout, use ``missing_timeout=`` and give it a number of seconds (the default is 3600).
 
-You can have the buildmaster send email to multiple recipients: just provide a list of addresses instead of a single one::
+You can have the buildmaster send email to multiple recipients: just provide a list of addresses instead of a single one:
+
+.. code-block:: python
 
     c['workers'] = [
         worker.Worker('bot-solaris', 'solarispasswd',
@@ -122,7 +141,9 @@ The email sent this way will use a :class:`MailNotifier` (see :bb:reporter:`Mail
 This provides a way for you to control the *from* address of the email, as well as the relayhost (aka *smarthost*) to use as an SMTP server.
 If no :class:`MailNotifier` is configured on this buildmaster, the worker-missing emails will be sent using a default configuration.
 
-Note that if you want to have a :class:`MailNotifier` for worker-missing emails but not for regular build emails, just create one with ``builders=[]``, as follows::
+Note that if you want to have a :class:`MailNotifier` for worker-missing emails but not for regular build emails, just create one with ``builders=[]``, as follows:
+
+.. code-block:: python
 
     from buildbot.plugins import status, worker
     m = status.MailNotifier(fromaddr='buildbot@localhost', builders=[],
@@ -185,7 +206,9 @@ Instead of configuring a ``worker.Worker``, you have to configure a ``worker.Loc
 As the worker is running on the same process, password is not necessary.
 You can run as many local workers as long as your machine CPU and memory is allowing.
 
-A configuration for two workers would look like::
+A configuration for two workers would look like:
+
+.. code-block:: python
 
     from buildbot.plugins import worker
     c['workers'] = [

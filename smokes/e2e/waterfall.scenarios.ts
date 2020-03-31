@@ -2,20 +2,17 @@
 // to use previous and next link
 
 
-import { ForcePage } from './pages/force';
 import { BuilderPage } from './pages/builder';
 import { WaterfallPage } from './pages/waterfall';
 import { HomePage } from './pages/home';
 import { SettingsPage } from './pages/settings';
 
 describe('waterfall', function() {
-    let force = null;
     let builder = null;
     let waterfall = null;
 
     beforeEach(async () => {
         builder = new BuilderPage('runtests', 'force');
-        force =  new ForcePage();
         waterfall = new WaterfallPage('runtests');
         const settings =  new SettingsPage('runtests');
         await settings.goSettings();
@@ -28,18 +25,42 @@ describe('waterfall', function() {
         await homePage.waitAllBuildsFinished();
     });
 
-    it('should navigate to the waterfall, check one builder and hyperlink', async () => {
+    const createBuildAndWaitForFinish = async () => {
+        await builder.go();
+        const lastbuildid = await builder.getLastFinishedBuildNumber();
+        let force = await builder.goForce();
+        await force.clickStartButtonAndWaitRedirectToBuild();
+        await builder.go();
+        await builder.waitBuildFinished(lastbuildid + 1);
+    };
+
+    it('can go to builder page via hyperlink', async () => {
+        await createBuildAndWaitForFinish();
         await waterfall.go();
         await waterfall.goBuilderAndCheck('runtests');
     });
 
-    it('should navigate to the builds waterfall and check the associated hyperlink', async () => {
+    it('can go to build page via hyperlink in build modal dialog', async () => {
+        await createBuildAndWaitForFinish();
         await waterfall.go();
         await waterfall.goBuildAndCheck();
     });
 
-    it('should navigate to the builds waterfall and open the popup and close it', async () => {
+    it('can open build modal dialog and close it', async () => {
+        await createBuildAndWaitForFinish();
         await waterfall.go();
         await waterfall.goBuildAndClose();
+    });
+
+    it('does url change once tag clicked', async () => {
+        await createBuildAndWaitForFinish();
+        await waterfall.go();
+        await waterfall.goTagAndCheckUrl();
+    });
+
+    it('is tag clicked when url contains tag', async () => {
+        await createBuildAndWaitForFinish();
+        await waterfall.go();
+        await waterfall.goUrlAndCheckTag();
     });
 });

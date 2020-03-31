@@ -80,8 +80,11 @@ class Grid {
             order: '-buildrequestid'
         });
 
-        this.buildsets.onChange = (this.changes.onChange = (this.builders.onChange =
-            (this.buildrequests.change = (this.builds.onChange = this.onChange))));
+        this.buildsets.onChange = this.onChange;
+        this.changes.onChange = this.onChange;
+        this.builders.onChange = this.onChange;
+        this.buildrequests.change = this.onChange;
+        this.builds.onChange = this.onChange;
     }
 
     dataReady() {
@@ -252,23 +255,15 @@ class Grid {
     }
 
     refresh() {
-        this.$stateParams.branch = this.branch;
-        if (this.tags.length === 0) {
-            this.$stateParams.tag = undefined;
-        } else {
-            this.$stateParams.tag = this.tags;
-        }
-        this.$stateParams.result = this.result;
-
         const params = {
-            branch: this.$stateParams.branch,
-            tag: this.$stateParams.tag,
-            result: this.$stateParams.result
+            branch: this.branch,
+            tag: this.tags.length === 0 ? undefined : this.tags,
+            result: this.result
         };
 
         // change URL without reloading page
         this.$state.transitionTo(this.$state.current, params, {notify: false});
-        return this.onChange();
+        this.onChange();
     }
 
     isBuilderDisplayed(builder) {

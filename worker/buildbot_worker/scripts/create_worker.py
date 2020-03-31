@@ -58,11 +58,14 @@ maxdelay = %(maxdelay)d
 numcpus = %(numcpus)s
 allow_shutdown = %(allow-shutdown)s
 maxretries = %(maxretries)s
+use_tls = %(use-tls)s
+delete_leftover_dirs = %(delete-leftover-dirs)s
 
 s = Worker(buildmaster_host, port, workername, passwd, basedir,
            keepalive, umask=umask, maxdelay=maxdelay,
            numcpus=numcpus, allow_shutdown=allow_shutdown,
-           maxRetries=maxretries)
+           maxRetries=maxretries, useTls=use_tls,
+           delete_leftover_dirs=delete_leftover_dirs)
 s.setServiceParent(application)
 """]
 

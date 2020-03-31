@@ -64,20 +64,6 @@ class FakeBuilder(builder.Builder):
         return defer.succeed(None)
 
 
-class MasterSideWorker(worker.Worker):
-
-    detach_d = None
-
-    def attached(self, conn):
-        self.detach_d = defer.Deferred()
-        return super().attached(conn)
-
-    def detached(self):
-        super().detached()
-        self.detach_d, d = None, self.detach_d
-        d.callback(None)
-
-
 class TestingWorker(buildbot_worker.bot.Worker):
     """Add more introspection and scheduling hooks to the real Worker class.
 
@@ -126,7 +112,7 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
     @ivar master: fake build master
     @ivar pbmanager: L{PBManager} instance
     @ivar botmaster: L{BotMaster} instance
-    @ivar buildworker: L{MasterSideWorker} instance
+    @ivar buildworker: L{worker.Worker} instance
     @ivar port: actual TCP port of the master PB service (fixed after call to
                 ``addMasterSideWorker``)
     """
@@ -139,20 +125,20 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
         # set the worker port to a loopback address with unspecified
         # port
         self.pbmanager = self.master.pbmanager = pbmanager.PBManager()
-        self.pbmanager.setServiceParent(self.master)
+        yield self.pbmanager.setServiceParent(self.master)
 
         # remove the fakeServiceParent from fake service hierarchy, and replace
         # by a real one
         yield self.master.workers.disownServiceParent()
         self.workers = self.master.workers = workermanager.WorkerManager(
             self.master)
-        self.workers.setServiceParent(self.master)
+        yield self.workers.setServiceParent(self.master)
 
         self.botmaster = botmaster.BotMaster()
-        self.botmaster.setServiceParent(self.master)
+        yield self.botmaster.setServiceParent(self.master)
 
         self.master.status = master.Status()
-        self.master.status.setServiceParent(self.master)
+        yield self.master.status.setServiceParent(self.master)
         self.master.botmaster = self.botmaster
         self.master.data.updates.workerConfigured = lambda *a, **k: None
         yield self.master.startService()
@@ -160,7 +146,6 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
         self.buildworker = None
         self.port = None
         self.workerworker = None
-        self._detach_deferreds = []
 
         # patch in our FakeBuilder for the regular Builder class
         self.patch(botmaster, 'Builder', FakeBuilder)
@@ -169,21 +154,18 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
 
         self.tmpdirs = set()
 
+    @defer.inlineCallbacks
     def tearDown(self):
         for tmp in self.tmpdirs:
             if os.path.exists(tmp):
                 shutil.rmtree(tmp)
-        deferreds = self._detach_deferreds + [
-            self.pbmanager.stopService(),
-            self.botmaster.stopService(),
-            self.workers.stopService(),
-        ]
+        yield self.pbmanager.stopService()
+        yield self.botmaster.stopService()
+        yield self.workers.stopService()
 
         # if the worker is still attached, wait for it to detach, too
-        if self.buildworker and self.buildworker.detach_d:
-            deferreds.append(self.buildworker.detach_d)
-
-        return defer.gatherResults(deferreds)
+        if self.buildworker:
+            yield self.buildworker.waitForCompleteShutdown()
 
     @defer.inlineCallbacks
     def addMasterSideWorker(self,
@@ -197,7 +179,7 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
 
         @param **kwargs: arguments to pass to the L{Worker} constructor.
         """
-        self.buildworker = MasterSideWorker(name, password, **kwargs)
+        self.buildworker = worker.Worker(name, password, **kwargs)
 
         # reconfig the master to get it set up
         new_config = self.master.config
@@ -218,9 +200,9 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
     def workerSideDisconnect(self, worker):
         """Disconnect from the worker side
 
-        This seems a good way to simulate a broken connection
+        This seems a good way to simulate a broken connection. Returns a Deferred
         """
-        worker.bf.disconnect()
+        return worker.bf.disconnect()
 
     def addWorker(self, connection_string_tpl=r"tcp:host=127.0.0.1:port={port}",
                   password="pw", name="testworker", keepalive=None):
@@ -232,7 +214,7 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
 
     @defer.inlineCallbacks
     def test_connect_disconnect(self):
-        self.addMasterSideWorker()
+        yield self.addMasterSideWorker()
 
         def could_not_connect():
             self.fail("Worker never got connected to master")
@@ -249,7 +231,7 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
 
     @defer.inlineCallbacks
     def test_reconnect_network(self):
-        self.addMasterSideWorker()
+        yield self.addMasterSideWorker()
 
         def could_not_connect():
             self.fail("Worker did not reconnect in time to master")
@@ -261,7 +243,7 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
         self.assertTrue('bldr' in worker.bot.builders)
 
         timeout = reactor.callLater(10, could_not_connect)
-        self.workerSideDisconnect(worker)
+        yield self.workerSideDisconnect(worker)
         yield worker.tests_connected
 
         timeout.cancel()
@@ -275,7 +257,7 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
         The worker starts with a password that the master does not accept
         at first, and then the master gets reconfigured to accept it.
         """
-        self.addMasterSideWorker()
+        yield self.addMasterSideWorker()
         worker = self.addWorker(password="pw2")
         yield worker.startService()
         why, broker = yield worker.tests_login_failed
@@ -297,6 +279,7 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
 
         timeout.cancel()
         self.assertTrue('bldr' in worker.bot.builders)
+
         yield worker.stopService()
         yield worker.tests_disconnected
 
@@ -311,24 +294,24 @@ class TestWorkerConnection(unittest.TestCase, TestReactorMixin):
             waiter = worker.keepalive_waiter
             if waiter is not None:
                 waiter.callback(time.time())
+                worker.keepalive_waiter = None
+
         from buildbot.worker.protocols.pb import Connection
         self.patch(Connection, 'perspective_keepalive', perspective_keepalive)
 
-        self.addMasterSideWorker()
+        yield self.addMasterSideWorker()
         # short keepalive to make the test bearable to run
         worker = self.addWorker(keepalive=0.1)
-        worker.keepalive_waiter = defer.Deferred()
+        waiter = worker.keepalive_waiter = defer.Deferred()
 
         yield worker.startService()
         yield worker.tests_connected
-        first = yield worker.keepalive_waiter
+        first = yield waiter
         yield worker.bf.currentKeepaliveWaiter
 
-        worker.keepalive_waiter = defer.Deferred()
+        waiter = worker.keepalive_waiter = defer.Deferred()
 
-        second = yield worker.keepalive_waiter
-        # avoid errors if a third gets fired
-        worker.keepalive_waiter = None
+        second = yield waiter
         yield worker.bf.currentKeepaliveWaiter
 
         self.assertGreater(second, first)
