@@ -109,8 +109,8 @@ To use these, just include them on the ``buildbot-worker create-worker`` command
 
     This is a string (generally an octal representation of an integer) which will cause the worker process' ``umask`` value to be set shortly after initialization.
     The ``twistd`` daemonization utility forces the umask to 077 at startup (which means that all files created by the worker or its child processes will be unreadable by any user other than the worker account).
-    If you want build products to be readable by other accounts, you can add ``--umask=022`` to tell the worker to fix the umask after twistd clobbers it.
-    If you want build products to be *writable* by other accounts too, use ``--umask=000``, but this is likely to be a security problem.
+    If you want build products to be readable by other accounts, you can add ``--umask=0o22`` to tell the worker to fix the umask after twistd clobbers it.
+    If you want build products to be *writable* by other accounts too, use ``--umask=0o000``, but this is likely to be a security problem.
 
 .. option:: --keepalive
 
@@ -165,6 +165,18 @@ To use these, just include them on the ``buildbot-worker create-worker`` command
 
     Both master and worker must be at least version 0.8.3 for this feature to work.
 
+.. option:: --use-tls
+
+    Can also be passed directly to the Worker constructor in :file:`buildbot.tac`.
+    If set, the generated connection string starts with ``tls`` instead of with ``tcp``, allowing encrypted connection to the buildmaster.
+    Make sure the worker trusts the buildmasters certificate. If you have an non-authoritative certificate (CA is self-signed) see ``connection_string`` below.
+
+.. option:: --delete-leftover-dirs
+
+    Can also be passed directly to the Worker constructor in :file:`buildbot.tac`.
+    If set, unexpected directories in worker base directory will be removed.
+    Otherwise, a warning will be displayed in :file:`twistd.log` so that you can manually remove them.
+
 .. _Other-Worker-Configuration:
 
 Other Worker Configuration
@@ -187,6 +199,10 @@ Other Worker Configuration
 
 Worker TLS Configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~
+
+``tls``
+    See ``--useTls`` option above as an alternative to setting the ``conneciton_string`` manually.
+
 
 ``connection_string``
     For TLS connections to the master the ``connection_string``-argument must be used to ``Worker.__init__`` function. ``buildmaster_host`` and ``port`` must then be ``None``.
@@ -302,11 +318,15 @@ The existing :file:`buildbot.tac` for any workers running older versions will ne
 If the loss of cached worker state (e.g., for Source steps in copy mode) is not problematic, the easiest solution is to simply delete the worker directory and re-run ``buildslave create-slave``.
 
 If deleting the worker directory is problematic, the change to :file:`buildbot.tac` is simple.
-On line 3, replace::
+On line 3, replace:
+
+.. code-block:: python
 
     from buildbot.slave.bot import BuildSlave
 
-with::
+with:
+
+.. code-block:: python
 
     from buildslave.bot import BuildSlave
 
@@ -329,29 +349,41 @@ If the loss of cached worker state (e.g., for Source steps in copy mode) is not 
 
 If deleting the worker directory is problematic, you can change :file:`buildbot.tac` in the following way:
 
-1. Replace::
+1. Replace:
+
+   .. code-block:: python
 
        from buildslave.bot import BuildSlave
 
-   with::
+   with:
+
+   .. code-block:: python
 
        from buildbot_worker.bot import Worker
 
-2. Replace::
+2. Replace:
+
+   .. code-block:: python
 
        application = service.Application('buildslave')
 
-   with::
+   with:
+
+   .. code-block:: python
 
        application = service.Application('buildbot-worker')
 
-3. Replace::
+3. Replace:
+
+   .. code-block:: python
 
        s = BuildSlave(buildmaster_host, port, slavename, passwd, basedir,
                       keepalive, usepty, umask=umask, maxdelay=maxdelay,
                       numcpus=numcpus, allow_shutdown=allow_shutdown)
 
-   with::
+   with:
+
+   .. code-block:: python
 
        s = Worker(buildmaster_host, port, slavename, passwd, basedir,
                   keepalive, umask=umask, maxdelay=maxdelay,

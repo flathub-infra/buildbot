@@ -19,6 +19,7 @@ import itertools
 import json
 import locale
 import re
+import sys
 import textwrap
 import time
 from builtins import bytes
@@ -104,6 +105,44 @@ def formatInterval(eta):
         eta %= 60
     eta_parts.append("%d secs" % eta)
     return ", ".join(eta_parts)
+
+
+def fuzzyInterval(seconds):
+    """
+    Convert time interval specified in seconds into fuzzy, human-readable form
+    """
+    if seconds <= 1:
+        return "a moment"
+    if seconds < 20:
+        return "{:d} seconds".format(seconds)
+    if seconds < 55:
+        return "{:d} seconds".format(round(seconds / 10.) * 10)
+    minutes = round(seconds / 60.)
+    if minutes == 1:
+        return "a minute"
+    if minutes < 20:
+        return "{:d} minutes".format(minutes)
+    if minutes < 55:
+        return "{:d} minutes".format(round(minutes / 10.) * 10)
+    hours = round(minutes / 60.)
+    if hours == 1:
+        return "an hour"
+    if hours < 24:
+        return "{:d} hours".format(hours)
+    days = (hours + 6) // 24
+    if days == 1:
+        return "a day"
+    if days < 30:
+        return "{:d} days".format(days)
+    months = int((days + 10) / 30.5)
+    if months == 1:
+        return "a month"
+    if months < 12:
+        return "{} months".format(months)
+    years = round(days / 365.25)
+    if years == 1:
+        return "a year"
+    return "{} years".format(years)
 
 
 @implementer(IConfigured)
@@ -317,7 +356,7 @@ def in_reactor(f):
 
             @d.addErrback
             def eb(f):
-                f.printTraceback()
+                f.printTraceback(file=sys.stderr)
 
             @d.addBoth
             def do_stop(r):
@@ -345,8 +384,12 @@ def string2boolean(str):
     }[str.lower()]
 
 
-def asyncSleep(delay):
-    from twisted.internet import reactor, defer
+def asyncSleep(delay, reactor=None):
+    from twisted.internet import defer
+    from twisted.internet import reactor as internet_reactor
+    if reactor is None:
+        reactor = internet_reactor
+
     d = defer.Deferred()
     reactor.callLater(delay, d.callback, None)
     return d

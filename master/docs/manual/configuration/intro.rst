@@ -24,7 +24,9 @@ If you *are* comfortable writing Python code, however, you can use all the power
 The ``BuildmasterConfig`` name is the only one which matters: all other names defined during the execution of the file are discarded.
 When parsing the config file, the Buildmaster generally compares the old configuration with the new one and performs the minimum set of actions necessary to bring the Buildbot up to date: :class:`Builder`\s which are not changed are left untouched, and :class:`Builder`\s which are modified get to keep their old event history.
 
-The beginning of the :file:`master.cfg` file typically starts with something like::
+The beginning of the :file:`master.cfg` file typically starts with something like:
+
+.. code-block:: python
 
     BuildmasterConfig = c = {}
 
@@ -57,7 +59,9 @@ The following symbols are automatically available for use in the configuration f
     the base directory for the buildmaster.
     This string has not been expanded, so it may start with a tilde.
     It needs to be expanded before use.
-    The config file is located in::
+    The config file is located in:
+
+    .. code-block:: python
 
         os.path.expanduser(os.path.join(basedir, 'master.cfg'))
 
@@ -158,7 +162,7 @@ This means that buildmaster will be able to start new builds that would otherwis
    Buildbot's reconfiguration system is fragile for a few difficult-to-fix reasons:
 
    * Any modules imported by the configuration file are not automatically reloaded.
-     Python modules such as http://pypi.python.org/pypi/lazy-reload may help here, but reloading modules is fraught with subtleties and difficult-to-decipher failure cases.
+     Python modules such as https://docs.python.org/3/library/importlib.html and `importlib.reload()` may help here, but reloading modules is fraught with subtleties and difficult-to-decipher failure cases.
 
    * During the reconfiguration, active internal objects are divorced from the service hierarchy, leading to tracebacks in the web interface and other components.
      These are ordinarily transient, but with HTTP connection caching (either by the browser or an intervening proxy) they can last for a long time.

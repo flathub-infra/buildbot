@@ -85,6 +85,15 @@ class TestStatsServicesConfiguration(TestStatsServicesBase):
         self.stats_service.reconfigService(new_storage_backends)
         self.checkEqual(new_storage_backends)
 
+    def test_reconfig_with_consumers(self):
+        backend = fakestats.FakeStatsStorageService(name='One')
+        backend.captures = [capture.CaptureProperty('test_builder', 'test')]
+        new_storage_backends = [backend]
+
+        self.stats_service.reconfigService(new_storage_backends)
+        self.stats_service.reconfigService(new_storage_backends)
+        self.assertEqual(len(self.master.mq.qrefs), 1)
+
     def test_bad_configuration(self):
         # Reconfigure with a bad configuration.
         new_storage_backends = [mock.Mock()]
@@ -111,7 +120,7 @@ class TestInfluxDB(TestStatsServicesBase, logging.LoggingMixin):
         captures = [capture.CaptureProperty('test_builder', 'test')]
         try:
             # Try to import
-            import influxdb
+            import influxdb  # pylint: disable=import-outside-toplevel
             # consume it somehow to please pylint
             [influxdb]
         except ImportError:

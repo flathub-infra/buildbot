@@ -15,6 +15,7 @@
 
 
 import inspect
+import sqlite3
 import time
 import traceback
 
@@ -139,16 +140,23 @@ class DBThreadPool:
         if not self.running:
             self._pool.start()
             self._stop_evt = self.reactor.addSystemEventTrigger(
-                'during', 'shutdown', self._stop)
+                'during', 'shutdown', self._stop_nowait)
             self.running = True
 
-    def _stop(self):
+    def _stop_nowait(self):
         self._stop_evt = None
-        threads.deferToThreadPool(
-            self.reactor, self._pool, self.engine.dispose)
+        threads.deferToThreadPool(self.reactor, self._pool, self.engine.dispose)
         self._pool.stop()
         self.running = False
 
+    @defer.inlineCallbacks
+    def _stop(self):
+        self._stop_evt = None
+        yield threads.deferToThreadPool(self.reactor, self._pool, self.engine.dispose)
+        self._pool.stop()
+        self.running = False
+
+    @defer.inlineCallbacks
     def shutdown(self):
         """Manually stop the pool.  This is only necessary from tests, as the
         pool will stop itself when the reactor stops under normal
@@ -156,7 +164,7 @@ class DBThreadPool:
         if not self._stop_evt:
             return  # pool is already stopped
         self.reactor.removeSystemEventTrigger(self._stop_evt)
-        self._stop()
+        yield self._stop()
 
     # Try about 170 times over the space of a day, with the last few tries
     # being about an hour apart.  This is designed to span a reasonable amount
@@ -229,5 +237,4 @@ class DBThreadPool:
         return ret
 
     def get_sqlite_version(self):
-        import sqlite3
         return sqlite3.sqlite_version_info

@@ -77,6 +77,8 @@ def getMaster(case, reactor, config_dict):
     master.db.setup = lambda: None
 
     yield master.startService()
+
+    case.addCleanup(master.db.pool.shutdown)
     case.addCleanup(master.stopService)
 
     return master
@@ -94,8 +96,13 @@ class RunFakeMasterTestCase(unittest.TestCase, TestReactorMixin,
 
     @defer.inlineCallbacks
     def getMaster(self, config_dict):
-        self.master = master = yield getMaster(self, self.reactor, config_dict)
-        defer.returnValue(master)
+        self.master = yield getMaster(self, self.reactor, config_dict)
+        return self.master
+
+    @defer.inlineCallbacks
+    def reconfigMaster(self, config_dict):
+        self.master.config_loader.config_dict = config_dict
+        yield self.master.doReconfig()
 
     def createLocalWorker(self, name, **kwargs):
         workdir = FilePath(self.mktemp())
@@ -187,7 +194,7 @@ class RunMasterBase(unittest.TestCase):
             self.w = None
 
         if self.w is not None:
-            self.w.setServiceParent(m)
+            yield self.w.setServiceParent(m)
 
         @defer.inlineCallbacks
         def dump():

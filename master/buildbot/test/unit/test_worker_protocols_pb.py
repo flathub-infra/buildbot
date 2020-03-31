@@ -32,19 +32,21 @@ class TestListener(TestReactorMixin, unittest.TestCase):
         self.setUpTestReactor()
         self.master = fakemaster.make_master(self)
 
+    @defer.inlineCallbacks
     def makeListener(self):
         listener = pb.Listener()
-        listener.setServiceParent(self.master)
+        yield listener.setServiceParent(self.master)
         return listener
 
+    @defer.inlineCallbacks
     def test_constructor(self):
-        listener = self.makeListener()
+        listener = yield self.makeListener()
         self.assertEqual(listener.master, self.master)
         self.assertEqual(listener._registrations, {})
 
     @defer.inlineCallbacks
     def test_updateRegistration_simple(self):
-        listener = self.makeListener()
+        listener = yield self.makeListener()
         reg = yield listener.updateRegistration('example', 'pass', 'tcp:1234')
         self.assertEqual(self.master.pbmanager._registrations,
                          [('tcp:1234', 'example', 'pass')])
@@ -53,7 +55,7 @@ class TestListener(TestReactorMixin, unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_updateRegistration_pass_changed(self):
-        listener = self.makeListener()
+        listener = yield self.makeListener()
         listener.updateRegistration('example', 'pass', 'tcp:1234')
         reg1 = yield listener.updateRegistration('example', 'pass1', 'tcp:1234')
         self.assertEqual(
@@ -63,7 +65,7 @@ class TestListener(TestReactorMixin, unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_updateRegistration_port_changed(self):
-        listener = self.makeListener()
+        listener = yield self.makeListener()
         listener.updateRegistration('example', 'pass', 'tcp:1234')
         reg1 = yield listener.updateRegistration('example', 'pass', 'tcp:4321')
         self.assertEqual(
@@ -73,7 +75,7 @@ class TestListener(TestReactorMixin, unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_getPerspective(self):
-        listener = self.makeListener()
+        listener = yield self.makeListener()
         worker = mock.Mock()
         worker.workername = 'test'
         mind = mock.Mock()
@@ -115,12 +117,18 @@ class TestConnection(TestReactorMixin, unittest.TestCase):
         conn = pb.Connection(self.master, self.worker, self.mind)
         att = yield conn.attached(self.mind)
 
-        self.assertNotEqual(conn.keepalive_timer, None)
         self.worker.attached.assert_called_with(conn)
         self.assertEqual(att, conn)
 
-        conn.detached(self.mind)
+        self.reactor.pump([10] * 361)
+        self.mind.callRemote.assert_has_calls([
+            mock.call('print', message="keepalive")
+        ])
 
+        conn.detached(self.mind)
+        yield conn.waitShutdown()
+
+    @defer.inlineCallbacks
     def test_detached(self):
         conn = pb.Connection(self.master, self.worker, self.mind)
         conn.attached(self.mind)
@@ -128,6 +136,7 @@ class TestConnection(TestReactorMixin, unittest.TestCase):
 
         self.assertEqual(conn.keepalive_timer, None)
         self.assertEqual(conn.mind, None)
+        yield conn.waitShutdown()
 
     def test_loseConnection(self):
         conn = pb.Connection(self.master, self.worker, self.mind)
@@ -320,9 +329,10 @@ class TestConnection(TestReactorMixin, unittest.TestCase):
         self.assertIsInstance(callargs[1], pb.RemoteCommand)
         self.assertEqual(callargs[1].impl, RCInstance)
 
-    def test_doKeepalive(self):
+    @defer.inlineCallbacks
+    def test_do_keepalive(self):
         conn = pb.Connection(self.master, self.worker, self.mind)
-        conn.doKeepalive()
+        yield conn._do_keepalive()
 
         self.mind.callRemote.assert_called_with('print', message="keepalive")
 
@@ -345,14 +355,24 @@ class TestConnection(TestReactorMixin, unittest.TestCase):
 
         builders['builder'].callRemote.assert_called_with('startBuild')
 
+    @defer.inlineCallbacks
     def test_startStopKeepaliveTimer(self):
         conn = pb.Connection(self.master, self.worker, self.mind)
-
         conn.startKeepaliveTimer()
-        self.assertNotEqual(conn.keepalive_timer, None)
+
+        self.mind.callRemote.assert_not_called()
+        self.reactor.pump([10] * 361)
+        self.mind.callRemote.assert_has_calls([
+            mock.call('print', message="keepalive")
+        ])
+        self.reactor.pump([10] * 361)
+        self.mind.callRemote.assert_has_calls([
+            mock.call('print', message="keepalive"),
+            mock.call('print', message="keepalive"),
+        ])
 
         conn.stopKeepaliveTimer()
-        self.assertEqual(conn.keepalive_timer, None)
+        yield conn.waitShutdown()
 
     def test_perspective_shutdown(self):
         conn = pb.Connection(self.master, self.worker, self.mind)

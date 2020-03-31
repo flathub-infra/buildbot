@@ -1,6 +1,5 @@
 class Apps {
-    constructor($scope, $log, dataService, resultsService, bbSettingsService, $stateParams,
-        $location, dataGrouperService, $rootScope, $filter) {
+    constructor($scope, dataService, bbSettingsService, resultsService, dataGrouperService, $stateParams, $state, glTopbarContextualActionsService, glBreadcrumbService) {
         // make resultsService utilities available in the template
         _.mixin($scope, resultsService);
 
@@ -21,4 +20,4 @@ class Apps {
 }
 
 angular.module('app')
-.controller('appsController', ['$scope', '$log', 'dataService', 'resultsService', 'bbSettingsService', '$stateParams', '$location', 'dataGrouperService', '$rootScope', '$filter', Apps]);
+.controller('appsController', ['$scope', 'dataService', 'bbSettingsService', 'resultsService', 'dataGrouperService', '$stateParams', '$state', 'glTopbarContextualActionsService', 'glBreadcrumbService', Apps]);

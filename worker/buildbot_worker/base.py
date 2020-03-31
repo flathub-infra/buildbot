@@ -18,6 +18,7 @@ from __future__ import print_function
 
 import multiprocessing
 import os.path
+import shutil
 import socket
 import sys
 
@@ -70,8 +71,9 @@ class WorkerForBuilderBase(service.Service):
     def __repr__(self):
         return "<WorkerForBuilder '{0}' at {1}>".format(self.name, id(self))
 
+    @defer.inlineCallbacks
     def setServiceParent(self, parent):
-        service.Service.setServiceParent(self, parent)
+        yield service.Service.setServiceParent(self, parent)
         self.bot = self.parent
         # note that self.parent will go away when the buildmaster's config
         # file changes and this Builder is removed (possibly because it has
@@ -240,13 +242,20 @@ class BotBase(service.MultiService):
     name = "bot"
     WorkerForBuilder = WorkerForBuilderBase
 
-    def __init__(self, basedir, unicode_encoding=None):
+    os_release_file = "/etc/os-release"
+
+    def __init__(self, basedir, unicode_encoding=None, delete_leftover_dirs=False):
         service.MultiService.__init__(self)
         self.basedir = basedir
         self.numcpus = None
         self.unicode_encoding = unicode_encoding or sys.getfilesystemencoding(
         ) or 'ascii'
+        self.delete_leftover_dirs = delete_leftover_dirs
         self.builders = {}
+
+    # for testing purposes
+    def setOsReleaseFile(self, os_release_file):
+        self.os_release_file = os_release_file
 
     def startService(self):
         assert os.path.isdir(self.basedir)
@@ -295,14 +304,40 @@ class BotBase(service.MultiService):
         for dir in os.listdir(self.basedir):
             if os.path.isdir(os.path.join(self.basedir, dir)):
                 if dir not in wanted_dirs:
-                    log.msg("I have a leftover directory '{0}' that is not "
-                            "being used by the buildmaster: you can delete "
-                            "it now".format(dir))
+                    if self.delete_leftover_dirs:
+                        log.msg("Deleting directory '{0}' that is not being "
+                                "used by the buildmaster".format(dir))
+                        try:
+                            shutil.rmtree(dir)
+                        except OSError as e:
+                            log.msg("Cannot remove directory '{0}': "
+                                    "{1}".format(dir, e))
+                    else:
+                        log.msg("I have a leftover directory '{0}' that is not "
+                                "being used by the buildmaster: you can delete "
+                                "it now".format(dir))
 
         defer.returnValue(retval)
 
     def remote_print(self, message):
         log.msg("message from master:", message)
+
+    @staticmethod
+    def _read_os_release(os_release_file, props):
+        if not os.path.exists(os_release_file):
+            return
+
+        with open(os_release_file, "r") as fin:
+            for line in fin:
+                line = line.strip("\r\n")
+                # as per man page: Lines beginning with "#" shall be ignored as comments.
+                if len(line) == 0 or line.startswith('#'):
+                    continue
+                # parse key-values
+                key, value = line.split("=", 1)
+                if value:
+                    key = 'os_%s' % key.lower()
+                    props[key] = value.strip('"')
 
     def remote_getWorkerInfo(self):
         """This command retrieves data from the files in WORKERDIR/info/* and
@@ -320,6 +355,9 @@ class BotBase(service.MultiService):
                 if os.path.isfile(filename):
                     with open(filename, "r") as fin:
                         files[f] = fin.read()
+
+        self._read_os_release(self.os_release_file, files)
+
         if not self.numcpus:
             try:
                 self.numcpus = multiprocessing.cpu_count()
@@ -354,11 +392,13 @@ class WorkerBase(service.MultiService):
 
     def __init__(self, name, basedir,
                  umask=None,
-                 unicode_encoding=None):
+                 unicode_encoding=None,
+                 delete_leftover_dirs=False):
 
         service.MultiService.__init__(self)
         self.name = name
-        bot = self.Bot(basedir, unicode_encoding=unicode_encoding)
+        bot = self.Bot(basedir, unicode_encoding=unicode_encoding,
+                       delete_leftover_dirs=delete_leftover_dirs)
         bot.setServiceParent(self)
         self.bot = bot
         self.umask = umask

@@ -12,7 +12,7 @@ class Basefield {
             transclude: true,
             restrict: 'E',
             scope: true,
-            templateUrl: "views/basefield.html",
+            template: require('./basefield.tpl.jade'),
             controller: '_basefieldController'
         };
     }
@@ -42,7 +42,7 @@ class _basefield {
                 }
                 if (errors.length>0) {
                     $scope.field.errors = `bad autopopulate configuration: ${errors}`;
-                    return $scope.field.haserrors = true;
+                    $scope.field.haserrors = true;
                 }
             });
         }

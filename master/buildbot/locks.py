@@ -18,6 +18,7 @@ from twisted.internet import defer
 from twisted.python import log
 
 from buildbot import util
+from buildbot.util import service
 from buildbot.util import subscription
 from buildbot.util.eventual import eventually
 
@@ -40,8 +41,10 @@ class BaseLock:
     description = "<BaseLock>"
 
     def __init__(self, name, maxCount=1):
+        super().__init__()
+
         # Name of the lock
-        self.name = name
+        self.lockName = name
         # Current queue, tuples (waiter, LockAccess, deferred)
         self.waiting = []
         # Current owners, tuples (owner, LockAccess)
@@ -73,19 +76,22 @@ class BaseLock:
         if count > old_max_count:
             self._tryWakeUp()
 
+    def _find_waiting(self, requester):
+        for idx, waiter in enumerate(self.waiting):
+            if waiter[0] is requester:
+                return idx
+        return None
+
     def isAvailable(self, requester, access):
         """ Return a boolean whether the lock is available for claiming """
         debuglog("%s isAvailable(%s, %s): self.owners=%r"
                  % (self, requester, access, self.owners))
         num_excl, num_counting = self._claimed_excl, self._claimed_counting
 
-        # Find all waiters ahead of the requester in the wait queue
-        for idx, waiter in enumerate(self.waiting):
-            if waiter[0] is requester:
-                w_index = idx
-                break
-        else:
+        w_index = self._find_waiting(requester)
+        if w_index is None:
             w_index = len(self.waiting)
+
         ahead = self.waiting[:w_index]
 
         if access.mode == 'counting':
@@ -160,14 +166,12 @@ class BaseLock:
             if w_access.mode == 'counting':
                 if num_excl > 0 or num_counting >= self.maxCount:
                     break
-                else:
-                    num_counting = num_counting + 1
+                num_counting = num_counting + 1
             else:
                 # w_access.mode == 'exclusive'
                 if num_excl > 0 or num_counting > 0:
                     break
-                else:
-                    num_excl = num_excl + 1
+                num_excl = num_excl + 1
 
             # If the waiter has a deferred, wake it up and clear the deferred
             # from the wait queue entry to indicate that it has been woken.
@@ -176,11 +180,17 @@ class BaseLock:
                 eventually(d.callback, self)
 
     def waitUntilMaybeAvailable(self, owner, access):
-        """Fire when the lock *might* be available. The caller will need to
-        check with isAvailable() when the deferred fires. This loose form is
-        used to avoid deadlocks. If we were interested in a stronger form,
-        this would be named 'waitUntilAvailable', and the deferred would fire
-        after the lock had been claimed.
+        """Fire when the lock *might* be available. The deferred may be fired spuriously and
+        the lock is not necessarily available, thus the caller will need to check with
+        isAvailable() when the deferred fires.
+
+        A single requester must not have more than one pending waitUntilMaybeAvailable() on a
+        single lock.
+
+        The caller must guarantee, that once the returned deferred is fired, either the lock is
+        checked for availability and claimed if it's available, or the it is indicated as no
+        longer interesting by calling stopWaitingUntilAvailable(). The caller does not need to
+        do this immediately after deferred is fired, an eventual execution is sufficient.
         """
         debuglog("%s waitUntilAvailable(%s)" % (self, owner))
         assert isinstance(access, LockAccess)
@@ -189,48 +199,76 @@ class BaseLock:
         d = defer.Deferred()
 
         # Are we already in the wait queue?
-        w = [i for i, w in enumerate(self.waiting) if w[0] is owner]
-        if w:
-            self.waiting[w[0]] = (owner, access, d)
+        w_index = self._find_waiting(owner)
+        if w_index is not None:
+            _, _, old_d = self.waiting[w_index]
+            assert old_d is None, "waitUntilMaybeAvailable() must not be called again before the " \
+                                  "previous deferred fired"
+            self.waiting[w_index] = (owner, access, d)
         else:
             self.waiting.append((owner, access, d))
         return d
 
     def stopWaitingUntilAvailable(self, owner, access, d):
+        """ Stop waiting for lock to become available. `d` must be the result of a previous call
+            to `waitUntilMaybeAvailable()`. If `d` has not been woken up already by calling its
+            callback, it will be done as part of this function
+        """
         debuglog("%s stopWaitingUntilAvailable(%s)" % (self, owner))
         assert isinstance(access, LockAccess)
-        assert (owner, access, d) in self.waiting
-        self.waiting = [w for w in self.waiting if w[0] is not owner]
+
+        w_index = self._find_waiting(owner)
+        assert w_index is not None, "The owner was not waiting for the lock"
+        _, _, old_d = self.waiting[w_index]
+        if old_d is not None:
+            assert d is old_d, "The supplied deferred must be a result of waitUntilMaybeAvailable()"
+            del self.waiting[w_index]
+            d.callback(None)
+        else:
+            del self.waiting[w_index]
+            # if the callback has already been woken up, then it must schedule another waiter,
+            # otherwise we will have an available lock with a waiter list and no-one to wake the
+            # waiters up.
+            self._tryWakeUp()
 
     def isOwner(self, owner, access):
         return (owner, access) in self.owners
 
 
-class RealMasterLock(BaseLock):
+class RealMasterLock(BaseLock, service.SharedService):
 
-    def __init__(self, lockid):
-        super().__init__(lockid.name, lockid.maxCount)
+    def __init__(self, name):
+        # the caller will want to call updateFromLockId after initialization
+        super().__init__(name, 0)
+        self.config_version = -1
         self._updateDescription()
 
     def _updateDescription(self):
-        self.description = "<MasterLock({}, {})>".format(self.name,
+        self.description = "<MasterLock({}, {})>".format(self.lockName,
                                                          self.maxCount)
 
     def getLockForWorker(self, workername):
         return self
 
-    def updateFromLockId(self, lockid):
-        assert self.name == lockid.name
+    def updateFromLockId(self, lockid, config_version):
+        assert self.lockName == lockid.name
+        assert isinstance(config_version, int)
+
+        self.config_version = config_version
         self.setMaxCount(lockid.maxCount)
         self._updateDescription()
 
 
-class RealWorkerLock:
+class RealWorkerLock(service.SharedService):
 
-    def __init__(self, lockid):
-        self.name = lockid.name
-        self.maxCount = lockid.maxCount
-        self.maxCountForWorker = lockid.maxCountForWorker
+    def __init__(self, name):
+        super().__init__()
+
+        # the caller will want to call updateFromLockId after initialization
+        self.lockName = name
+        self.maxCount = None
+        self.maxCountForWorker = None
+        self.config_version = -1
         self._updateDescription()
         self.locks = {}
 
@@ -241,23 +279,26 @@ class RealWorkerLock:
         if workername not in self.locks:
             maxCount = self.maxCountForWorker.get(workername,
                                                   self.maxCount)
-            lock = self.locks[workername] = BaseLock(self.name, maxCount)
+            lock = self.locks[workername] = BaseLock(self.lockName, maxCount)
             self._updateDescriptionForLock(lock, workername)
             self.locks[workername] = lock
         return self.locks[workername]
 
     def _updateDescription(self):
         self.description = \
-            "<WorkerLock({}, {}, {})>".format(self.name, self.maxCount,
+            "<WorkerLock({}, {}, {})>".format(self.lockName, self.maxCount,
                                               self.maxCountForWorker)
 
     def _updateDescriptionForLock(self, lock, workername):
         lock.description = \
-            "<WorkerLock({}, {})[{}] {}>".format(lock.name, lock.maxCount,
+            "<WorkerLock({}, {})[{}] {}>".format(lock.lockName, lock.maxCount,
                                                  workername, id(lock))
 
-    def updateFromLockId(self, lockid):
-        assert self.name == lockid.name
+    def updateFromLockId(self, lockid, config_version):
+        assert self.lockName == lockid.name
+        assert isinstance(config_version, int)
+
+        self.config_version = config_version
 
         self.maxCount = lockid.maxCount
         self.maxCountForWorker = lockid.maxCountForWorker

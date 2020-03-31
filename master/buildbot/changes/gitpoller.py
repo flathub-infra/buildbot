@@ -286,6 +286,14 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         return d
 
     @defer.inlineCallbacks
+    def _get_commit_committer(self, rev):
+        args = ['--no-walk', r'--format=%cN <%cE>', rev, '--']
+        res = yield self._dovccmd('log', args, path=self.workdir)
+        if not res:
+            raise EnvironmentError('could not get commit committer for rev')
+        return res
+
+    @defer.inlineCallbacks
     def _process_changes(self, newRev, branch):
         """
         Read changes since last change.
@@ -298,21 +306,6 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         # initial run, don't parse all history
         if not self.lastRev:
             return
-        rebuild = False
-        if newRev in self.lastRev.values():
-            if self.buildPushesWithNoCommits:
-                existingRev = self.lastRev.get(branch)
-                if existingRev is None:
-                    # This branch was completely unknown, rebuild
-                    log.msg('gitpoller: rebuilding {} for new branch "{}"'.format(
-                            newRev, branch))
-                    rebuild = True
-                elif existingRev != newRev:
-                    # This branch is known, but it now points to a different
-                    # commit than last time we saw it, rebuild.
-                    log.msg('gitpoller: rebuilding {} for updated branch "{}"'.format(
-                            newRev, branch))
-                    rebuild = True
 
         # get the change list
         revListArgs = (['--format=%H', '{}'.format(newRev)] +
@@ -326,8 +319,19 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         revList = results.split()
         revList.reverse()
 
-        if rebuild and not revList:
-            revList = [newRev]
+        if self.buildPushesWithNoCommits and not revList:
+            existingRev = self.lastRev.get(branch)
+            if existingRev != newRev:
+                revList = [newRev]
+                if existingRev is None:
+                    # This branch was completely unknown, rebuild
+                    log.msg('gitpoller: rebuilding {} for new branch "{}"'.format(
+                        newRev, branch))
+                else:
+                    # This branch is known, but it now points to a different
+                    # commit than last time we saw it, rebuild.
+                    log.msg('gitpoller: rebuilding {} for updated branch "{}"'.format(
+                        newRev, branch))
 
         self.changeCount = len(revList)
         self.lastRev[branch] = newRev
@@ -340,6 +344,7 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
             dl = defer.DeferredList([
                 self._get_commit_timestamp(rev),
                 self._get_commit_author(rev),
+                self._get_commit_committer(rev),
                 self._get_commit_files(rev),
                 self._get_commit_comments(rev),
             ], consumeErrors=True)
@@ -355,10 +360,11 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
                 # just fail on the first error; they're probably all related!
                 failures[0].raiseException()
 
-            timestamp, author, files, comments = [r[1] for r in results]
+            timestamp, author, committer, files, comments = [r[1] for r in results]
 
             yield self.master.data.updates.addChange(
                 author=author,
+                committer=committer,
                 revision=bytes2unicode(rev, encoding=self.encoding),
                 files=files, comments=comments, when_timestamp=timestamp,
                 branch=bytes2unicode(self._removeHeads(branch)),

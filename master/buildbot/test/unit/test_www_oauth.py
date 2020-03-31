@@ -19,6 +19,7 @@ import webbrowser
 
 import mock
 
+import twisted
 from twisted.internet import defer
 from twisted.internet import reactor
 from twisted.internet import threads
@@ -27,6 +28,7 @@ from twisted.trial import unittest
 from twisted.web.resource import Resource
 from twisted.web.server import Site
 
+import buildbot
 from buildbot.process.properties import Secret
 from buildbot.secrets.manager import SecretManager
 from buildbot.test.fake.secrets import FakeSecretStorage
@@ -58,6 +60,7 @@ class FakeResponse:
 class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
                  unittest.TestCase):
 
+    @defer.inlineCallbacks
     def setUp(self):
         self.setUpTestReactor()
         if requests is None:
@@ -92,7 +95,7 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
                                                          "client-secret": "secretClientSecret"})
         secret_service = SecretManager()
         secret_service.services = [fake_storage_service]
-        secret_service.setServiceParent(self._master)
+        yield secret_service.setServiceParent(self._master)
         self.githubAuth_secret.reconfigAuth(master, master.config)
 
     @defer.inlineCallbacks
@@ -200,21 +203,34 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
 
     @defer.inlineCallbacks
     def test_GithubVerifyCode(self):
+        test = self
         requests.get.side_effect = []
         requests.post.side_effect = [
             FakeResponse(dict(access_token="TOK3N"))]
-        self.githubAuth.get = mock.Mock(side_effect=[
-            dict(  # /user
-                login="bar",
-                name="foo bar",
-                email="buzz@bar"),
-            [  # /user/emails
-                {'email': 'buzz@bar', 'verified': True, 'primary': False},
-                {'email': 'bar@foo', 'verified': True, 'primary': True}],
-            [  # /user/orgs
-                dict(login="hello"),
-                dict(login="grp"),
-            ]])
+
+        def fake_get(self, ep, **kwargs):
+            test.assertEqual(
+                self.headers,
+                {
+                    'Authorization': 'token TOK3N',
+                    'User-Agent': 'buildbot/%s' % buildbot.version,
+                })
+            if ep == '/user':
+                return dict(
+                    login="bar",
+                    name="foo bar",
+                    email="buzz@bar")
+            if ep == '/user/emails':
+                return [
+                    {'email': 'buzz@bar', 'verified': True, 'primary': False},
+                    {'email': 'bar@foo', 'verified': True, 'primary': True}]
+            if ep == '/user/orgs':
+                return [
+                    dict(login="hello"),
+                    dict(login="grp"),
+                ]
+        self.githubAuth.get = fake_get
+
         res = yield self.githubAuth.verifyCode("code!")
         self.assertEqual({'email': 'bar@foo',
                           'username': 'bar',
@@ -520,7 +536,6 @@ class OAuth2AuthGitHubE2E(TestReactorMixin, www.WwwTestMixin,
     @defer.inlineCallbacks
     def test_E2E(self):
         d = defer.Deferred()
-        import twisted
         twisted.web.http._logDateTimeUsers = 1
 
         class HomePage(Resource):

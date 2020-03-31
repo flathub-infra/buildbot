@@ -125,6 +125,14 @@ class GitOutputParsing(gpo.GetProcessOutputMixin, unittest.TestCase):
                                                  self.dummyRevStr, '--'],
                                              authorBytes, authorStr)
 
+    def test_get_commit_committer(self):
+        committerStr = 'Sammy Jankis <email@example.com>'
+        committerBytes = unicode2bytes(committerStr)
+        return self._perform_git_output_test(self.poller._get_commit_committer,
+                                             ['log', '--no-walk', '--format=%cN <%cE>',
+                                                 self.dummyRevStr, '--'],
+                                             committerBytes, committerStr)
+
     def _test_get_commit_comments(self, commentStr):
         commentBytes = unicode2bytes(commentStr)
         return self._perform_git_output_test(self.poller._get_commit_comments,
@@ -188,7 +196,7 @@ class TestGitPollerBase(gpo.GetProcessOutputMixin,
         yield self.setUpChangeSource()
 
         self.poller = self.createPoller()
-        self.poller.setServiceParent(self.master)
+        yield self.poller.setServiceParent(self.master)
 
     def tearDown(self):
         return self.tearDownChangeSource()
@@ -512,6 +520,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -537,6 +549,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(self.master.data.updates.changesAdded, [
             {
                 'author': 'by:4423cdbc',
+                'committer': 'by:4423cdbc',
                 'branch': 'master',
                 'category': None,
                 'codebase': None,
@@ -552,6 +565,7 @@ class TestGitPoller(TestGitPollerBase):
             },
             {
                 'author': 'by:64a5dc2a',
+                'committer': 'by:64a5dc2a',
                 'branch': 'master',
                 'category': None,
                 'codebase': None,
@@ -567,6 +581,7 @@ class TestGitPoller(TestGitPollerBase):
             },
             {
                 'author': 'by:9118f4ab',
+                'committer': 'by:9118f4ab',
                 'branch': 'release',
                 'category': None,
                 'codebase': None,
@@ -660,6 +675,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -685,6 +704,7 @@ class TestGitPoller(TestGitPollerBase):
         })
         self.assertEqual(self.master.data.updates.changesAdded, [
             {'author': 'by:4423cdbc',
+             'committer': 'by:4423cdbc',
              'branch': 'release',
              'category': None,
              'codebase': None,
@@ -736,6 +756,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -762,6 +786,87 @@ class TestGitPoller(TestGitPollerBase):
         })
         self.assertEqual(self.master.data.updates.changesAdded, [
             {'author': 'by:4423cdbc',
+             'committer': 'by:4423cdbc',
+             'branch': 'release',
+             'category': None,
+             'codebase': None,
+             'comments': 'hello!',
+             'files': ['/etc/442'],
+             'project': '',
+             'properties': {},
+             'repository': 'git@example.com:~foo/baz.git',
+             'revision': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+             'revlink': '',
+             'src': 'git',
+             'when_timestamp': 1273258009}]
+        )
+
+    @defer.inlineCallbacks
+    def test_poll_multipleBranches_buildPushesWithNoCommits_true_not_tip(self):
+        self.expectCommands(
+            gpo.Expect('git', '--version')
+            .stdout(b'git version 1.7.5\n'),
+            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
+            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
+                    b'refs/heads/release\n'),
+            gpo.Expect('git', 'fetch', self.REPOURL,
+                       '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release')
+            .path('gitpoller-work'),
+
+            gpo.Expect('git', 'rev-parse',
+                       'refs/buildbot/' + self.REPOURL_QUOTED + '/release')
+            .path('gitpoller-work')
+            .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
+            gpo.Expect('git', 'log',
+                       '--format=%H',
+                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                       '^0ba9d553b7217ab4bbad89ad56dc0332c7d57a8c',
+                       '--')
+            .path('gitpoller-work')
+            .stdout(b''),
+        )
+
+        # and patch out the _get_commit_foo methods which were already tested
+        # above
+        def timestamp(rev):
+            return defer.succeed(1273258009)
+        self.patch(self.poller, '_get_commit_timestamp', timestamp)
+
+        def author(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_author', author)
+
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
+        def files(rev):
+            return defer.succeed(['/etc/' + rev[:3]])
+        self.patch(self.poller, '_get_commit_files', files)
+
+        def comments(rev):
+            return defer.succeed('hello!')
+        self.patch(self.poller, '_get_commit_comments', comments)
+
+        # do the poll
+        self.poller.branches = ['release']
+        self.poller.lastRev = {
+            'master': '0ba9d553b7217ab4bbad89ad56dc0332c7d57a8c',
+
+        }
+
+        self.poller.buildPushesWithNoCommits = True
+        yield self.poller.poll()
+
+        self.assertAllCommandsRan()
+        self.assertEqual(self.poller.lastRev, {
+            'master': '0ba9d553b7217ab4bbad89ad56dc0332c7d57a8c',
+            'release': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
+        })
+        self.assertEqual(self.master.data.updates.changesAdded, [
+            {'author': 'by:4423cdbc',
+             'committer': 'by:4423cdbc',
              'branch': 'release',
              'category': None,
              'codebase': None,
@@ -813,6 +918,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -838,6 +947,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(len(added), 2)
 
         self.assertEqual(added[0]['author'], 'by:4423cdbc')
+        self.assertEqual(added[0]['committer'], 'by:4423cdbc')
         self.assertEqual(added[0]['when_timestamp'], 1273258009)
         self.assertEqual(added[0]['comments'], 'hello!')
         self.assertEqual(added[0]['branch'], 'master')
@@ -845,6 +955,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(added[0]['src'], 'git')
 
         self.assertEqual(added[1]['author'], 'by:64a5dc2a')
+        self.assertEqual(added[1]['committer'], 'by:64a5dc2a')
         self.assertEqual(added[1]['when_timestamp'], 1273258009)
         self.assertEqual(added[1]['comments'], 'hello!')
         self.assertEqual(added[1]['files'], ['/etc/64a'])
@@ -945,6 +1056,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -973,6 +1088,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(len(added), 3)
 
         self.assertEqual(added[0]['author'], 'by:4423cdbc')
+        self.assertEqual(added[0]['committer'], 'by:4423cdbc')
         self.assertEqual(added[0]['when_timestamp'], 1273258009)
         self.assertEqual(added[0]['comments'], 'hello!')
         self.assertEqual(added[0]['branch'], 'master')
@@ -980,12 +1096,14 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(added[0]['src'], 'git')
 
         self.assertEqual(added[1]['author'], 'by:64a5dc2a')
+        self.assertEqual(added[1]['committer'], 'by:64a5dc2a')
         self.assertEqual(added[1]['when_timestamp'], 1273258009)
         self.assertEqual(added[1]['comments'], 'hello!')
         self.assertEqual(added[1]['files'], ['/etc/64a'])
         self.assertEqual(added[1]['src'], 'git')
 
         self.assertEqual(added[2]['author'], 'by:9118f4ab')
+        self.assertEqual(added[2]['committer'], 'by:9118f4ab')
         self.assertEqual(added[2]['when_timestamp'], 1273258009)
         self.assertEqual(added[2]['comments'], 'hello!')
         self.assertEqual(added[2]['files'], ['/etc/911'])
@@ -1032,6 +1150,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -1068,6 +1190,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(len(added), 2)
 
         self.assertEqual(added[0]['author'], 'by:4423cdbc')
+        self.assertEqual(added[0]['committer'], 'by:4423cdbc')
         self.assertEqual(added[0]['when_timestamp'], 1273258009)
         self.assertEqual(added[0]['comments'], 'hello!')
         self.assertEqual(added[0]['branch'], 'master')
@@ -1075,6 +1198,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(added[0]['src'], 'git')
 
         self.assertEqual(added[1]['author'], 'by:64a5dc2a')
+        self.assertEqual(added[1]['committer'], 'by:64a5dc2a')
         self.assertEqual(added[1]['when_timestamp'], 1273258009)
         self.assertEqual(added[1]['comments'], 'hello!')
         self.assertEqual(added[1]['files'], ['/etc/64a'])
@@ -1122,6 +1246,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -1155,6 +1283,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(len(added), 1)
 
         self.assertEqual(added[0]['author'], 'by:9118f4ab')
+        self.assertEqual(added[0]['committer'], 'by:9118f4ab')
         self.assertEqual(added[0]['when_timestamp'], 1273258009)
         self.assertEqual(added[0]['comments'], 'hello!')
         self.assertEqual(added[0]['files'], ['/etc/911'])
@@ -1206,6 +1335,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -1226,6 +1359,7 @@ class TestGitPoller(TestGitPollerBase):
         })
         self.assertEqual(self.master.data.updates.changesAdded, [{
             'author': 'by:4423cdbc',
+            'committer': 'by:4423cdbc',
             'branch': 'master',
             'category': None,
             'codebase': None,
@@ -1240,6 +1374,7 @@ class TestGitPoller(TestGitPollerBase):
             'when_timestamp': 1273258009,
         }, {
             'author': 'by:64a5dc2a',
+            'committer': 'by:64a5dc2a',
             'branch': 'master',
             'category': None,
             'codebase': None,
@@ -1298,6 +1433,10 @@ class TestGitPoller(TestGitPollerBase):
             return defer.succeed('by:' + rev[:8])
         self.patch(self.poller, '_get_commit_author', author)
 
+        def committer(rev):
+            return defer.succeed('by:' + rev[:8])
+        self.patch(self.poller, '_get_commit_committer', committer)
+
         def files(rev):
             return defer.succeed(['/etc/' + rev[:3]])
         self.patch(self.poller, '_get_commit_files', files)
@@ -1329,6 +1468,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(len(added), 2)
 
         self.assertEqual(added[0]['author'], 'by:4423cdbc')
+        self.assertEqual(added[0]['committer'], 'by:4423cdbc')
         self.assertEqual(added[0]['when_timestamp'], 1273258009)
         self.assertEqual(added[0]['comments'], 'hello!')
         self.assertEqual(added[0]['branch'], 'master')
@@ -1337,6 +1477,7 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(added[0]['category'], '4423cd')
 
         self.assertEqual(added[1]['author'], 'by:64a5dc2a')
+        self.assertEqual(added[1]['committer'], 'by:64a5dc2a')
         self.assertEqual(added[1]['when_timestamp'], 1273258009)
         self.assertEqual(added[1]['comments'], 'hello!')
         self.assertEqual(added[1]['files'], ['/etc/64a'])

@@ -13,7 +13,7 @@ class AppState {
         // Register new state
         const state = {
             controller: `${name}Controller`,
-            templateUrl: `views/${name}.html`,
+            template: require('./app.tpl.jade'),
             name,
             url: '/apps/:app?numbuilds',
             data: cfg

@@ -17,17 +17,30 @@ Database Specification
 
 Buildbot requires a connection to a database to maintain certain state information, such as tracking pending build requests.
 In the default configuration Buildbot uses a file-based SQLite database, stored in the :file:`state.sqlite` file of the master's base directory.
+
+.. important::
+
+   SQLite3 is perfectly suitable for small setups with a few users.
+   However, it does not scale well with large numbers of builders, workers and users.
+   If you expect your Buildbot to grow over time, it is strongly advised to use a real database server (e.g., MySQL or Postgres).
+
+   See the :ref:`Database-Server` section for more details.
+
 Override this configuration with the :bb:cfg:`db_url` parameter.
 
 Buildbot accepts a database configuration in a dictionary named ``db``.
-All keys are optional::
+All keys are optional:
+
+.. code-block:: python
 
     c['db'] = {
         'db_url' : 'sqlite:///state.sqlite',
     }
 
 The ``db_url`` key indicates the database engine to use.
-The format of this parameter is completely documented at http://www.sqlalchemy.org/docs/dialects/, but is generally of the form::
+The format of this parameter is completely documented at http://www.sqlalchemy.org/docs/dialects/, but is generally of the form:
+
+.. code-block:: python
 
      "driver://[username:password@]host:port/database[?args]"
 
@@ -41,7 +54,9 @@ SQLite
 ++++++
 
 For sqlite databases, since there is no host and port, relative paths are specified with ``sqlite:///`` and absolute paths with ``sqlite:////``.
-Examples::
+Examples:
+
+.. code-block:: python
 
     c['db_url'] = "sqlite:///state.sqlite"
 
@@ -183,7 +198,7 @@ For example you might want to have one master dedicated to the UI, so that a big
 
 To enable multi-master mode in this configuration, you will need to set the :bb:cfg:`multiMaster` option so that buildbot doesn't warn about missing schedulers or builders.
 
-::
+.. code-block:: python
 
     # Enable multiMaster mode; disables warnings about unknown builders and
     # schedulers
@@ -206,7 +221,9 @@ To enable multi-master mode in this configuration, you will need to set the :bb:
 Site Definitions
 ~~~~~~~~~~~~~~~~
 
-Three basic settings describe the buildmaster in status reports::
+Three basic settings describe the buildmaster in status reports:
+
+.. code-block:: python
 
     c['title'] = "Buildbot"
     c['titleURL'] = "http://buildbot.sourceforge.net/"
@@ -233,7 +250,7 @@ When status notices are sent to users (e.g., by email or over IRC), :bb:cfg:`bui
 Log Handling
 ~~~~~~~~~~~~
 
-::
+.. code-block:: python
 
     c['logCompressionMethod'] = 'gz'
     c['logMaxSize'] = 1024*1024 # 1M
@@ -290,7 +307,7 @@ Now it is implemented as an utility Builder, and shall be configured via :bb:con
 Caches
 ++++++
 
-::
+.. code-block:: python
 
     c['caches'] = {
         'Changes' : 100,     # formerly c['changeCacheSize']
@@ -401,7 +418,7 @@ For that purpose, see :ref:`Prioritizing-Builds`.
 Setting the PB Port for Workers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-::
+.. code-block:: python
 
     c['protocols'] = {"pb": {"port": 10000}}
 
@@ -486,7 +503,7 @@ Two of them use a username+password combination to grant access, one of them use
     This accepts regular unencrypted telnet connections, and asks for a username/password pair before providing access.
     Because this username/password is transmitted in the clear, and because Manhole access to the buildmaster is equivalent to granting full shell privileges to both the buildmaster and all the workers (and to all accounts which then run code produced by the workers), it is  highly recommended that you use one of the SSH manholes instead.
 
-::
+.. code-block:: python
 
     # some examples:
     from buildbot.plugins import util
@@ -499,7 +516,7 @@ Two of them use a username+password combination to grant access, one of them use
 The :class:`Manhole` instance can be configured to listen on a specific port.
 You may wish to have this listening port bind to the loopback interface (sometimes known as `lo0`, `localhost`, or 127.0.0.1) to restrict access to clients which are running on the same host.
 
-::
+.. code-block:: python
 
     from buildbot.plugins import util
     c['manhole'] = util.PasswordManhole("tcp:9999:interface=127.0.0.1","admin","passwd",
@@ -534,7 +551,9 @@ Most interesting objects on the master can be reached from these two objects.
 To aid in navigation, the ``show`` method is defined.
 It displays the non-method attributes of an object.
 
-A manhole session might look like::
+A manhole session might look like:
+
+.. code-block:: python
 
     >>> show(master)
     data attributes of <buildbot.master.BuildMaster instance at 0x7f7a4ab7df38>
@@ -560,7 +579,7 @@ A manhole session might look like::
 Metrics Options
 ~~~~~~~~~~~~~~~
 
-::
+.. code-block:: python
 
     c['metrics'] = dict(log_interval=10, periodic_interval=10)
 
@@ -943,7 +962,7 @@ BuildbotNetUsageData can be configured with 4 values:
 Users Options
 ~~~~~~~~~~~~~
 
-::
+.. code-block:: python
 
     from buildbot.plugins import util
     c['user_managers'] = []
@@ -974,7 +993,7 @@ As shown above, to enable the `buildbot user` tool, you must initialize a `Comma
 Input Validation
 ~~~~~~~~~~~~~~~~
 
-::
+.. code-block:: python
 
     import re
     c['validation'] = {
@@ -1017,7 +1036,7 @@ The replacement text should have sed-style references to that capture groups (i.
 The repository given is tried against each regular expression in turn.
 The results are the substituted into the replacement text, along with the revision ID to obtain the revision link.
 
-::
+.. code-block:: python
 
         from buildbot.plugins import util
         c['revlink'] = util.RevlinkMatch([r'git://notmuchmail.org/git/(.*)'],
@@ -1030,7 +1049,7 @@ The results are the substituted into the replacement text, along with the revisi
 Codebase Generator
 ~~~~~~~~~~~~~~~~~~
 
-::
+.. code-block:: python
 
     all_repositories = {
         r'https://hg/hg/mailsuite/mailclient': 'mailexe',

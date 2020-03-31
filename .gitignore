@@ -39,10 +39,11 @@ _build
 *.egg
 .eggs/
 master/setuptools_trial*
-master/buildbot/www/static/js/default/
 sandbox
 sandbox.*
 .idea/
-/.venv/
+/.venv*/
+
+# www
 */node_modules/
 node_modules

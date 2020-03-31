@@ -15,19 +15,13 @@
 #
 # Copyright Buildbot Team Members
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 try:
     from buildbot_pkg import setup_www_plugin
-    import mock  # noqa
-    import buildbot  # noqa
 except ImportError:
     import sys
-    print('Please install buildbot, buildbot_pkg, and mock modules in order '
-          'to install that package, or use the pre-build .whl modules '
-          'available on pypi', file=sys.stderr)
+    print('Please install buildbot_pkg module in order to install that '
+          'package, or use the pre-build .whl modules available on pypi',
+          file=sys.stderr)
     sys.exit(1)
 
 setup_www_plugin(
@@ -35,9 +29,9 @@ setup_www_plugin(
     description='Buildbot UI',
     author=u'Pierre Tardy',
     author_email=u'tardyp@gmail.com',
-    setup_requires=['buildbot', 'buildbot_pkg', 'mock'],
+    setup_requires=['buildbot_pkg'],
+    install_requires=['buildbot'],
     url='http://buildbot.net/',
-    license='GNU GPL',
     packages=['buildbot_www'],
     package_data={
         '': [
@@ -50,5 +44,8 @@ setup_www_plugin(
     entry_points="""
         [buildbot.www]
         base = buildbot_www:ep
-    """
+    """,
+    classifiers=[
+        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)'
+    ],
 )

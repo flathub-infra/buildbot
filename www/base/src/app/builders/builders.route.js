@@ -21,7 +21,7 @@ class BuildersState {
         // Register new state
         const state = {
             controller: `${name}Controller`,
-            templateUrl: `views/${name}.html`,
+            template: require('./builders.tpl.jade'),
             name,
             url: '/builders?tags',
             data: cfg,
@@ -50,6 +50,12 @@ class BuildersState {
                 name:'buildFetchLimit',
                 caption:'Maximum number of builds to fetch',
                 default_value: 200
+            }
+            , {
+                type:'integer',
+                name:'page_size',
+                caption:'Number of builders to show per page',
+                default_value: 100
             }
             ]});
     }

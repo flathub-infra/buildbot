@@ -13,9 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from __future__ import absolute_import
-from __future__ import print_function
-
 from xml.sax.saxutils import escape
 
 import jinja2
@@ -34,8 +31,11 @@ class Api:
     app = Klein()
 
     default = {  # note that these defaults are documented in configuration/www.rst
+        "left_pad": 5,
         "left_text": "Build Status",
         "left_color": "#555",
+        "right_pad": 5,
+        "border_radius": 5,
         "style": "plastic",
         "template_name": "{style}.svg.j2",
         "font_face": "DejaVu Sans",
@@ -113,9 +113,9 @@ class Api:
         ctx = cairo.Context(surface)
         ctx.select_font_face(config['font_face'],
                              cairo.FONT_SLANT_NORMAL,
-                             cairo.FONT_WEIGHT_BOLD)
+                             cairo.FONT_WEIGHT_NORMAL)
         ctx.set_font_size(int(config['font_size']))
-        return ctx.text_extents(text)[2] + 2
+        return ctx.text_extents(text)[4]
 
     def makesvg(self, right_text, status=None, left_text=None,
                 left_color=None, config=None):

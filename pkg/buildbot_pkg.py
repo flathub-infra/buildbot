@@ -13,9 +13,6 @@
 #
 # Copyright Buildbot Team Members
 
-from __future__ import absolute_import
-from __future__ import print_function
-
 # Method to add build step taken from here
 # https://seasonofcode.com/posts/how-to-add-custom-build-steps-and-commands-to-setuppy.html
 import datetime
@@ -216,7 +213,7 @@ class BuildJsCommand(distutils.cmd.Command):
             if os.path.exists("gulpfile.js"):
                 commands.append([os.path.join(yarn_bin, "gulp"), 'prod', '--notests'])
             elif os.path.exists("webpack.config.js"):
-                commands.append([os.path.join(yarn_bin, "webpack"), '-p'])
+                commands.append(['yarn', 'run', 'build'])
 
             shell = bool(os.name == 'nt')
 

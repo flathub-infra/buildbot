@@ -105,7 +105,11 @@ class CreateWorkerOptions(MakerBase):
         ["relocatable", "r",
          "Create a relocatable buildbot.tac"],
         ["no-logrotate", "n",
-         "Do not permit buildmaster rotate logs by itself"]
+         "Do not permit buildmaster rotate logs by itself"],
+        ['use-tls', None,
+         "Uses TLS to connect to master"],
+        ['delete-leftover-dirs', None,
+         'Delete folders that are not required by the master on connection'],
     ]
     optParameters = [
         ["keepalive", "k", 600,
@@ -154,11 +158,24 @@ class CreateWorkerOptions(MakerBase):
         if master_arg[:5] == "http:":
             raise usage.UsageError("<master> is not a URL - do not use URL")
 
-        if ":" not in master_arg:
+        if master_arg.startswith("[") and "]" in master_arg:
+            # detect ipv6 address with format [2001:1:2:3:4::1]:4321
+            master, port_tmp = master_arg.split("]")
+            master = master[1:]
+            if ":" not in port_tmp:
+                port = 9989
+            else:
+                port = port_tmp.split(":")[1]
+
+        elif ":" not in master_arg:
             master = master_arg
             port = 9989
         else:
-            master, port = master_arg.split(":")
+            try:
+                master, port = master_arg.split(":")
+            except ValueError:
+                raise usage.UsageError("invalid <master> argument '{}', "
+                                       "if it is an ipv6 address, it must be enclosed by []".format(master_arg))
 
         if not master:
             raise usage.UsageError("invalid <master> argument '{}'".format(
@@ -220,7 +237,7 @@ class Options(usage.Options):
     ]
 
     def opt_version(self):
-        import buildbot_worker
+        import buildbot_worker  # pylint: disable=import-outside-toplevel
         print("worker version: {}".format(buildbot_worker.version))
         usage.Options.opt_version(self)
 

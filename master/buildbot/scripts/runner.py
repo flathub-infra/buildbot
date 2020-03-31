@@ -19,6 +19,7 @@
 # Also don't forget to mirror your changes on command-line options in manual
 # pages and reStructuredText documentation.
 
+import getpass
 import sys
 import textwrap
 
@@ -304,7 +305,6 @@ class SendChangeOptions(base.SubcommandOptions):
         # fix up the auth with a password if none was given
         auth = self.get('auth')
         if ':' not in auth:
-            import getpass
             pw = getpass.getpass("Enter password for '%s': " % auth)
             auth = "%s:%s" % (auth, pw)
         self['auth'] = tuple(auth.split(':', 1))
@@ -654,15 +654,24 @@ class DataSpecOption(base.BasedirMixin, base.SubcommandOptions):
         return "Usage:   buildbot dataspec [options]"
 
 
-class ProcessWWWIndexOption(base.BasedirMixin, base.SubcommandOptions):
+class DevProxyOptions(base.BasedirMixin, base.SubcommandOptions):
 
-    """This command is used with the front end's proxy task. It enables to run the front end
-    without the backend server running in the background"""
+    """Run a fake web server serving the local ui frontend and a distant rest and websocket api.
+    This command required aiohttp to be installed in the virtualenv"""
 
-    subcommandFunction = "buildbot.scripts.processwwwindex.processwwwindex"
+    subcommandFunction = "buildbot.scripts.devproxy.devproxy"
+    optFlags = [
+        ["unsafe_ssl", None, "Bypass ssl certificate validation"],
+    ]
     optParameters = [
-        ['index-file', 'i', None,
-            "Path to the index.html file to be processed"],
+        ["port", "p", 8011,
+         "http port to use"],
+        ["plugins", None, None,
+         "plugin config to use. As json string e.g: --plugins='{\"custom_plugin\": {\"option1\": true}}'"],
+        ["auth_cookie", None, None,
+         "TWISTED_SESSION cookie to be used for auth (taken in developer console: in document.cookie variable)"],
+        ["buildbot_url", "b", "https://buildbot.buildbot.net",
+         "real buildbot url to proxy to (can be http or https)"]
     ]
 
 
@@ -726,9 +735,8 @@ class Options(usage.Options):
          "Manage users in buildbot's database"],
         ['dataspec', None, DataSpecOption,
          "Output data api spec"],
-        ['processwwwindex', None, ProcessWWWIndexOption,
-         "Process the index.html to enable the front end package working without backend. "
-         "This is a command to work with the frontend's proxy task."
+        ['dev-proxy', None, DevProxyOptions,
+         "Run a fake web server serving the local ui frontend and a distant rest and websocket api."
          ],
         ['cleanupdb', None, CleanupDBOptions,
          "cleanup the database"

@@ -28,27 +28,17 @@ class Builders {
                     active = true;
                 }
             }
+            if (builder.tags.includes('_virtual_')) {
+                active = true;
+            }
             return active;
         };
         $scope.settings = bbSettingsService.getSettingsGroup("Builders");
-        $scope.$watch('settings', () => bbSettingsService.save()
-        , true);
+        $scope.$watch('settings', () => { bbSettingsService.save(); }, true);
         const buildFetchLimit = $scope.settings.buildFetchLimit.value;
 
-        $scope.getAllTags = function() {
-            const all_tags = [];
-            for (let builder of Array.from($scope.builders)) {
-                if ($scope.hasActiveMaster(builder)) {
-                    for (let tag of Array.from(builder.tags)) {
-                        if (all_tags.indexOf(tag) < 0) {
-                            all_tags.push(tag);
-                        }
-                    }
-                }
-            }
-            all_tags.sort();
-            return all_tags;
-        };
+        $scope.page_size = $scope.settings.page_size.value;
+        $scope.currentPage = 1;
 
         const updateTagsFilterFromLocation = function() {
             $scope.tags_filter = $location.search()["tags"];
@@ -62,7 +52,7 @@ class Builders {
 
         $scope.$watch("tags_filter", function(tags, old) {
             if (old != null) {
-                return $location.search("tags", tags);
+                $location.search("tags", tags);
             }
         }
         , true);
@@ -157,19 +147,25 @@ class Builders {
 
             builds = data.getBuilds({limit: buildFetchLimit, order: '-started_at', builderid__eq: builderIds});
             dataGrouperService.groupBy($scope.builders, workers, 'builderid', 'workers', 'configured_on');
-            return dataGrouperService.groupBy($scope.builders, builds, 'builderid', 'builds');
+            dataGrouperService.groupBy($scope.builders, builds, 'builderid', 'builds');
         };
 
         if ($scope.tags_filter.length === 0) {
             requeryBuilds();
         } else {
-            $scope.$watch("builders.$resolved", function(resolved) { if (resolved) { return requeryBuilds(); } });
+            $scope.$watch("builders.$resolved", function(resolved) {
+                if (resolved) {
+                    requeryBuilds();
+                }
+            });
         }
+
+        $scope.searchQuery = '';
 
         $scope.$watch("tags_filter", function() {
             if (builds && $scope.builders.$resolved) {
                 builds.close();
-                return requeryBuilds();
+                requeryBuilds();
             }
         }
         , true);

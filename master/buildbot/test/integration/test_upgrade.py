@@ -92,7 +92,7 @@ class UpgradeTestMixin(db.RealDatabaseMixin, TestReactorMixin):
         self.master = master = fakemaster.make_master(self)
         master.config.db['db_url'] = self.db_url
         self.db = connector.DBConnector(self.basedir)
-        self.db.setServiceParent(master)
+        yield self.db.setServiceParent(master)
         yield self.db.setup(check_version=False)
 
         self._sql_log_handler = querylog.start_log_queries()
@@ -240,17 +240,21 @@ class UpgradeTestV090b4(UpgradeTestMixin, unittest.TestCase):
     def verify_thd(self, conn):
         pass
 
+    @defer.inlineCallbacks
     def test_gotError(self):
         def upgrade():
             return defer.fail(sqlite3.DatabaseError('file is encrypted or is not a database'))
         self.db.model.upgrade = upgrade
-        self.failureResultOf(self.do_test_upgrade(), unittest.SkipTest)
+        with self.assertRaises(unittest.SkipTest):
+            yield self.do_test_upgrade()
 
+    @defer.inlineCallbacks
     def test_gotError2(self):
         def upgrade():
             return defer.fail(DatabaseError('file is encrypted or is not a database', None, None))
         self.db.model.upgrade = upgrade
-        self.failureResultOf(self.do_test_upgrade(), unittest.SkipTest)
+        with self.assertRaises(unittest.SkipTest):
+            yield self.do_test_upgrade()
 
 
 class UpgradeTestV087p1(UpgradeTestMixin, unittest.TestCase):
