@@ -38,6 +38,7 @@ class Home {
                 property: ["owners"],
                 order: '-number'
             });
+
             $scope.mainUpublishedBuilds = builder.getBuilds({
                 complete: true,
                 flathub_repo_status__eq: 1, // Commited
@@ -45,10 +46,11 @@ class Home {
                 property: ["owners"],
                 order: '-number'
             });
+
             $scope.mainRecentBuilds = builder.getBuilds({
                 complete: true,
                 property: ["owners"],
-                limit: $scope.numbuilds,
+                limit: 50,
                 order: '-number'
             });
 
