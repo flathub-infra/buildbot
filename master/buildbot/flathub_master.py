@@ -1079,11 +1079,11 @@ def create_build_factory():
             logEnviron=False,
             command=util.Interpolate('test ! -d repo/refs/heads/app -o -f repo/refs/heads/app/%(prop:flathub_id)s/%(prop:flathub_arch)s/%(prop:flathub_default_branch)s')),
         steps.ShellCommand(
-            name='Check for icons',
+            name='Check for 128x128 icon',
             doStepIf=should_skip_icons_check,
             haltOnFailure=True,
             logEnviron=False,
-            command=util.Interpolate('test -f builddir/export/share/icons/hicolor/scalable/apps/%(prop:flathub_id)s.svg -o -f builddir/export/share/icons/hicolor/128x128/apps/%(prop:flathub_id)s.png')),
+            command=util.Interpolate('test -f builddir/*/share/app-info/icons/flatpak/128x128/%(prop:flathub_id)s.png')),
         steps.ShellCommand(
             name='Generate deltas',
             haltOnFailure=True,
