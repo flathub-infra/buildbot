@@ -1083,7 +1083,7 @@ def create_build_factory():
             doStepIf=should_skip_icons_check,
             haltOnFailure=True,
             logEnviron=False,
-            command=util.Interpolate('test -f builddir/export/share/icons/hicolor/scalable/apps/%(prop:flathub_id)s.svg -o -f builddir/export/share/icons/hicolor/128x128/apps/%(prop:flathub_id)s.png -o -f builddir/export/share/icons/hicolor/256x256/apps/%(prop:flathub_id)s.png -o -f builddir/export/share/icons/hicolor/512x512/apps/%(prop:flathub_id)s.png')),
+            command=util.Interpolate('test -f builddir/export/share/icons/hicolor/scalable/apps/%(prop:flathub_id)s.svg -o -f builddir/export/share/icons/hicolor/128x128/apps/%(prop:flathub_id)s.png')),
         steps.ShellCommand(
             name='Generate deltas',
             haltOnFailure=True,
