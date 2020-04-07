@@ -965,7 +965,7 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
             command = ['flatpak-builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
                        '--user', fb_deps_args,
                        util.Property('extra_fb_args'),
-                       '--mirror-screenshots-url=https://flathub.org/repo/screenshots', '--repo', 'repo',
+                       '--mirror-screenshots-url=https://dl.flathub.org/repo/screenshots', '--repo', 'repo',
                        '--extra-sources-url=' + config.upstream_sources_uri,
                        util.Interpolate('--extra-sources=%(prop:builddir)s/../downloads'),
                        '--default-branch', util.Property('flathub_default_branch'),
