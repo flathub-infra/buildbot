@@ -325,7 +325,7 @@ def should_skip_icons_check(step):
     skip_icons_check = step.build.getProperty('flathub_config', {}).get('skip-icons-check')
     skip_appstream_check = step.build.getProperty('flathub_config', {}).get('skip-appstream-check')
 
-    return not skip_icons_check or not skip_appstream_check
+    return not (skip_icons_check or skip_appstream_check)
 
 class TitleObserver(logobserver.LogObserver):
     title_re = re.compile (r"\x1b]2;[\s\w!/\\#$%&'*+-.^_`|~:~]*\x07")
