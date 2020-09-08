@@ -37,13 +37,15 @@ try:
     assert sphinxcontrib.blockdiag
 except ImportError:
     raise RuntimeError("sphinxcontrib.blockdiag is not installed. "
-                       "Please install documentation dependencies with `pip install buildbot[docs]`")
+                       "Please install documentation dependencies with "
+                       "`pip install buildbot[docs]`")
 
 try:
     pkg_resources.require('docutils>=0.8')
 except pkg_resources.ResolutionError:
     raise RuntimeError("docutils is not installed or has incompatible version. "
-                       "Please install documentation dependencies with `pip install buildbot[docs]`")
+                       "Please install documentation dependencies with `pip "
+                       "install buildbot[docs]`")
 # If your documentation needs a minimal Sphinx version, state it here.
 needs_sphinx = '1.0'
 
@@ -54,7 +56,6 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.extlinks',
     'bbdocs.ext',
-    'bbdocs.highlighterrors',
     'sphinxcontrib.blockdiag',
     'sphinxcontrib.jinja',
     'sphinx_rtd_theme',

@@ -18,15 +18,15 @@ import sqlalchemy as sa
 from twisted.internet import defer
 from twisted.trial import unittest
 
+from buildbot.data import resultspec
+from buildbot.data.changes import FixerMixin
 from buildbot.db import builds
 from buildbot.db import changes
 from buildbot.db import sourcestamps
-from buildbot.test.fake import fakedb
-from buildbot.test.fake import fakemaster
+from buildbot.test import fakedb
 from buildbot.test.util import connector_component
 from buildbot.test.util import interfaces
 from buildbot.test.util import validation
-from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import epoch2datetime
 
 SOMETIME = 20398573
@@ -259,14 +259,9 @@ class Tests(interfaces.InterfaceTests):
 
         self.assertEqual(sorted(res), [1, 2])
 
-    def test_signature_getRecentChanges(self):
-        @self.assertArgSpecMatches(self.db.changes.getRecentChanges)
-        def getRecentChanges(self, count):
-            pass
-
     def test_signature_getChanges(self):
         @self.assertArgSpecMatches(self.db.changes.getChanges)
-        def getChanges(self):
+        def getChanges(self, resultSpec=None):
             pass
 
     def insert7Changes(self):
@@ -280,10 +275,11 @@ class Tests(interfaces.InterfaceTests):
         ] + self.change13_rows + self.change14_rows)
 
     @defer.inlineCallbacks
-    def test_getRecentChanges_subset(self):
+    def test_getChanges_subset(self):
         yield self.insert7Changes()
-        changes = yield self.db.changes.getRecentChanges(5)
-
+        rs = resultspec.ResultSpec(order=['-changeid'], limit=5)
+        rs.fieldMapping = FixerMixin.fieldMapping
+        changes = yield self.db.changes.getChanges(resultSpec=rs)
         changeids = [c['changeid'] for c in changes]
         self.assertEqual(changeids, [10, 11, 12, 13, 14])
 
@@ -305,8 +301,9 @@ class Tests(interfaces.InterfaceTests):
         self.assertEqual(n, 100)
 
     @defer.inlineCallbacks
-    def test_getRecentChanges_empty(self):
-        changes = yield self.db.changes.getRecentChanges(5)
+    def test_getChanges_empty(self):
+        rs = resultspec.ResultSpec(order=['-changeid'], limit=5)
+        changes = yield self.db.changes.getChanges(resultSpec=rs)
 
         changeids = [c['changeid'] for c in changes]
         self.assertEqual(changeids, [])
@@ -316,7 +313,7 @@ class Tests(interfaces.InterfaceTests):
         self.assertEqual(changeids, [])
 
     @defer.inlineCallbacks
-    def test_getRecentChanges_missing(self):
+    def test_getChanges_missing(self):
         yield self.insertTestData(self.change13_rows + self.change14_rows)
 
         def check(changes):
@@ -331,7 +328,8 @@ class Tests(interfaces.InterfaceTests):
             self.assertEqual(changes[0]['properties'],
                              {'notest': ('no', 'Change')})
 
-        changes = yield self.db.changes.getRecentChanges(5)
+        rs = resultspec.ResultSpec(order=['-changeid'], limit=5)
+        changes = yield self.db.changes.getChanges(resultSpec=rs)
         check(changes)
 
         changes = yield self.db.changes.getChanges()
@@ -650,7 +648,8 @@ class RealTests(Tests):
 
         codebase_ss = {}  # shared state between addChange and addBuild
 
-        def addChange(codebase, revision, author, committer, comments, branch='master', category='cat', project='proj', repository='repo'):
+        def addChange(codebase, revision, author, committer, comments, branch='master',
+                      category='cat', project='proj', repository='repo'):
             lastID["sourcestampid"] += 1
             lastID["changeid"] += 1
             parent_changeids = codebase_ss.get(codebase, None)
@@ -749,14 +748,11 @@ class RealTests(Tests):
         yield expect(7, ['11th commit'])
 
 
-class TestFakeDB(TestReactorMixin, unittest.TestCase, Tests):
+class TestFakeDB(unittest.TestCase, connector_component.FakeConnectorComponentMixin, Tests):
 
+    @defer.inlineCallbacks
     def setUp(self):
-        self.setUpTestReactor()
-        self.master = fakemaster.make_master(self, wantDb=True)
-        self.db = self.master.db
-        self.db.checkForeignKeys = True
-        self.insertTestData = self.db.insertTestData
+        yield self.setUpConnectorComponent()
 
 
 class TestRealDB(unittest.TestCase,

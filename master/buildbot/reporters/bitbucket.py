@@ -94,7 +94,7 @@ class BitbucketStatusPush(http.HttpStatusPushBase):
                 '/'.join([owner, repo, 'commit', sha, 'statuses', 'build'])
 
             response = yield self._http.post(bitbucket_uri, json=body)
-            if response.code != 201:
+            if response.code != 200 and response.code != 201:
                 content = yield response.content()
                 log.error("{code}: unable to upload Bitbucket status {content}",
                           code=response.code, content=content)
@@ -102,7 +102,8 @@ class BitbucketStatusPush(http.HttpStatusPushBase):
     @staticmethod
     def get_owner_and_repo(repourl):
         """
-        Takes a git repository URL from Bitbucket and tries to determine the owner and repository name
+        Takes a git repository URL from Bitbucket and tries to determine the owner and repository
+        name
         :param repourl: Bitbucket git repo in the form of
                     git@bitbucket.com:OWNER/REPONAME.git
                     https://bitbucket.com/OWNER/REPONAME.git

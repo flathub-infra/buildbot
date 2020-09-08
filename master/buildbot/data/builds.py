@@ -40,6 +40,7 @@ class Db2DataMixin:
             return (props
                     if '*' in filters
                     else dict(((k, v) for k, v in props.items() if k in filters)))
+        return None
 
     def db2data(self, dbdict):
         data = {
@@ -95,7 +96,7 @@ class BuildEndpoint(Db2DataMixin, base.BuildNestingMixin, base.Endpoint):
         else:
             bldr = yield self.getBuilderId(kwargs)
             if bldr is None:
-                return
+                return None
             num = kwargs['number']
             dbdict = yield self.master.db.builds.getBuildByNumber(bldr, num)
 

@@ -18,6 +18,7 @@ from twisted.internet import defer
 
 from buildbot.mq import base
 from buildbot.test.util import validation
+from buildbot.util import deferwaiter
 from buildbot.util import service
 from buildbot.util import tuplematch
 
@@ -37,6 +38,12 @@ class FakeMQConnector(service.AsyncMultiService, base.MQBase):
         self.setup_called = False
         self.productions = []
         self.qrefs = []
+        self._deferwaiter = deferwaiter.DeferWaiter()
+
+    @defer.inlineCallbacks
+    def stopService(self):
+        yield self._deferwaiter.wait()
+        yield super().stopService()
 
     def setup(self):
         self.setup_called = True
@@ -52,7 +59,7 @@ class FakeMQConnector(service.AsyncMultiService, base.MQBase):
 #            validation.verifyMessage(self.testcase, routingKey, data)
 
         if any(not isinstance(k, str) for k in routingKey):
-            raise AssertionError("%s is not all str" % (routingKey,))
+            raise AssertionError("{} is not all str".format(routingKey))
         self.productions.append((routingKey, data))
         # note - no consumers are called: IT'S A FAKE
 
@@ -63,14 +70,14 @@ class FakeMQConnector(service.AsyncMultiService, base.MQBase):
         for q in self.qrefs:
             if tuplematch.matchTuple(routingKey, q.filter):
                 matched = True
-                q.callback(routingKey, msg)
+                self._deferwaiter.add(q.callback(routingKey, msg))
         if not matched:
             raise AssertionError("no consumer found")
 
     def startConsuming(self, callback, filter, persistent_name=None):
         if any(not isinstance(k, str) and
                k is not None for k in filter):
-            raise AssertionError("%s is not a filter" % (filter,))
+            raise AssertionError("{} is not a filter".format(filter))
         qref = FakeQueueRef()
         qref.qrefs = self.qrefs
         qref.callback = callback

@@ -20,6 +20,7 @@ from twisted.python import log
 from twisted.spread import pb
 
 from buildbot.pbutil import decode
+from buildbot.util import ComparableMixin
 from buildbot.util import deferwaiter
 from buildbot.worker.protocols import base
 
@@ -43,21 +44,25 @@ class Listener(base.Listener):
         else:
             currentPassword, currentPortStr, currentReg = None, None, None
 
-        if currentPassword != password or currentPortStr != portStr:
-            if currentReg:
-                yield currentReg.unregister()
-                del self._registrations[username]
-            if portStr and password:
-                reg = yield self.master.pbmanager.register(portStr, username, password,
-                                                           self._getPerspective)
-                self._registrations[username] = (password, portStr, reg)
-                return reg
+        iseq = (ComparableMixin.isEquivalent(currentPassword, password) and
+                ComparableMixin.isEquivalent(currentPortStr, portStr))
+        if iseq:
+            return currentReg
+
+        if currentReg:
+            yield currentReg.unregister()
+            del self._registrations[username]
+        if portStr and password:
+            reg = yield self.master.pbmanager.register(portStr, username, password,
+                                                       self._getPerspective)
+            self._registrations[username] = (password, portStr, reg)
+            return reg
+        return currentReg
 
     @defer.inlineCallbacks
     def _getPerspective(self, mind, workerName):
         workers = self.master.workers
-        log.msg("worker '%s' attaching from %s" % (workerName,
-                                                   mind.broker.transport.getPeer()))
+        log.msg("worker '{}' attaching from {}".format(workerName, mind.broker.transport.getPeer()))
 
         # try to use TCP keepalives
         try:
@@ -287,7 +292,7 @@ class Connection(base.Connection, pb.Avatar):
 
             if d:
                 name = self.worker.workername
-                log.msg("Shutting down (old) worker: %s" % name)
+                log.msg("Shutting down (old) worker: {}".format(name))
                 # The remote shutdown call will not complete successfully since
                 # the buildbot process exits almost immediately after getting
                 # the shutdown request.
@@ -298,10 +303,9 @@ class Connection(base.Connection, pb.Avatar):
                 @d.addErrback
                 def _errback(why):
                     if why.check(pb.PBConnectionLost):
-                        log.msg("Lost connection to %s" % name)
+                        log.msg("Lost connection to {}".format(name))
                     else:
-                        log.err("Unexpected error when trying to shutdown %s"
-                                % name)
+                        log.err("Unexpected error when trying to shutdown {}".format(name))
                 return d
             log.err("Couldn't find remote builder to shut down worker")
             return defer.succeed(None)

@@ -64,8 +64,7 @@ class IndexResource(resource.Resource):
             import pyjade   # pylint: disable=import-outside-toplevel
             allowed_ext.append(".jade")
         except ImportError:  # pragma: no cover
-            log.msg("pyjade not installed. Ignoring .jade files from %s" %
-                    (template_dir,))
+            log.msg("pyjade not installed. Ignoring .jade files from {}".format(template_dir))
             pyjade = None
         for root, dirs, files in os.walk(template_dir):
             if root == template_dir:
@@ -118,7 +117,7 @@ class IndexResource(resource.Resource):
     def renderIndex(self, request):
         config = {}
         request.setHeader(b"content-type", b'text/html')
-        request.setHeader(b"Cache-Control", b"public;max-age=0")
+        request.setHeader(b"Cache-Control", b"public,max-age=0")
 
         try:
             yield self.config['auth'].maybeAutoLogin(request)

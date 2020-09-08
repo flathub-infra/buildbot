@@ -22,7 +22,7 @@ from twisted.trial import unittest
 from buildbot.data import changes
 from buildbot.data import resultspec
 from buildbot.process.users import users
-from buildbot.test.fake import fakedb
+from buildbot.test import fakedb
 from buildbot.test.fake import fakemaster
 from buildbot.test.util import endpoint
 from buildbot.test.util import interfaces
@@ -92,7 +92,7 @@ class ChangesEndpoint(endpoint.EndpointMixin, unittest.TestCase):
         self.assertEqual(changes[1]['changeid'], 14)
 
     @defer.inlineCallbacks
-    def test_getRecentChanges(self):
+    def test_getChanges_recent(self):
         resultSpec = resultspec.ResultSpec(limit=1, order=('-changeid',))
         changes = yield self.callGet(('changes',), resultSpec=resultSpec)
 
@@ -105,8 +105,7 @@ class ChangesEndpoint(endpoint.EndpointMixin, unittest.TestCase):
         resultSpec = resultspec.ResultSpec(limit=1, order=('-when_time_stamp',))
         changes = yield self.callGet(('changes',), resultSpec=resultSpec)
 
-        # limit not implemented for other order
-        self.assertEqual(len(changes), 2)
+        self.assertEqual(len(changes), 1)
 
     @defer.inlineCallbacks
     def test_getChangesOtherOffset(self):
@@ -114,8 +113,7 @@ class ChangesEndpoint(endpoint.EndpointMixin, unittest.TestCase):
             limit=1, offset=1, order=('-changeid',))
         changes = yield self.callGet(('changes',), resultSpec=resultSpec)
 
-        # limit not implemented for other offset
-        self.assertEqual(len(changes), 2)
+        self.assertEqual(len(changes), 1)
 
 
 class Change(TestReactorMixin, interfaces.InterfaceTests, unittest.TestCase):
@@ -279,7 +277,7 @@ class Change(TestReactorMixin, interfaces.InterfaceTests, unittest.TestCase):
         self.master.config = mock.Mock(name='master.config')
         self.master.config.preChangeGenerator = preChangeGenerator
         self.master.config.codebaseGenerator = \
-            lambda change: 'cb-%s' % change['category']
+            lambda change: 'cb-{}'.format(change['category'])
         kwargs = dict(author='warner', committer='david', branch='warnerdb',
                       category='devel', comments='fix whitespace',
                       files=['master/buildbot/__init__.py'],
@@ -336,7 +334,7 @@ class Change(TestReactorMixin, interfaces.InterfaceTests, unittest.TestCase):
 
     def test_addChange_repository_revision(self):
         self.master.config = mock.Mock(name='master.config')
-        self.master.config.revlink = lambda rev, repo: 'foo%sbar%sbaz' % (repo, rev)
+        self.master.config.revlink = lambda rev, repo: 'foo{}bar{}baz'.format(repo, rev)
         # revlink is default here
         kwargs = dict(author='warner', committer='david', branch='warnerdb',
                       category='devel', comments='fix whitespace',

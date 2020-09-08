@@ -31,7 +31,7 @@ from buildbot.process import factory
 from buildbot.process import results
 from buildbot.process import workerforbuilder
 from buildbot.steps import shell
-from buildbot.test.fake import fakedb
+from buildbot.test import fakedb
 from buildbot.test.fake import fakemaster
 from buildbot.test.fake import fakeprotocol
 from buildbot.test.util.misc import TestReactorMixin
@@ -194,9 +194,13 @@ class RunSteps(unittest.TestCase, TestReactorMixin):
         yield wfb.attached(self.worker, {})
 
         # add the buildset/request
-        self.bsid, brids = yield self.master.db.buildsets.addBuildset(
-            sourcestamps=[{}], reason='x', properties={},
-            builderids=[80], waited_for=False)
+        sourcestamps = [
+            {'repository': '', 'project': '', 'codebase': ''}
+        ]
+        self.bsid, brids = yield self.master.db.buildsets.addBuildset(sourcestamps=sourcestamps,
+                                                                      reason='x', properties={},
+                                                                      builderids=[80],
+                                                                      waited_for=False)
 
         self.brdict = \
             yield self.master.db.buildrequests.getBuildRequest(brids[80])

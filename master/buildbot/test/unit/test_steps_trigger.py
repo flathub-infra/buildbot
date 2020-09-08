@@ -30,7 +30,7 @@ from buildbot.process.results import FAILURE
 from buildbot.process.results import SUCCESS
 from buildbot.status import master
 from buildbot.steps import trigger
-from buildbot.test.fake import fakedb
+from buildbot.test import fakedb
 from buildbot.test.util import steps
 from buildbot.test.util.interfaces import InterfaceTests
 from buildbot.test.util.misc import TestReactorMixin
@@ -187,7 +187,8 @@ class TestTrigger(steps.BuildStepMixin, TestReactorMixin, unittest.TestCase):
             results_dict = {}
         if self.step.waitForFinish:
             for i in [11, 22, 33, 44]:
-                yield self.master.db.builds.finishBuild(BRID_TO_BID(i), results_dict.get(i, SUCCESS))
+                yield self.master.db.builds.finishBuild(BRID_TO_BID(i),
+                                                        results_dict.get(i, SUCCESS))
         d = super().runStep()
         # the build doesn't finish until after a callLater, so this has the
         # effect of checking whether the deferred has been fired already;
@@ -269,7 +270,12 @@ class TestTrigger(steps.BuildStepMixin, TestReactorMixin, unittest.TestCase):
     def test_unimportantSchedulerNames_not_in_schedulerNames(self):
         with self.assertRaises(config.ConfigErrors):
             trigger.Trigger(schedulerNames=['a'],
-                            unimportantsShedulerNames=['b'])
+                            unimportantSchedulerNames=['b'])
+
+    def test_unimportantSchedulerNames_not_in_schedulerNames_but_rendered(self):
+        # should not raise
+        trigger.Trigger(schedulerNames=[properties.Interpolate('a')],
+                        unimportantSchedulerNames=['b'])
 
     def test_sourceStamp_and_updateSourceStamp(self):
         with self.assertRaises(config.ConfigErrors):
@@ -653,7 +659,7 @@ class TestTrigger(steps.BuildStepMixin, TestReactorMixin, unittest.TestCase):
         yield self.runStep()
 
     @defer.inlineCallbacks
-    def test_unimportantsShedulerNames(self):
+    def test_unimportantSchedulerNames(self):
         yield self.setupStep(trigger.Trigger(schedulerNames=['a', 'b'],
                                              unimportantSchedulerNames=['b']))
         self.scheduler_a.result = SUCCESS
@@ -663,7 +669,7 @@ class TestTrigger(steps.BuildStepMixin, TestReactorMixin, unittest.TestCase):
         yield self.runStep()
 
     @defer.inlineCallbacks
-    def test_unimportantsShedulerNames_with_more_brids_for_bsid(self):
+    def test_unimportantSchedulerNames_with_more_brids_for_bsid(self):
         yield self.setupStep(trigger.Trigger(schedulerNames=['a', 'c'],
                                              unimportantSchedulerNames=['c']))
         self.scheduler_a.result = SUCCESS

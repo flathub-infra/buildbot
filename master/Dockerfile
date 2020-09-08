@@ -12,12 +12,12 @@
 # which get installed in the final image.
 # This allows us to avoid installing build tools like gcc in the final image.
 
-FROM        alpine:3.7 AS buildbot-build
+FROM        alpine:3.11 AS buildbot-build
 MAINTAINER  Buildbot maintainers
 
 # Last build date - this can be updated whenever there are security updates so
 # that everything is rebuilt
-ENV         security_updates_as_of 2018-04-10
+ENV         security_updates_as_of 2020-05-01
 
 
 COPY . /usr/src/buildbot
@@ -54,7 +54,7 @@ RUN \
 # Note that the UI and worker packages are the latest version published on pypi
 # This is to avoid pulling node inside this container
 
-FROM        alpine:3.7
+FROM        alpine:3.11
 MAINTAINER  Buildbot maintainers
 
 # Last build date - this can be updated whenever there are security updates so

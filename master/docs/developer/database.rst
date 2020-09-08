@@ -869,27 +869,15 @@ changes
 
         Get the userids associated with the given changeid.
 
-    .. py:method:: getRecentChanges(count)
+    .. py:method:: getChanges(resultSpec=None)
 
-        :param count: maximum number of instances to return
-        :returns: list of dictionaries via Deferred, ordered by changeid
-
-        Get a list of the ``count`` most recent changes, represented as
-        dictionaries; returns fewer if that many do not exist.
-
-        .. note::
-            For this function, "recent" is determined by the order of the
-            changeids, not by ``when_timestamp``.  This is most apparent in
-            DVCS's, where the timestamp of a change may be significantly
-            earlier than the time at which it is merged into a repository
-            monitored by Buildbot.
-
-    .. py:method:: getChanges()
-
+        :param resultSpec: resultSpec containing filters sorting and paging request from data/REST API.
+            If possible, the db layer can optimize the SQL query using this information.
         :returns: list of dictionaries via Deferred
 
-        Get a list of the changes, represented as
-        dictionaries; changes are sorted, and paged using generic data query options
+        Get a list of the changes, represented as dictionaries, matching the given
+        criteria. if ``resultSpec`` is not provided, changes are sorted, and paged
+        using generic data query options;
 
     .. py:method:: getChangesCount()
 
@@ -1807,7 +1795,7 @@ Next, modify :src:`master/buildbot/db/model.py` to represent the updated schema.
 Buildbot's automated tests perform a rudimentary comparison of an upgraded database with the model, but it is important to check the details - key length, nullability, and so on can sometimes be missed by the checks.
 If the schema and the upgrade scripts get out of sync, bizarre behavior can result.
 
-Also, adjust the fake database table definitions in :src:`master/buildbot/test/fake/fakedb.py` according to your changes.
+Also, adjust the fake database table definitions in :src:`master/buildbot/test/fakedb` according to your changes.
 
 Your upgrade script should have unit tests.  The classes in :src:`master/buildbot/test/util/migration.py` make this straightforward.
 Unit test scripts should be named e.g., :file:`test_db_migrate_versions_015_remove_bad_master_objectid.py`.
@@ -1920,7 +1908,7 @@ When you hit this problem, you will get error like the following:
 .. code-block:: none
 
     sqlalchemy.exc.OperationalError: (OperationalError) too many SQL variables
-    u'DELETE FROM scheduler_changes WHERE scheduler_changes.changeid IN (?, ?, ?, ......tons of ?? and IDs .... 9363, 9362, 9361)
+    u'DELETE FROM scheduler_changes WHERE scheduler_changes.changeid IN (?, ?, ?, ..., ?)
 
 You can use the method :py:meth:`doBatch` in order to write batching code in a consistent manner.
 

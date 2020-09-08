@@ -16,7 +16,6 @@
 import mock
 
 from twisted.internet import defer
-from twisted.internet import task
 from twisted.python import log
 from twisted.python.reflect import namedModule
 
@@ -104,7 +103,21 @@ class BuildStepMixin:
     @ivar properties: build properties (L{Properties} instance)
     """
 
-    def setUpBuildStep(self):
+    def setUpBuildStep(self, wantData=True, wantDb=False, wantMq=False):
+        """
+        @param wantData(bool): Set to True to add data API connector to master.
+            Default value: True.
+
+        @param wantDb(bool): Set to True to add database connector to master.
+            Default value: False.
+
+        @param wantMq(bool): Set to True to add mq connector to master.
+            Default value: False.
+        """
+
+        if not hasattr(self, 'reactor'):
+            raise Exception('Reactor has not yet been setup for step')
+
         # make an (admittedly global) reference to this test case so that
         # the fakes can call back to us
         remotecommand.FakeRemoteCommand.testcase = self
@@ -114,6 +127,8 @@ class BuildStepMixin:
             self.patch(module, 'RemoteShellCommand',
                        remotecommand.FakeRemoteShellCommand)
         self.expected_remote_commands = []
+
+        self.master = fakemaster.make_master(self, wantData=wantData, wantDb=wantDb, wantMq=wantMq)
 
     def tearDownBuildStep(self):
         # delete the reference added in setUp
@@ -129,8 +144,7 @@ class BuildStepMixin:
         return getWorkerCommandVersion
 
     def setupStep(self, step, worker_version=None, worker_env=None,
-                  buildFiles=None, wantDefaultWorkdir=True, wantData=True,
-                  wantDb=False, wantMq=False):
+                  buildFiles=None, wantDefaultWorkdir=True):
         """
         Set up C{step} for testing.  This begins by using C{step} as a factory
         to create a I{new} step instance, thereby testing that the factory
@@ -145,15 +159,6 @@ class BuildStepMixin:
             commands.
 
         @param worker_env: environment from the worker at worker startup
-
-        @param wantData(bool): Set to True to add data API connector to master.
-            Default value: True.
-
-        @param wantDb(bool): Set to True to add database connector to master.
-            Default value: False.
-
-        @param wantMq(bool): Set to True to add mq connector to master.
-            Default value: False.
         """
         if worker_version is None:
             worker_version = {
@@ -169,12 +174,6 @@ class BuildStepMixin:
         factory = interfaces.IBuildStepFactory(step)
 
         step = self.step = factory.buildStep()
-        self.master = fakemaster.make_master(self, wantData=wantData,
-                                             wantDb=wantDb, wantMq=wantMq)
-
-        # mock out the reactor for updateSummary's debouncing
-        self.debounceClock = task.Clock()
-        self.master.reactor = self.debounceClock
 
         # set defaults
         if wantDefaultWorkdir:
@@ -319,7 +318,7 @@ class BuildStepMixin:
         result = yield self.step.startStep(self.conn)
 
         # finish up the debounced updateSummary before checking
-        self.debounceClock.advance(1)
+        self.reactor.advance(1)
         if self.expected_remote_commands:
             log.msg("un-executed remote commands:")
             for rc in self.expected_remote_commands:
@@ -348,18 +347,15 @@ class BuildStepMixin:
                     self.exp_state_string,
                     stepStateString[stepids[0]]))
         for pn, (pv, ps) in self.exp_properties.items():
-            self.assertTrue(self.properties.hasProperty(pn),
-                            "missing property '%s'" % pn)
-            self.assertEqual(self.properties.getProperty(pn),
-                             pv, "property '%s'" % pn)
+            self.assertTrue(self.properties.hasProperty(pn), "missing property '{}'".format(pn))
+            self.assertEqual(self.properties.getProperty(pn), pv, "property '{}'".format(pn))
             if ps is not None:
                 self.assertEqual(
                     self.properties.getPropertySource(pn), ps,
                     "property {0!r} source has source {1!r}".format(
                         pn, self.properties.getPropertySource(pn)))
         for pn in self.exp_missing_properties:
-            self.assertFalse(self.properties.hasProperty(pn),
-                             "unexpected property '%s'" % pn)
+            self.assertFalse(self.properties.hasProperty(pn), "unexpected property '{}'".format(pn))
         for l, exp in self.exp_logfiles.items():
             got = self.step.logs[l].stdout
             if got != exp:
@@ -393,8 +389,7 @@ class BuildStepMixin:
         if exp.shouldAssertCommandEqualExpectation():
             # handle any incomparable args
             for arg in exp.incomparable_args:
-                self.assertTrue(arg in got[1],
-                                "incomparable arg '%s' not received" % (arg,))
+                self.assertTrue(arg in got[1], "incomparable arg '{}' not received".format(arg))
                 del got[1][arg]
 
             # first check any ExpectedRemoteReference instances

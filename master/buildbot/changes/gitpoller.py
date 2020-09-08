@@ -42,22 +42,18 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
     """This source will poll a remote git repo for changes and submit
     them to the change master."""
 
-    compare_attrs = ("repourl", "branches", "workdir",
-                     "pollInterval", "gitbin", "usetimestamps",
-                     "category", "project", "pollAtLaunch",
-                     "buildPushesWithNoCommits", "sshPrivateKey", "sshHostKey",
-                     "sshKnownHosts")
+    compare_attrs = ("repourl", "branches", "workdir", "pollInterval", "gitbin", "usetimestamps",
+                     "category", "project", "pollAtLaunch", "buildPushesWithNoCommits",
+                     "sshPrivateKey", "sshHostKey", "sshKnownHosts", "pollRandomDelayMin",
+                     "pollRandomDelayMax")
 
     secrets = ("sshPrivateKey", "sshHostKey", "sshKnownHosts")
 
-    def __init__(self, repourl, branches=None, branch=None,
-                 workdir=None, pollInterval=10 * 60,
-                 gitbin='git', usetimestamps=True,
-                 category=None, project=None,
-                 pollinterval=-2, fetch_refspec=None,
-                 encoding='utf-8', name=None, pollAtLaunch=False,
-                 buildPushesWithNoCommits=False, only_tags=False,
-                 sshPrivateKey=None, sshHostKey=None, sshKnownHosts=None):
+    def __init__(self, repourl, branches=None, branch=None, workdir=None, pollInterval=10 * 60,
+                 gitbin="git", usetimestamps=True, category=None, project=None, pollinterval=-2,
+                 fetch_refspec=None, encoding="utf-8", name=None, pollAtLaunch=False,
+                 buildPushesWithNoCommits=False, only_tags=False, sshPrivateKey=None,
+                 sshHostKey=None, sshKnownHosts=None, pollRandomDelayMin=0, pollRandomDelayMax=0):
 
         # for backward compatibility; the parameter used to be spelled with 'i'
         if pollinterval != -2:
@@ -66,12 +62,10 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
         if name is None:
             name = repourl
 
-        super().__init__(name=name,
-                         pollInterval=pollInterval,
-                         pollAtLaunch=pollAtLaunch,
-                         sshPrivateKey=sshPrivateKey,
-                         sshHostKey=sshHostKey,
-                         sshKnownHosts=sshKnownHosts)
+        super().__init__(name=name, pollInterval=pollInterval, pollAtLaunch=pollAtLaunch,
+                         pollRandomDelayMin=pollRandomDelayMin,
+                         pollRandomDelayMax=pollRandomDelayMax, sshPrivateKey=sshPrivateKey,
+                         sshHostKey=sshHostKey, sshKnownHosts=sshKnownHosts)
 
         if project is None:
             project = ''
@@ -247,8 +241,8 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
                 try:
                     stamp = int(git_output)
                 except Exception as e:
-                    log.msg(
-                        'gitpoller: caught exception converting output \'{}\' to timestamp'.format(git_output))
+                    log.msg(('gitpoller: caught exception converting output \'{}\' to timestamp'
+                             ).format(git_output))
                     raise e
                 return stamp
             return None
@@ -308,7 +302,8 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
             return
 
         # get the change list
-        revListArgs = (['--format=%H', '{}'.format(newRev)] +
+        revListArgs = (['--ignore-missing'] +
+                       ['--format=%H', '{}'.format(newRev)] +
                        ['^' + rev
                         for rev in sorted(self.lastRev.values())] +
                        ['--'])
@@ -439,6 +434,6 @@ class GitPoller(base.PollingChangeSource, StateMixin, GitMixin):
             if code == 128:
                 raise GitError('command {} in {} on repourl {} failed with exit code {}: {}'.format(
                                full_args, path, self.repourl, code, stderr))
-            raise EnvironmentError('command {} in {} on repourl {} failed with exit code {}: {}'.format(
-                                   full_args, path, self.repourl, code, stderr))
+            raise EnvironmentError(('command {} in {} on repourl {} failed with exit code {}: {}'
+                                    ).format(full_args, path, self.repourl, code, stderr))
         return stdout.strip()

@@ -137,7 +137,7 @@ class LatentController(SeverWorkerConnectionMixin):
     def disconnect_worker(self):
         super().disconnect_worker()
         if self.remote_worker is None:
-            return
+            return None
         self.worker.conn, conn = None, self.worker.conn
         self.remote_worker, worker = None, self.remote_worker
 
@@ -182,10 +182,9 @@ class ControllableLatentWorker(AbstractLatentWorker):
             **kwargs)
 
     def reconfigService(self, name, _, **kwargs):
-        AbstractLatentWorker.reconfigService(
-            self, name, None,
-            build_wait_timeout=self._controller.build_wait_timeout,
-            **kwargs)
+        return super().reconfigService(name, None,
+                                       build_wait_timeout=self._controller.build_wait_timeout,
+                                       **kwargs)
 
     @defer.inlineCallbacks
     def isCompatibleWithBuild(self, build_props):

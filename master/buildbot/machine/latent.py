@@ -45,10 +45,11 @@ class AbstractLatentMachine(Machine):
         self.state = States.STOPPED
         self.latent_workers = []
 
+    @defer.inlineCallbacks
     def reconfigService(self, name,
                         build_wait_timeout=0,
                         missing_timeout=DEFAULT_MISSING_TIMEOUT, **kwargs):
-        super().reconfigService(name, **kwargs)
+        yield super().reconfigService(name, **kwargs)
         self.build_wait_timeout = build_wait_timeout
         self.missing_timeout = missing_timeout
 
@@ -146,6 +147,7 @@ class AbstractLatentMachine(Machine):
 
         self.state = States.STOPPED
         self._stop_notifier.notify(None)
+        return None
 
     def notifyBuildStarted(self):
         self._clearMissingTimer()

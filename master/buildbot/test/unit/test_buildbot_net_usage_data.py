@@ -76,7 +76,8 @@ class Tests(unittest.TestCase):
             master = self.getMaster(self.getBaseConfig())
         data = computeUsageData(master)
         self.assertEqual(sorted(data.keys()),
-                         sorted(['versions', 'db', 'platform', 'installid', 'mq', 'plugins', 'www_plugins']))
+                         sorted(['versions', 'db', 'platform', 'installid', 'mq', 'plugins',
+                                 'www_plugins']))
         self.assertEqual(data['plugins']['buildbot/worker/base/Worker'], 3)
         self.assertEqual(sorted(data['plugins'].keys()), sorted(
             ['buildbot/schedulers/forcesched/ForceScheduler', 'buildbot/worker/base/Worker',
@@ -150,5 +151,5 @@ class Tests(unittest.TestCase):
         self.assertEqual(len(distro), 2)
         self.assertNotIn("unknown", distro[0])
         # Rolling distributions like Arch Linux (arch) does not have VERSION_ID
-        if distro[0] != "arch":
+        if distro[0] not in ["arch", "gentoo"]:
             self.assertNotIn("unknown", distro[1])
