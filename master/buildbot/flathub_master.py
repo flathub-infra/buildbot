@@ -1843,6 +1843,16 @@ def computeConfig():
     c['logMaxSize'] = 60*1024*1024 # (A kde sdk build was 51mb)
     c['logMaxTailSize'] = 32768
 
+    c['caches'] = {
+        'Changes': 30,
+        'Builds': 50,
+        'chdicts': 30,
+        'BuildRequests': 20,
+        'SourceStamps': 20,
+        'ssdicts': 20,
+        'objectids': 10,
+    }
+
     # configure a janitor which will delete all logs older than one month,
     # and will run on sundays at noon
     c['configurators'] = [util.JanitorConfigurator(
