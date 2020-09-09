@@ -1839,6 +1839,7 @@ def computeConfig():
         'db_url' : config.db_uri,
     }
 
+    c['logCompressionMethod'] = 'lz4'
     c['logMaxSize'] = 60*1024*1024 # (A kde sdk build was 51mb)
     c['logMaxTailSize'] = 32768
 
