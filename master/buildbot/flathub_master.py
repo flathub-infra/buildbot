@@ -1854,10 +1854,10 @@ def computeConfig():
     }
 
     # configure a janitor which will delete all logs older than one month,
-    # and will run on sundays at noon
+    # and will run on sundays at 2 am
     c['configurators'] = [util.JanitorConfigurator(
         logHorizon=timedelta(weeks=4),
-        hour=12,
+        hour=2,
         dayOfWeek=6
     )]
 
