@@ -19,7 +19,6 @@ from twisted.internet import defer
 from twisted.python import log
 from twisted.python.reflect import namedModule
 
-from buildbot import interfaces
 from buildbot.process import buildstep
 from buildbot.process import remotecommand as real_remotecommand
 from buildbot.process.results import EXCEPTION
@@ -65,17 +64,20 @@ def _dict_diff(d1, d2):
     return missing_in_d1, missing_in_d2, different
 
 
-def _describe_cmd_difference(exp, command):
-    if exp.args == command.args:
+def _describe_cmd_difference(exp_command, exp_args, got_command, got_args):
+    if exp_command != got_command:
+        return 'Expected command type {} got {}. Expected args {}'.format(exp_command, got_command,
+                                                                          repr(exp_args))
+    if exp_args == got_args:
         return ""
     text = ""
-    missing_in_exp, missing_in_cmd, diff = _dict_diff(exp.args, command.args)
+    missing_in_exp, missing_in_cmd, diff = _dict_diff(exp_args, got_args)
     if missing_in_exp:
-        text += (
-            'Keys in cmd missing from expectation: {0}\n'.format(missing_in_exp))
+        missing_dict = {key: got_args[key] for key in missing_in_exp}
+        text += 'Keys in cmd missing from expectation: {0!r}\n'.format(missing_dict)
     if missing_in_cmd:
-        text += (
-            'Keys in expectation missing from command: {0}\n'.format(missing_in_cmd))
+        missing_dict = {key: exp_args[key] for key in missing_in_cmd}
+        text += 'Keys in expectation missing from command: {0!r}\n'.format(missing_dict)
     if diff:
         formatted_diff = [
             '"{0}": expected {1!r}, got {2!r}'.format(*d) for d in diff]
@@ -141,20 +143,12 @@ class BuildStepMixin:
             self.patch(module, 'RemoteCommand', create_fake_remote_command)
             self.patch(module, 'RemoteShellCommand', create_fake_remote_shell_command)
         self.expected_remote_commands = []
+        self._expected_remote_commands_popped = 0
 
         self.master = fakemaster.make_master(self, wantData=wantData, wantDb=wantDb, wantMq=wantMq)
 
     def tearDownBuildStep(self):
         pass
-
-    # utilities
-    def _getWorkerCommandVersionWrapper(self):
-        originalGetWorkerCommandVersion = self.step.build.getWorkerCommandVersion
-
-        def getWorkerCommandVersion(cmd, oldversion):
-            return originalGetWorkerCommandVersion(cmd, oldversion)
-
-        return getWorkerCommandVersion
 
     def setupStep(self, step, worker_version=None, worker_env=None,
                   buildFiles=None, wantDefaultWorkdir=True):
@@ -184,9 +178,7 @@ class BuildStepMixin:
         if buildFiles is None:
             buildFiles = list()
 
-        factory = interfaces.IBuildStepFactory(step)
-
-        step = self.step = factory.buildStep()
+        step = self.step = buildstep.create_step_from_step_or_factory(step)
 
         # set defaults
         if wantDefaultWorkdir:
@@ -211,7 +203,7 @@ class BuildStepMixin:
         self.build.builder.config.env = worker_env.copy()
 
         # watch for properties being set
-        self.properties = interfaces.IProperties(b)
+        self.properties = b.getProperties()
 
         # step.progress
 
@@ -350,8 +342,6 @@ class BuildStepMixin:
 
         @returns: Deferred
         """
-        self.step.build.getWorkerCommandVersion = self._getWorkerCommandVersionWrapper()
-
         self.conn = mock.Mock(name="WorkerForBuilder(connection)")
         self.step.setupProgress()
         result = yield self.step.startStep(self.conn)
@@ -432,9 +422,11 @@ class BuildStepMixin:
             # first check any ExpectedRemoteReference instances
             exp_tup = (exp.remote_command, exp.args)
             if exp_tup != got:
-                text = _describe_cmd_difference(exp, command)
-                raise AssertionError(
-                    "Command contents different from expected; " + text)
+                msg = "Command contents different from expected (command index: {}); {}".format(
+                    self._expected_remote_commands_popped,
+                    _describe_cmd_difference(exp.remote_command, exp.args,
+                                             command.remote_command, command.args))
+                raise AssertionError(msg)
 
         if exp.shouldRunBehaviors():
             # let the Expect object show any behaviors that are required
@@ -464,6 +456,7 @@ class BuildStepMixin:
         finally:
             if not exp.shouldKeepMatchingAfter(command):
                 self.expected_remote_commands.pop(0)
+                self._expected_remote_commands_popped += 1
         return command
 
     def changeWorkerSystem(self, system):

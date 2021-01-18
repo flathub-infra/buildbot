@@ -22,7 +22,6 @@ from mock import Mock
 from twisted.internet import defer
 from twisted.trial import unittest
 
-from buildbot import config
 from buildbot.plugins import util
 from buildbot.process.properties import Interpolate
 from buildbot.process.results import FAILURE
@@ -51,18 +50,18 @@ class TestException(Exception):
     pass
 
 
-class TestBitbucketServerStatusPush(TestReactorMixin, unittest.TestCase,
+class TestBitbucketServerStatusPush(TestReactorMixin, ConfigErrorsMixin, unittest.TestCase,
                                     ReporterTestMixin, LoggingMixin):
 
     @defer.inlineCallbacks
-    def setupReporter(self, **kwargs):
+    def setUp(self):
         self.setUpTestReactor()
         self.setup_reporter_test()
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
-        self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
-                                             wantMq=True)
+        self.master = fakemaster.make_master(self, wantData=True, wantDb=True, wantMq=True)
+        yield self.master.startService()
 
+    @defer.inlineCallbacks
+    def setupReporter(self, **kwargs):
         self._http = yield fakehttpclientservice.HTTPClientService.getService(
             self.master, self,
             'serv', auth=('username', 'passwd'),
@@ -70,7 +69,6 @@ class TestBitbucketServerStatusPush(TestReactorMixin, unittest.TestCase,
         self.sp = BitbucketServerStatusPush("serv", Interpolate("username"),
                                             Interpolate("passwd"), **kwargs)
         yield self.sp.setServiceParent(self.master)
-        yield self.master.startService()
 
     @defer.inlineCallbacks
     def tearDown(self):
@@ -106,6 +104,17 @@ class TestBitbucketServerStatusPush(TestReactorMixin, unittest.TestCase,
         build['results'] = FAILURE
         yield self.sp._got_event(('builds', 20, 'finished'), build)
 
+    def test_deprecated_generators(self):
+        with assertProducesWarnings(DeprecatedApiWarning, message_pattern='Use generators instead'):
+            BitbucketServerStatusPush("serv", Interpolate("username"), Interpolate("passwd"),
+                                      startDescription=Interpolate('start'),
+                                      endDescription=Interpolate('end'))
+
+    def test_deprecated_args_and_generators(self):
+        with self.assertRaisesConfigError("can't specify generators and deprecated"):
+            BitbucketServerStatusPush("serv", Interpolate("username"), Interpolate("passwd"),
+                                      generators=[], builders=['builder1'])
+
     @defer.inlineCallbacks
     def test_basic(self):
         self.setupReporter()
@@ -114,8 +123,9 @@ class TestBitbucketServerStatusPush(TestReactorMixin, unittest.TestCase,
 
     @defer.inlineCallbacks
     def test_setting_options(self):
-        self.setupReporter(statusName='Build', startDescription='Build started.',
-                           endDescription='Build finished.')
+        with assertProducesWarnings(DeprecatedApiWarning, message_pattern='Use generators instead'):
+            self.setupReporter(statusName='Build', startDescription='Build started.',
+                               endDescription='Build finished.')
         build = yield self.insert_build_finished(SUCCESS)
         # we make sure proper calls to txrequests have been made
         self._http.expect(
@@ -202,8 +212,6 @@ class TestBitbucketServerStatusPushDeprecatedSend(TestReactorMixin, unittest.Tes
     def setupReporter(self, **kwargs):
         self.setUpTestReactor()
         self.setup_reporter_test()
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
 
@@ -274,20 +282,19 @@ class TestBitbucketServerCoreAPIStatusPush(ConfigErrorsMixin, TestReactorMixin, 
     def setupReporter(self, token=None, **kwargs):
         self.setUpTestReactor()
         self.setup_reporter_test()
-
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
 
         http_headers = {} if token is None else {'Authorization': 'Bearer tokentoken'}
+        http_auth = ('username', 'passwd') if token is None else None
 
         self._http = yield fakehttpclientservice.HTTPClientService.getService(
-            self.master, self,
-            'serv', auth=('username', 'passwd'), headers=http_headers,
+            self.master, self, 'serv', auth=http_auth, headers=http_headers,
             debug=None, verify=None)
-        self.sp = BitbucketServerCoreAPIStatusPush(
-            "serv", token=token, auth=(Interpolate("username"), Interpolate("passwd")), **kwargs)
+
+        auth = (Interpolate("username"), Interpolate("passwd")) if token is None else None
+
+        self.sp = BitbucketServerCoreAPIStatusPush("serv", token=token, auth=auth, **kwargs)
         yield self.sp.setServiceParent(self.master)
         yield self.master.startService()
 
@@ -298,6 +305,17 @@ class TestBitbucketServerCoreAPIStatusPush(ConfigErrorsMixin, TestReactorMixin, 
     def tearDown(self):
         if self.master and self.master.running:
             yield self.master.stopService()
+
+    def test_deprecated_generators(self):
+        with assertProducesWarnings(DeprecatedApiWarning, message_pattern='Use generators instead'):
+            BitbucketServerCoreAPIStatusPush("serv", token="token",
+                                             startDescription=Interpolate('start'),
+                                             endDescription=Interpolate('end'))
+
+    def test_deprecated_args_and_generators(self):
+        with self.assertRaisesConfigError("can't specify generators and deprecated"):
+            BitbucketServerCoreAPIStatusPush("serv", token="token",
+                                             generators=[], builders=['builder1'])
 
     @defer.inlineCallbacks
     def _check_start_and_finish_build(self, build, parentPlan=False):
@@ -557,8 +575,6 @@ class TestBitbucketServerCoreAPIStatusPushDeprecatedSend(ConfigErrorsMixin, Test
     def setupReporter(self, token=None, **kwargs):
         self.setUpTestReactor()
         self.setup_reporter_test()
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
 
@@ -643,8 +659,6 @@ class TestBitbucketServerPRCommentPush(TestReactorMixin, unittest.TestCase,
     def setUp(self):
         self.setUpTestReactor()
         self.setup_reporter_test()
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
         yield self.master.startService()

@@ -15,12 +15,9 @@
 
 import datetime
 
-from mock import Mock
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
-from buildbot import config
 from buildbot.process.properties import Interpolate
 from buildbot.process.properties import Properties
 from buildbot.process.properties import renderer
@@ -31,14 +28,14 @@ from buildbot.test.fake import fakemaster
 from buildbot.test.fake import httpclientservice as fakehttpclientservice
 from buildbot.test.unit.changes.test_gerritchangesource import TestGerritChangeSource
 from buildbot.test.util import logging
+from buildbot.test.util.config import ConfigErrorsMixin
 from buildbot.test.util.misc import TestReactorMixin
 from buildbot.test.util.reporter import ReporterTestMixin
 from buildbot.test.util.warnings import assertProducesWarnings
 from buildbot.warnings import DeprecatedApiWarning
 
 
-class TestGerritVerifyStatusPush(TestReactorMixin,
-                                 ReporterTestMixin,
+class TestGerritVerifyStatusPush(TestReactorMixin, ReporterTestMixin, ConfigErrorsMixin,
                                  logging.LoggingMixin,
                                  unittest.TestCase):
 
@@ -50,8 +47,6 @@ class TestGerritVerifyStatusPush(TestReactorMixin,
             'gerrit_changes': [{'change_id': 12, 'revision_id': 2}]
         }
 
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
 
@@ -65,11 +60,23 @@ class TestGerritVerifyStatusPush(TestReactorMixin,
             self.master, self, "gerrit", auth=('log', 'pass'),
             debug=None, verify=None)
         self.sp = GerritVerifyStatusPush("gerrit", auth=auth, **kwargs)
-        self.sp.sessionFactory = Mock(return_value=Mock())
         yield self.sp.setServiceParent(self.master)
 
     def tearDown(self):
         return self.master.stopService()
+
+    def test_check_config(self):
+        with assertProducesWarnings(DeprecatedApiWarning, message_pattern='Use generators instead'):
+            GerritVerifyStatusPush('url', auth=('user', 'pass'),
+                                   startDescription=Interpolate('start'),
+                                   endDescription=Interpolate('end'),
+                                   reporter=Interpolate('context'),
+                                   verbose=True, builders=['builder1'])
+
+    def test_deprecated_generators(self):
+        with self.assertRaisesConfigError("can't specify generators and deprecated"):
+            GerritVerifyStatusPush('url', auth=('user', 'pass'), generators=[],
+                                   builders=['builder1'])
 
     @defer.inlineCallbacks
     def test_basic(self):
@@ -123,9 +130,10 @@ class TestGerritVerifyStatusPush(TestReactorMixin,
 
     @defer.inlineCallbacks
     def test_custom_description(self):
-        yield self.createGerritStatus(
-            startDescription=Interpolate("started %(prop:buildername)s"),
-            endDescription=Interpolate("finished %(prop:buildername)s"))
+        with assertProducesWarnings(DeprecatedApiWarning, message_pattern='Use generators instead'):
+            yield self.createGerritStatus(
+                startDescription=Interpolate("started %(prop:buildername)s"),
+                endDescription=Interpolate("finished %(prop:buildername)s"))
         build = yield self.insert_build_new()
         # we make sure proper calls to txrequests have been made
         self._http.expect(
@@ -401,8 +409,6 @@ class TestGerritVerifyStatusPushDeprecatedSend(TestReactorMixin, ReporterTestMix
         self.reporter_test_props = {
             'gerrit_changes': [{'change_id': 12, 'revision_id': 2}]
         }
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
 
@@ -416,7 +422,6 @@ class TestGerritVerifyStatusPushDeprecatedSend(TestReactorMixin, ReporterTestMix
             self.master, self, "gerrit", auth=('log', 'pass'),
             debug=None, verify=None)
         self.sp = GerritVerifyStatusPushDeprecatedSend("gerrit", auth=auth, **kwargs)
-        self.sp.sessionFactory = Mock(return_value=Mock())
         yield self.sp.setServiceParent(self.master)
 
     def tearDown(self):

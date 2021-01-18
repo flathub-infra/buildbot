@@ -13,12 +13,9 @@
 #
 # Copyright Buildbot Team Members
 
-from mock import Mock
-
 from twisted.internet import defer
 from twisted.trial import unittest
 
-from buildbot import config
 from buildbot.process.properties import Interpolate
 from buildbot.process.results import FAILURE
 from buildbot.process.results import SUCCESS
@@ -28,13 +25,14 @@ from buildbot.reporters.github import GitHubStatusPush
 from buildbot.test import fakedb
 from buildbot.test.fake import fakemaster
 from buildbot.test.fake import httpclientservice as fakehttpclientservice
+from buildbot.test.util.config import ConfigErrorsMixin
 from buildbot.test.util.misc import TestReactorMixin
 from buildbot.test.util.reporter import ReporterTestMixin
 from buildbot.test.util.warnings import assertProducesWarnings
 from buildbot.warnings import DeprecatedApiWarning
 
 
-class TestGitHubStatusPush(TestReactorMixin, unittest.TestCase,
+class TestGitHubStatusPush(TestReactorMixin, unittest.TestCase, ConfigErrorsMixin,
                            ReporterTestMixin):
 
     @defer.inlineCallbacks
@@ -45,8 +43,6 @@ class TestGitHubStatusPush(TestReactorMixin, unittest.TestCase,
         # project must be in the form <owner>/<project>
         self.reporter_test_project = 'buildbot/buildbot'
 
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
 
@@ -59,7 +55,6 @@ class TestGitHubStatusPush(TestReactorMixin, unittest.TestCase,
             },
             debug=None, verify=None)
         self.sp = self.createService()
-        self.sp.sessionFactory = Mock(return_value=Mock())
         yield self.sp.setServiceParent(self.master)
 
     def createService(self):
@@ -69,12 +64,15 @@ class TestGitHubStatusPush(TestReactorMixin, unittest.TestCase,
         return self.master.stopService()
 
     def test_check_config(self):
-        service = GitHubStatusPush(Interpolate('XXYYZZ'))
-        service.checkConfig(Interpolate('token'), startDescription=Interpolate('start'),
-                            endDescription=Interpolate('end'),
-                            context=Interpolate('context'),
-                            verbose=True,
-                            builders=['builder1'])
+        with assertProducesWarnings(DeprecatedApiWarning, message_pattern='Use generators instead'):
+            GitHubStatusPush(Interpolate('token'), startDescription=Interpolate('start'),
+                             endDescription=Interpolate('end'),
+                             context=Interpolate('context'),
+                             verbose=True, builders=['builder1'])
+
+    def test_deprecated_generators(self):
+        with self.assertRaisesConfigError("can't specify generators and deprecated"):
+            GitHubStatusPush(Interpolate('token'), generators=[], builders=['builder1'])
 
     @defer.inlineCallbacks
     def test_basic(self):
@@ -245,8 +243,6 @@ class TestGitHubStatusPushURL(TestReactorMixin, unittest.TestCase,
         self.reporter_test_project = 'buildbot'
         self.reporter_test_repo = 'https://github.com/buildbot1/buildbot1.git'
 
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
 
@@ -259,7 +255,6 @@ class TestGitHubStatusPushURL(TestReactorMixin, unittest.TestCase,
             },
             debug=None, verify=None)
         self.sp = self.createService()
-        self.sp.sessionFactory = Mock(return_value=Mock())
         yield self.sp.setServiceParent(self.master)
 
     def createService(self):
@@ -353,8 +348,6 @@ class TestGitHubStatusPushDeprecatedSend(TestReactorMixin, unittest.TestCase,
         # project must be in the form <owner>/<project>
         self.reporter_test_project = 'buildbot/buildbot'
 
-        # ignore config error if txrequests is not installed
-        self.patch(config, '_errors', Mock())
         self.master = fakemaster.make_master(self, wantData=True, wantDb=True,
                                              wantMq=True)
 
@@ -367,7 +360,6 @@ class TestGitHubStatusPushDeprecatedSend(TestReactorMixin, unittest.TestCase,
             },
             debug=None, verify=None)
         self.sp = self.createService()
-        self.sp.sessionFactory = Mock(return_value=Mock())
         yield self.sp.setServiceParent(self.master)
 
     def createService(self):

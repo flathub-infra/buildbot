@@ -22,6 +22,7 @@ from twisted.internet import defer
 
 from buildbot import config
 from buildbot import util
+from buildbot.process.properties import Properties
 from buildbot.process.results import CANCELLED
 from buildbot.process.results import EXCEPTION
 from buildbot.process.results import FAILURE
@@ -171,9 +172,9 @@ class MessageFormatterBase(util.ComparableMixin):
         context.update(self.context)
 
         return {
-            'body': self.render_message_body(context),
+            'body': (yield self.render_message_body(context)),
             'type': self.template_type,
-            'subject': self.render_message_subject(context)
+            'subject': (yield self.render_message_subject(context))
         }
 
     def render_message_body(self, context):
@@ -210,6 +211,56 @@ class DeprecatedMessageFormatterBuildJson(MessageFormatterBase):
 
     def render_message_subject(self, context):
         return None
+
+
+class MessageFormatterFunction(MessageFormatterBase):
+
+    def __init__(self, function, template_type, **kwargs):
+        super().__init__(**kwargs)
+        self.template_type = template_type
+        self._function = function
+
+    @defer.inlineCallbacks
+    def format_message_for_build(self, mode, buildername, build, master, blamelist):
+        msgdict = yield self.render_message_dict(master, {'build': build})
+        return msgdict
+
+    def render_message_body(self, context):
+        return self._function(context)
+
+    def render_message_subject(self, context):
+        return None
+
+
+class MessageFormatterRenderable(MessageFormatterBase):
+
+    template_type = 'plain'
+
+    def __init__(self, template, subject=None):
+        super().__init__()
+        self.template = template
+        self.subject = subject
+
+    @defer.inlineCallbacks
+    def format_message_for_build(self, mode, buildername, build, master, blamelist):
+        msgdict = yield self.render_message_dict(master, {'build': build, 'master': master})
+        return msgdict
+
+    @defer.inlineCallbacks
+    def render_message_body(self, context):
+        props = Properties.fromDict(context['build']['properties'])
+        props.master = context['master']
+
+        body = yield props.render(self.template)
+        return body
+
+    @defer.inlineCallbacks
+    def render_message_subject(self, context):
+        props = Properties.fromDict(context['build']['properties'])
+        props.master = context['master']
+
+        body = yield props.render(self.subject)
+        return body
 
 
 class MessageFormatterBaseJinja(MessageFormatterBase):
@@ -270,8 +321,14 @@ class MessageFormatter(MessageFormatterBaseJinja):
     def __init__(self, template_name=None, **kwargs):
 
         if template_name is not None:
-            warn_deprecated('0.9.1', "template_name is deprecated, use template_filename")
+            warn_deprecated('0.9.1', "template_name is deprecated, supply the template as text")
             kwargs['template_filename'] = template_name
+        if 'template_filename' in kwargs:
+            warn_deprecated('2.10.0',
+                            "template_filename is deprecated, supply the template as text")
+        if 'subject_filename' in kwargs:
+            warn_deprecated('2.10.0',
+                            "subject_filename is deprecated, supply the template as text")
         super().__init__(**kwargs)
 
     @defer.inlineCallbacks
