@@ -87,7 +87,7 @@ class GitHubEventHandler(PullRequestMixin):
         if handler is None:
             raise ValueError('Unknown event: {}'.format(event_type))
 
-        result = yield defer.maybeDeferred(lambda: handler(payload, event_type))
+        result = yield handler(payload, event_type)
         return result
 
     @defer.inlineCallbacks
@@ -104,9 +104,9 @@ class GitHubEventHandler(PullRequestMixin):
         if self._secret and signature:
             try:
                 hash_type, hexdigest = signature.split('=')
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
-                    'Wrong signature format: {}'.format(signature))
+                    'Wrong signature format: {}'.format(signature)) from e
 
             if hash_type != 'sha1':
                 raise ValueError('Unknown hash type: {}'.format(hash_type))
@@ -230,20 +230,25 @@ class GitHubEventHandler(PullRequestMixin):
         :param repo: the repo full name, ``{owner}/{project}``.
             e.g. ``buildbot/buildbot``
         '''
+        if not self._token:
+            return 'No message field'
+
         headers = {
-            'User-Agent': 'Buildbot'
+            'Authorization': 'token ' + self._token,
+            'User-Agent': 'Buildbot',
         }
-        if self._token:
-            headers['Authorization'] = 'token ' + self._token
 
         url = '/repos/{}/commits/{}'.format(repo, sha)
         http = yield httpclientservice.HTTPClientService.getService(
             self.master, self.github_api_endpoint, headers=headers,
             debug=self.debug, verify=self.verify)
         res = yield http.get(url)
-        data = yield res.json()
-        msg = data.get('commit', {'message': 'No message field'})['message']
-        return msg
+        if 200 <= res.code < 300:
+            data = yield res.json()
+            return data['commit']['message']
+
+        log.msg('Failed fetching PR commit message: response code {}'.format(res.code))
+        return 'No message field'
 
     @defer.inlineCallbacks
     def _get_pr_files(self, repo, number):
@@ -253,9 +258,13 @@ class GitHubEventHandler(PullRequestMixin):
             e.g. ``buildbot/buildbot``
         :param number: the pull request number.
         """
-        headers = {"User-Agent": "Buildbot"}
-        if self._token:
-            headers["Authorization"] = "token " + self._token
+        if not self._token:
+            return []
+
+        headers = {
+            'Authorization': 'token ' + self._token,
+            'User-Agent': 'Buildbot',
+        }
 
         url = "/repos/{}/pulls/{}/files".format(repo, number)
         http = yield httpclientservice.HTTPClientService.getService(
@@ -266,8 +275,12 @@ class GitHubEventHandler(PullRequestMixin):
             verify=self.verify,
         )
         res = yield http.get(url)
-        data = yield res.json()
-        return [f["filename"] for f in data]
+        if 200 <= res.code < 300:
+            data = yield res.json()
+            return [f["filename"] for f in data]
+
+        log.msg('Failed fetching PR files: response code {}'.format(res.code))
+        return []
 
     def _process_change(self, payload, user, repo, repo_url, project, event,
                         properties):
@@ -345,7 +358,7 @@ class GitHubEventHandler(PullRequestMixin):
 
     def _has_skip(self, msg):
         '''
-        The message contains the skipping keyword no not.
+        The message contains the skipping keyword or not.
 
         :return type: Bool
         '''

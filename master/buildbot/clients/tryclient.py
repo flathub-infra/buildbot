@@ -33,7 +33,8 @@ from twisted.python import runtime
 from twisted.python.procutils import which
 from twisted.spread import pb
 
-from buildbot.status import builder
+from buildbot.process.results import SUCCESS
+from buildbot.process.results import Results
 from buildbot.util import bytes2unicode
 from buildbot.util import now
 from buildbot.util import unicode2bytes
@@ -530,6 +531,13 @@ class RemoteTryPP(protocol.ProcessProtocol):
         self.d.callback((sig, rc))
 
 
+class FakeBuildSetStatus:
+    def callRemote(self, name):
+        if name == "getBuildRequests":
+            return defer.succeed([])
+        raise NotImplementedError()
+
+
 class Try(pb.Referenceable):
     buildsetStatus = None
     quiet = False
@@ -622,6 +630,7 @@ class Try(pb.Referenceable):
                ss.revision,
                self.builderNames,
                ss.patch[1]))
+        self.buildsetStatus = FakeBuildSetStatus()
         d = defer.Deferred()
         d.callback(True)
         return d
@@ -718,6 +727,8 @@ class Try(pb.Referenceable):
             self.running = defer.Deferred()
             assert self.buildsetStatus
             self._getStatus_1()
+            if bool(self.config.get("dryrun")):
+                self.statusDone()
             return self.running
         return None
 
@@ -821,7 +832,7 @@ class Try(pb.Referenceable):
                 if n not in self.outstanding:
                     # the build is finished, and we have results
                     code, text = self.results[n]
-                    t = builder.Results[code]
+                    t = Results[code]
                     if text:
                         t += " ({})".format(" ".join(text))
                 elif self.builds[n]:
@@ -845,11 +856,11 @@ class Try(pb.Referenceable):
         happy = True
         for n in names:
             code, text = self.results[n]
-            t = "{}: {}".format(n, builder.Results[code])
+            t = "{}: {}".format(n, Results[code])
             if text:
                 t += " ({})".format(" ".join(text))
             output(t)
-            if code != builder.SUCCESS:
+            if code != SUCCESS:
                 happy = False
 
         if happy:
@@ -913,7 +924,8 @@ class Try(pb.Referenceable):
             d.addCallback(lambda res: self.getStatus())
         d.addErrback(self.trapSystemExit)
         d.addErrback(log.err)
-        d.addCallback(self.cleanup)
+        if not bool(self.config.get("dryrun")):
+            d.addCallback(self.cleanup)
         if _inTests:
             return d
         d.addCallback(lambda res: reactor.stop())

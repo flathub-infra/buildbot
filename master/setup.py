@@ -18,6 +18,7 @@
 """
 Standard setup script.
 """
+from setuptools import setup  # isort:skip
 
 
 import glob
@@ -27,9 +28,7 @@ import pkg_resources
 import sys
 from distutils.command.install_data import install_data
 from distutils.command.sdist import sdist
-from distutils.version import LooseVersion
-
-from setuptools import setup
+from pkg_resources import parse_version
 
 from buildbot import version
 
@@ -173,6 +172,7 @@ setup_args = {
         "buildbot.process",
         "buildbot.process.users",
         "buildbot.reporters",
+        "buildbot.reporters.generators",
         "buildbot.schedulers",
         "buildbot.scripts",
         "buildbot.secrets",
@@ -274,9 +274,12 @@ setup_args = {
             ('buildbot.steps.cppcheck', ['Cppcheck']),
             ('buildbot.steps.http', [
                 'HTTPStep', 'POST', 'GET', 'PUT', 'DELETE', 'HEAD',
-                'OPTIONS']),
+                'OPTIONS',
+                'HTTPStepNewStyle', 'POSTNewStyle', 'GETNewStyle', 'PUTNewStyle', 'DELETENewStyle',
+                'HEADNewStyle', 'OPTIONSNewStyle']),
             ('buildbot.steps.master', [
-                'MasterShellCommand', 'SetProperty', 'SetProperties', 'LogRenderable', "Assert"]),
+                'MasterShellCommand', 'MasterShellCommandNewStyle',
+                'SetProperty', 'SetProperties', 'LogRenderable', "Assert"]),
             ('buildbot.steps.maxq', ['MaxQ']),
             ('buildbot.steps.mswin', ['Robocopy']),
             ('buildbot.steps.mtrlogobserver', ['MTR']),
@@ -288,15 +291,17 @@ setup_args = {
                 'Mock', 'MockBuildSRPM', 'MockRebuild']),
             ('buildbot.steps.package.rpm.rpmbuild', ['RpmBuild']),
             ('buildbot.steps.package.rpm.rpmlint', ['RpmLint']),
-            ('buildbot.steps.package.rpm.rpmspec', ['RpmSpec']),
             ('buildbot.steps.python', [
                 'BuildEPYDoc', 'PyFlakes', 'PyLint', 'Sphinx']),
             ('buildbot.steps.python_twisted', [
                 'HLint', 'Trial', 'RemovePYCs']),
             ('buildbot.steps.shell', [
-                'ShellCommand', 'TreeSize', 'SetPropertyFromCommand',
-                'Configure', 'WarningCountingShellCommand', 'Compile',
-                'Test', 'PerlModuleTest']),
+                'ShellCommand', 'ShellCommandNewStyle', 'TreeSize',
+                'SetPropertyFromCommand', 'SetPropertyFromCommandNewStyle',
+                'Configure', 'ConfigureNewStyle',
+                'WarningCountingShellCommand', 'WarningCountingShellCommandNewStyle',
+                'Compile', 'CompileNewStyle',
+                'Test', 'TestNewStyle', 'PerlModuleTest']),
             ('buildbot.steps.shellsequence', ['ShellSequence']),
             ('buildbot.steps.source.bzr', ['Bzr']),
             ('buildbot.steps.source.cvs', ['CVS']),
@@ -340,6 +345,7 @@ setup_args = {
             ('buildbot.reporters.stash', ['StashStatusPush']),
             ('buildbot.reporters.bitbucketserver', [
                 'BitbucketServerStatusPush',
+                'BitbucketServerCoreAPIStatusPush',
                 'BitbucketServerPRCommentPush'
             ]),
             ('buildbot.reporters.bitbucket', ['BitbucketStatusPush']),
@@ -401,7 +407,7 @@ setup_args = {
             ('buildbot.util.kubeclientservice', [
                 'KubeHardcodedConfig', 'KubeCtlProxyConfigLoader', 'KubeInClusterConfigLoader'
             ]),
-            ('buildbot.www.avatar', ['AvatarGravatar']),
+            ('buildbot.www.avatar', ['AvatarGravatar', 'AvatarGitHub']),
             ('buildbot.www.auth', [
                 'UserPasswordAuth', 'HTPasswdAuth', 'RemoteUserAuth', 'CustomAuth']),
             ('buildbot.www.ldapuserinfo', ['LdapUserInfo']),
@@ -465,7 +471,7 @@ if 'a' in version or 'b' in version:
         pip_dist = None
 
     if pip_dist:
-        if LooseVersion(pip_dist.version) < LooseVersion('1.4'):
+        if parse_version(pip_dist.version) < parse_version('1.4'):
             raise RuntimeError(VERSION_MSG)
 
 twisted_ver = ">= 17.9.0"
@@ -481,7 +487,7 @@ setup_args['install_requires'] = [
     'Jinja2 >= 2.1',
     # required for tests, but Twisted requires this anyway
     'zope.interface >= 4.1.1',
-    'sqlalchemy>=1.1.0',
+    'sqlalchemy>=1.2.0',
     'sqlalchemy-migrate>=0.9',
     'python-dateutil>=1.5',
     'txaio ' + txaio_ver,
@@ -495,8 +501,8 @@ test_deps = [
     # http client libraries
     'treq',
     'txrequests',
-    # pyjade required for custom templates tests
-    'pyjade',
+    # pypugjs required for custom templates tests
+    'pypugjs',
     # boto3 and moto required for running EC2 tests
     'boto3',
     'moto',
@@ -539,12 +545,13 @@ setup_args['extras_require'] = {
         'idna >= 0.6',
     ],
     'docs': [
-        'docutils<0.13.0',
-        'sphinx>1.4.0,<2.1.0',
+        'docutils>=0.16.0',
+        'sphinx>=3.2.0',
+        'sphinx-rtd-theme>=0.5',
         'sphinxcontrib-blockdiag',
         'sphinxcontrib-spelling',
+        'sphinxcontrib-websupport',
         'pyenchant',
-        'docutils>=0.8',
         'sphinx-jinja',
         'towncrier',
     ],

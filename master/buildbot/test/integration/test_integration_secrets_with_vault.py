@@ -13,6 +13,7 @@
 #
 # Copyright Buildbot Team Members
 
+import base64
 import subprocess
 from unittest.case import SkipTest
 
@@ -28,44 +29,61 @@ from buildbot.test.util.integration import RunMasterBase
 
 
 class SecretsConfig(RunMasterBase):
-
     def setUp(self):
         try:
-            rv = subprocess.call(['docker', 'pull', 'vault'])
-            if rv != 0:
-                raise FileNotFoundError('docker')
-        except FileNotFoundError:
-            raise SkipTest(
-                "Vault integration need docker environment to be setup")
+            subprocess.check_call(['docker', 'pull', 'vault'])
 
-        rv = subprocess.call(['docker', 'run', '-d',
-                              '-e', 'SKIP_SETCAP=yes',
-                              '-e', 'VAULT_DEV_ROOT_TOKEN_ID=my_vaulttoken',
-                              '-e', 'VAULT_TOKEN=my_vaulttoken',
-                              '--name=vault_for_buildbot',
-                              '-p', '8200:8200', 'vault'])
-        self.assertEqual(rv, 0)
-        self.addCleanup(self.remove_container)
+            subprocess.check_call(['docker', 'run', '-d',
+                                   '-e', 'SKIP_SETCAP=yes',
+                                   '-e', 'VAULT_DEV_ROOT_TOKEN_ID=my_vaulttoken',
+                                   '-e', 'VAULT_TOKEN=my_vaulttoken',
+                                   '--name=vault_for_buildbot',
+                                   '-p', '8200:8200', 'vault'])
+            self.addCleanup(self.remove_container)
 
-        rv = subprocess.call(['docker', 'exec',
-                              '-e', 'VAULT_ADDR=http://127.0.0.1:8200/',
-                              'vault_for_buildbot',
-                              'vault', 'kv', 'put', 'secret/key', 'value=word'])
-        self.assertEqual(rv, 0)
+            subprocess.check_call(['docker', 'exec',
+                                   '-e', 'VAULT_ADDR=http://127.0.0.1:8200/',
+                                   'vault_for_buildbot',
+                                   'vault', 'kv', 'put', 'secret/key', 'value=word'])
+
+            subprocess.check_call(['docker', 'exec',
+                                   '-e', 'VAULT_ADDR=http://127.0.0.1:8200/',
+                                   'vault_for_buildbot',
+                                   'vault', 'kv', 'put', 'secret/anykey', 'anyvalue=anyword'])
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            raise SkipTest("Vault integration needs docker environment to be setup")
 
     def remove_container(self):
         subprocess.call(['docker', 'rm', '-f', 'vault_for_buildbot'])
 
     @defer.inlineCallbacks
-    def test_secret(self):
-        yield self.setupConfig(masterConfig())
+    def do_secret_test(self, secret_specifier, expected_obfuscation, expected_value):
+        yield self.setupConfig(masterConfig(secret_specifier=secret_specifier))
         build = yield self.doForceBuild(wantSteps=True, wantLogs=True)
         self.assertEqual(build['buildid'], 1)
-        res = yield self.checkBuildStepLogExist(build, "echo <key>")
+
+        patterns = [
+            "echo -n {}".format(expected_obfuscation),
+            base64.b64encode(expected_value.encode('utf-8')).decode('utf-8'),
+        ]
+
+        res = yield self.checkBuildStepLogExist(build, patterns)
         self.assertTrue(res)
 
+    @defer.inlineCallbacks
+    def test_key(self):
+        yield self.do_secret_test('%(secret:key)s', '<key>', 'word')
 
-def masterConfig():
+    @defer.inlineCallbacks
+    def test_key_value(self):
+        yield self.do_secret_test('%(secret:key/value)s', '<key/value>', 'word')
+
+    @defer.inlineCallbacks
+    def test_any_key(self):
+        yield self.do_secret_test('%(secret:anykey/anyvalue)s', '<anykey/anyvalue>', 'anyword')
+
+
+def masterConfig(secret_specifier):
     c = {}
     from buildbot.config import BuilderConfig
     from buildbot.process.factory import BuildFactory
@@ -85,7 +103,7 @@ def masterConfig():
     )]
 
     f = BuildFactory()
-    f.addStep(ShellCommand(command=[Interpolate('echo %(secret:key)s')]))
+    f.addStep(ShellCommand(command=Interpolate('echo -n {} | base64'.format(secret_specifier))))
 
     c['builders'] = [
         BuilderConfig(name="testy",

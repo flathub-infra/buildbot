@@ -46,6 +46,19 @@ class BBRefTargetDirective(Directive):
     final_argument_whitespace = True
     option_spec = {}
     domain = 'bb'
+    doc_field_types = []
+
+    def get_field_type_map(self):
+        # This is the same as DocFieldTransformer.preprocess_fieldtype which got removed in
+        # Sphinx 4.0
+        typemap = {}
+        for fieldtype in self.doc_field_types:
+            for name in fieldtype.names:
+                typemap[name] = fieldtype, False
+            if fieldtype.is_typed:
+                for name in fieldtype.typenames:
+                    typemap[name] = fieldtype, True
+        return typemap
 
     def run(self):
         self.env = env = self.state.document.settings.env
@@ -188,6 +201,7 @@ class BBDomain(Domain):
         'sched': ObjType('sched', 'sched'),
         'chsrc': ObjType('chsrc', 'chsrc'),
         'step': ObjType('step', 'step'),
+        'reportgen': ObjType('reportgen', 'reportgen'),
         'reporter': ObjType('reporter', 'reporter'),
         'configurator': ObjType('configurator', 'configurator'),
         'worker': ObjType('worker', 'worker'),
@@ -220,6 +234,11 @@ class BBDomain(Domain):
                                               'single: Build Steps; %s',
                                               'single: %s Build Step',
                                           ]),
+        'reportgen': make_ref_target_directive('reportgen',
+                                               indextemplates=[
+                                                   'single: Report Generators; %s',
+                                                   'single: %s Report Generator',
+                                               ]),
         'reporter': make_ref_target_directive('reporter',
                                               indextemplates=[
                                                   'single: Reporter Targets; %s',
@@ -300,6 +319,7 @@ class BBDomain(Domain):
         'sched': XRefRole(),
         'chsrc': XRefRole(),
         'step': XRefRole(),
+        'reportgen': XRefRole(),
         'reporter': XRefRole(),
         'configurator': XRefRole(),
         'worker': XRefRole(),
@@ -320,6 +340,7 @@ class BBDomain(Domain):
         make_index("sched", "Scheduler Index"),
         make_index("chsrc", "Change Source Index"),
         make_index("step", "Build Step Index"),
+        make_index("reportgen", "Reporter Generator Index"),
         make_index("reporter", "Reporter Target Index"),
         make_index("configurator", "Configurator Target Index"),
         make_index("worker", "Build Worker Index"),

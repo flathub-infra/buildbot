@@ -27,6 +27,7 @@ from buildbot.util import service
 from buildbot.util import toJson
 from buildbot.util import unicode2bytes
 from buildbot.util.logger import Logger
+from buildbot.warnings import warn_deprecated
 
 log = Logger()
 
@@ -34,9 +35,10 @@ log = Logger()
 @implementer(IHttpResponse)
 class ResponseWrapper:
 
-    def __init__(self, code, content):
+    def __init__(self, code, content, url=None):
         self._content = content
         self._code = code
+        self._url = url
 
     def content(self):
         content = unicode2bytes(self._content)
@@ -49,14 +51,20 @@ class ResponseWrapper:
     def code(self):
         return self._code
 
+    @property
+    def url(self):
+        return self._url
+
 
 class HTTPClientService(service.SharedService):
-    """A SharedService class that fakes http requests for buildbot http service testing.
+    """ HTTPClientService is a SharedService class that fakes http requests for buildbot http
+        service testing.
 
-    It is called HTTPClientService so that it substitute the real HTTPClientService
-    if created earlier in the test.
-
-    getName from the fake and getName from the real must return the same values.
+        This class is named the same as the real HTTPClientService so that it could replace the real
+        class in tests. If a test creates this class earlier than the real one, fake is going to be
+        used until the master is destroyed. Whenever a master wants to create real
+        HTTPClientService, it will find an existing fake service with the same name and use it
+        instead.
     """
     quiet = False
 
@@ -78,20 +86,23 @@ class HTTPClientService(service.SharedService):
 
     @classmethod
     def getFakeService(cls, master, case, *args, **kwargs):
-        ret = cls.getService(master, *args, **kwargs)
+        warn_deprecated('2.9.0', 'getFakeService() has been deprecated, use getService()')
+        return cls.getService(master, case, *args, **kwargs)
 
+    @classmethod
+    @defer.inlineCallbacks
+    def getService(cls, master, case, *args, **kwargs):
         def assertNotCalled(self, *_args, **_kwargs):
             case.fail(("HTTPClientService called with *{!r}, **{!r}"
                        "while should be called *{!r} **{!r}").format(
                 _args, _kwargs, args, kwargs))
         case.patch(httpclientservice.HTTPClientService, "__init__", assertNotCalled)
 
-        @ret.addCallback
-        def assertNoOutstanding(fake):
-            fake.case = case
-            case.addCleanup(fake.assertNoOutstanding)
-            return fake
-        return ret
+        service = yield super().getService(master, *args, **kwargs)
+        service.case = case
+        case.addCleanup(service.assertNoOutstanding)
+        return service
+
     # tests should ensure this has been called
     checkAvailable = mock.Mock()
 

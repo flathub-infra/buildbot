@@ -22,7 +22,7 @@ from twisted.internet import reactor
 from twisted.python import log
 
 from buildbot.config import ConfigErrors
-from buildbot.interfaces import WorkerTooOldError
+from buildbot.interfaces import WorkerSetupError
 from buildbot.process import buildstep
 from buildbot.process import remotecommand
 from buildbot.process.results import SUCCESS
@@ -73,14 +73,14 @@ class Monotone(Source):
             raise ConfigErrors(errors)
 
     @defer.inlineCallbacks
-    def startVC(self, branch, revision, patch):
+    def run_vc(self, branch, revision, patch):
         self.revision = revision
-        self.stdio_log = self.addLogForRemoteCommands("stdio")
+        self.stdio_log = yield self.addLogForRemoteCommands("stdio")
 
         try:
             monotoneInstalled = yield self.checkMonotone()
             if not monotoneInstalled:
-                raise WorkerTooOldError("Monotone is not installed on worker")
+                raise WorkerSetupError("Monotone is not installed on worker")
 
             yield self._checkDb()
             yield self._retryPull()
@@ -97,11 +97,11 @@ class Monotone(Source):
             yield fn()
 
             if patch:
-                yield self.patch(None, patch)
+                yield self.patch(patch)
             yield self.parseGotRevision()
-            self.finish()
-        except Exception as e:
-            self.failed(e)
+            return SUCCESS
+        finally:
+            pass  # FIXME: remove this try:raise block
 
     @defer.inlineCallbacks
     def mode_full(self):
@@ -340,8 +340,3 @@ class Monotone(Source):
             log.msg("Workdir does not exist, falling back to a fresh clone")
 
         return workdir_exists
-
-    def finish(self):
-        self.setStatus(self.cmd, 0)
-        log.msg("Closing log, sending result of the command {} ".format(self.cmd))
-        return self.finished(0)

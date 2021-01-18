@@ -653,7 +653,7 @@ Factory Workdir Functions
 
 .. note::
 
-    While factory workdir function is still supported, it is better to just use the fact that workdir is a :index:`renderables <renderable>` attribute of every steps.
+    While factory workdir function is still supported, it is better to just use the fact that workdir is a :index:`renderables <renderable>` attribute of every step.
     A Renderable has access to much more contextual information, and also can return a deferred.
     So you could say ``build_factory.workdir = util.Interpolate("%(src:repository)s`` to achieve similar goal.
 
@@ -731,7 +731,7 @@ Consider the use of a :class:`BuildStep` in :file:`master.cfg`:
 This creates a single instance of class ``MyStep``.
 However, Buildbot needs a new object each time the step is executed.
 An instance of :class:`~buildbot.process.buildstep.BuildStep` remembers how it was constructed, and can create copies of itself.
-When writing a new step class, then, keep in mind are that you cannot do anything "interesting" in the constructor -- limit yourself to checking and storing arguments.
+When writing a new step class, then, keep in mind that you cannot do anything "interesting" in the constructor -- limit yourself to checking and storing arguments.
 
 It is customary to call the parent class's constructor with all otherwise-unspecified keyword arguments.
 Keep a ``**kwargs`` argument on the end of your options, and pass that up to the parent class's constructor.
@@ -794,7 +794,7 @@ The :py:class:`~buildbot.process.buildstep.CommandMixin` class offers a simple i
 For the much more common task of running a shell command on the worker, use :py:class:`~buildbot.process.buildstep.ShellMixin`.
 This class provides a method to handle the myriad constructor arguments related to shell commands, as well as a method to create new :py:class:`~buildbot.process.remotecommand.RemoteCommand` instances.
 This mixin is the recommended method of implementing custom shell-based steps.
-The older pattern of subclassing ``ShellCommand`` is no longer recommended.
+For simple steps that don't involve much logic the `:bb:step:`ShellCommand` is recommended.
 
 A simple example of a step using the shell mixin is:
 
@@ -914,7 +914,7 @@ Again, note that the log input must be a unicode string.
 Finally, :meth:`~buildbot.process.buildstep.BuildStep.addHTMLLog` is similar to :meth:`~buildbot.process.buildstep.BuildStep.addCompleteLog`, but the resulting log will be tagged as containing HTML.
 The web UI will display the contents of the log using the browser.
 
-The ``logfiles=`` argument to :bb:step:`ShellCommand` and its subclasses creates new log files and fills them in realtime by asking the worker to watch a actual file on disk.
+The ``logfiles=`` argument to :bb:step:`ShellCommand` and its subclasses creates new log files and fills them in realtime by asking the worker to watch an actual file on disk.
 The worker will look for additions in the target file and report them back to the :class:`BuildStep`.
 These additions will be added to the log file by calling :meth:`addStdout`.
 
@@ -1121,7 +1121,7 @@ If the path does not exist (or anything fails) we mark the step as failed; if th
 
 
     from buildbot.plugins import steps, util
-    from buildbot.interfaces import WorkerTooOldError
+    from buildbot.interfaces import WorkerSetupError
     import stat
 
     class MyBuildStep(steps.BuildStep):
@@ -1135,7 +1135,7 @@ If the path does not exist (or anything fails) we mark the step as failed; if th
             workerver = (self.workerVersion('stat'),
                         self.workerVersion('glob'))
             if not all(workerver):
-                raise WorkerTooOldError('need stat and glob')
+                raise WorkerSetupError('need stat and glob')
 
             cmd = buildstep.RemoteCommand('stat', {'file': self.dirname})
 

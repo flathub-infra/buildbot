@@ -35,6 +35,7 @@ class Log:
         self.subscriptions = {}
         self.finished = False
         self.finishWaiters = []
+        self._had_errors = False
         self.lock = defer.DeferredLock()
         self.decoder = decoder
 
@@ -55,8 +56,8 @@ class Log:
         type = str(type)
         try:
             subcls = cls._byType[type]
-        except KeyError:
-            raise RuntimeError("Invalid log type %r" % (type,))
+        except KeyError as e:
+            raise RuntimeError("Invalid log type %r" % (type,)) from e
         decoder = Log._decoderFromString(logEncoding)
         return subcls(master, name, type, logid, decoder)
 
@@ -91,6 +92,9 @@ class Log:
             self.finishWaiters.append(d)
         return d
 
+    def had_errors(self):
+        return self._had_errors
+
     @defer.inlineCallbacks
     def finish(self):
         assert not self.finished
@@ -102,9 +106,13 @@ class Log:
         # notify subscribers *after* finishing the log
         self.subPoint.deliver(None, None)
 
+        yield self.subPoint.waitForDeliveriesToFinish()
+
         # notify those waiting for finish
         for d in self.finishWaiters:
             d.callback(None)
+
+        self._had_errors = len(self.subPoint.pop_exceptions()) > 0
 
         # start a compressLog call but don't make our caller wait for
         # it to complete
@@ -116,23 +124,23 @@ class Log:
 class PlainLog(Log):
 
     def __init__(self, master, name, type, logid, decoder):
-        super(PlainLog, self).__init__(master, name, type, logid, decoder)
+        super().__init__(master, name, type, logid, decoder)
 
         def wholeLines(lines):
-            if not isinstance(lines, str):
-                lines = self.decoder(lines)
             self.subPoint.deliver(None, lines)
             return self.addRawLines(lines)
         self.lbf = lineboundaries.LineBoundaryFinder(wholeLines)
 
     def addContent(self, text):
+        if not isinstance(text, str):
+            text = self.decoder(text)
         # add some text in the log's default stream
         return self.lbf.append(text)
 
     @defer.inlineCallbacks
     def finish(self):
         yield self.lbf.flush()
-        yield super(PlainLog, self).finish()
+        yield super().finish()
 
 
 class TextLog(PlainLog):
@@ -156,7 +164,7 @@ class StreamLog(Log):
     pat = re.compile('^', re.M)
 
     def __init__(self, step, name, type, logid, decoder):
-        super(StreamLog, self).__init__(step, name, type, logid, decoder)
+        super().__init__(step, name, type, logid, decoder)
         self.lbfs = {}
 
     def _getLbf(self, stream):
@@ -164,8 +172,6 @@ class StreamLog(Log):
             return self.lbfs[stream]
         except KeyError:
             def wholeLines(lines):
-                if not isinstance(lines, str):
-                    lines = self.decoder(lines)
                 # deliver the un-annotated version to subscribers
                 self.subPoint.deliver(stream, lines)
                 # strip the last character, as the regexp will add a
@@ -176,19 +182,25 @@ class StreamLog(Log):
             return lbf
 
     def addStdout(self, text):
+        if not isinstance(text, str):
+            text = self.decoder(text)
         return self._getLbf('o').append(text)
 
     def addStderr(self, text):
+        if not isinstance(text, str):
+            text = self.decoder(text)
         return self._getLbf('e').append(text)
 
     def addHeader(self, text):
+        if not isinstance(text, str):
+            text = self.decoder(text)
         return self._getLbf('h').append(text)
 
     @defer.inlineCallbacks
     def finish(self):
         for lbf in self.lbfs.values():
             yield lbf.flush()
-        yield super(StreamLog, self).finish()
+        yield super().finish()
 
 
 Log._byType['s'] = StreamLog

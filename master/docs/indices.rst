@@ -1,11 +1,12 @@
-Indices and Tables
-==================
+API Indices
+===========
 
-* :ref:`genindex`
+* :ref:`apiindex`
 * :bb:index:`cfg`
 * :bb:index:`sched`
 * :bb:index:`chsrc`
 * :bb:index:`step`
+* :bb:index:`reportgen`
 * :bb:index:`reporter`
 * :bb:index:`cmdline`
 * :bb:index:`msg`
@@ -13,5 +14,4 @@ Indices and Tables
 * :bb:index:`rtype`
 * :bb:index:`rpath`
 * :bb:index:`raction`
-* :ref:`modindex`
-* :ref:`search`
+* :ref:`genindex`

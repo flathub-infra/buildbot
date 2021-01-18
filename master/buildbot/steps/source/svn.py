@@ -26,6 +26,7 @@ from twisted.internet import reactor
 from twisted.python import log
 
 from buildbot.config import ConfigErrors
+from buildbot.interfaces import WorkerSetupError
 from buildbot.process import buildstep
 from buildbot.process import remotecommand
 from buildbot.steps.source.base import Source
@@ -68,10 +69,11 @@ class SVN(Source):
         if errors:
             raise ConfigErrors(errors)
 
-    def startVC(self, branch, revision, patch):
+    @defer.inlineCallbacks
+    def run_vc(self, branch, revision, patch):
         self.revision = revision
         self.method = self._getMethod()
-        self.stdio_log = self.addLogForRemoteCommands("stdio")
+        self.stdio_log = yield self.addLogForRemoteCommands("stdio")
 
         # if the version is new enough, and the password is set, then obfuscate
         # it
@@ -82,34 +84,23 @@ class SVN(Source):
                 log.msg("Worker does not understand obfuscation; "
                         "svn password will be logged")
 
-        d = self.checkSvn()
+        installed = yield self.checkSvn()
+        if not installed:
+            raise WorkerSetupError("SVN is not installed on worker")
 
-        @d.addCallback
-        def checkInstall(svnInstalled):
-            if not svnInstalled:
-                raise buildstep.BuildStepFailed(
-                    "SVN is not installed on worker")
-            return 0
+        patched = yield self.sourcedirIsPatched()
+        if patched:
+            yield self.purge(False)
 
-        d.addCallback(lambda _: self.sourcedirIsPatched())
-
-        @d.addCallback
-        def checkPatched(patched):
-            if patched:
-                return self.purge(False)
-            return 0
-
-        d.addCallback(self._getAttrGroupMember('mode', self.mode))
+        yield self._getAttrGroupMember('mode', self.mode)()
 
         if patch:
-            d.addCallback(self.patch, patch)
-        d.addCallback(self.parseGotRevision)
-        d.addCallback(self.finish)
-        d.addErrback(self.failed)
-        return d
+            yield self.patch(patch)
+        res = yield self.parseGotRevision()
+        return res
 
     @defer.inlineCallbacks
-    def mode_full(self, _):
+    def mode_full(self):
         if self.method == 'clobber':
             yield self.clobber()
             return
@@ -127,7 +118,7 @@ class SVN(Source):
             yield self.fresh()
 
     @defer.inlineCallbacks
-    def mode_incremental(self, _):
+    def mode_incremental(self):
         updatable = yield self._sourcedirIsUpdatable()
 
         if not updatable:
@@ -140,26 +131,26 @@ class SVN(Source):
                 command.extend(['--revision', str(self.revision)])
             yield self._dovccmd(command)
 
+    @defer.inlineCallbacks
     def clobber(self):
-        d = self.runRmdir(self.workdir, timeout=self.timeout)
-        d.addCallback(lambda _: self._checkout())
-        return d
+        yield self.runRmdir(self.workdir, timeout=self.timeout)
+        yield self._checkout()
 
+    @defer.inlineCallbacks
     def fresh(self):
-        d = self.purge(True)
+        yield self.purge(True)
         cmd = ['update']
         if self.revision:
             cmd.extend(['--revision', str(self.revision)])
-        d.addCallback(lambda _: self._dovccmd(cmd))
-        return d
+        yield self._dovccmd(cmd)
 
+    @defer.inlineCallbacks
     def clean(self):
-        d = self.purge(False)
+        yield self.purge(False)
         cmd = ['update']
         if self.revision:
             cmd.extend(['--revision', str(self.revision)])
-        d.addCallback(lambda _: self._dovccmd(cmd))
-        return d
+        yield self._dovccmd(cmd)
 
     @defer.inlineCallbacks
     def copy(self):
@@ -173,7 +164,7 @@ class SVN(Source):
         try:
             old_workdir = self.workdir
             self.workdir = checkout_dir
-            yield self.mode_incremental(None)
+            yield self.mode_incremental()
         finally:
             self.workdir = old_workdir
         self.workdir = old_workdir
@@ -205,16 +196,7 @@ class SVN(Source):
         if cmd.didFail():
             raise buildstep.BuildStepFailed()
 
-    def finish(self, res):
-        d = defer.succeed(res)
-
-        @d.addCallback
-        def _gotResults(results):
-            self.setStatus(self.cmd, results)
-            return results
-        d.addCallback(self.finished)
-        return d
-
+    @defer.inlineCallbacks
     def _dovccmd(self, command, collectStdout=False, collectStderr=False, abandonOnFailure=True):
         assert command, "No command specified"
         command.extend(['--non-interactive', '--no-auth-cache'])
@@ -234,21 +216,18 @@ class SVN(Source):
                                                collectStdout=collectStdout,
                                                collectStderr=collectStderr)
         cmd.useLog(self.stdio_log, False)
-        d = self.runCommand(cmd)
+        yield self.runCommand(cmd)
 
-        @d.addCallback
-        def evaluateCommand(_):
-            if cmd.didFail() and abandonOnFailure:
-                log.msg("Source step failed while running command {}".format(cmd))
-                raise buildstep.BuildStepFailed()
-            if collectStdout and collectStderr:
-                return (cmd.stdout, cmd.stderr)
-            elif collectStdout:
-                return cmd.stdout
-            elif collectStderr:
-                return cmd.stderr
-            return cmd.rc
-        return d
+        if cmd.didFail() and abandonOnFailure:
+            log.msg("Source step failed while running command {}".format(cmd))
+            raise buildstep.BuildStepFailed()
+        if collectStdout and collectStderr:
+            return (cmd.stdout, cmd.stderr)
+        elif collectStdout:
+            return cmd.stdout
+        elif collectStderr:
+            return cmd.stderr
+        return cmd.rc
 
     def _getMethod(self):
         if self.method is not None and self.mode != 'incremental':
@@ -279,14 +258,13 @@ class SVN(Source):
             stdout_xml = xml.dom.minidom.parseString(stdout)
             extractedurl = stdout_xml.getElementsByTagName(
                 'url')[0].firstChild.nodeValue
-        except xml.parsers.expat.ExpatError:
-            msg = "Corrupted xml, aborting step"
-            self.stdio_log.addHeader(msg)
-            raise buildstep.BuildStepFailed()
+        except xml.parsers.expat.ExpatError as e:
+            yield self.stdio_log.addHeader("Corrupted xml, aborting step")
+            raise buildstep.BuildStepFailed() from e
         return extractedurl == self.svnUriCanonicalize(self.repourl)
 
     @defer.inlineCallbacks
-    def parseGotRevision(self, _):
+    def parseGotRevision(self):
         # if this was a full/export, then we need to check svnversion in the
         # *source* directory, not the build directory
         svnversion_dir = self.workdir
@@ -303,10 +281,9 @@ class SVN(Source):
         stdout = cmd.stdout
         try:
             stdout_xml = xml.dom.minidom.parseString(stdout)
-        except xml.parsers.expat.ExpatError:
-            msg = "Corrupted xml, aborting step"
-            self.stdio_log.addHeader(msg)
-            raise buildstep.BuildStepFailed()
+        except xml.parsers.expat.ExpatError as e:
+            yield self.stdio_log.addHeader("Corrupted xml, aborting step")
+            raise buildstep.BuildStepFailed() from e
 
         revision = None
         if self.preferLastChangedRev:
@@ -323,55 +300,45 @@ class SVN(Source):
             try:
                 revision = stdout_xml.getElementsByTagName(
                     'entry')[0].attributes['revision'].value
-            except (KeyError, IndexError):
+            except (KeyError, IndexError) as e:
                 msg = ("SVN.parseGotRevision unable to detect revision in"
                        " output of svn info")
                 log.msg(msg)
-                raise buildstep.BuildStepFailed()
+                raise buildstep.BuildStepFailed() from e
 
-        msg = "Got SVN revision {}".format(revision)
-        self.stdio_log.addHeader(msg)
+        yield self.stdio_log.addHeader("Got SVN revision {}".format(revision))
         self.updateSourceProperty('got_revision', revision)
 
         return cmd.rc
 
+    @defer.inlineCallbacks
     def purge(self, ignore_ignores):
         """Delete everything that shown up on status."""
         command = ['status', '--xml']
         if ignore_ignores:
             command.append('--no-ignore')
-        d = self._dovccmd(command, collectStdout=True)
+        stdout = yield self._dovccmd(command, collectStdout=True)
 
-        @d.addCallback
-        def parseAndRemove(stdout):
-            files = []
-            for filename in self.getUnversionedFiles(stdout, self.keep_on_purge):
-                filename = self.build.path_module.join(self.workdir, filename)
-                files.append(filename)
-            if not files:
-                d = defer.succeed(0)
+        files = []
+        for filename in self.getUnversionedFiles(stdout, self.keep_on_purge):
+            filename = self.build.path_module.join(self.workdir, filename)
+            files.append(filename)
+        if files:
+            if self.workerVersionIsOlderThan('rmdir', '2.14'):
+                rc = yield self.removeFiles(files)
             else:
-                if self.workerVersionIsOlderThan('rmdir', '2.14'):
-                    d = self.removeFiles(files)
-                else:
-                    d = self.runRmdir(files, abandonOnFailure=False, timeout=self.timeout)
-            return d
-
-        @d.addCallback
-        def evaluateCommand(rc):
+                rc = yield self.runRmdir(files, abandonOnFailure=False, timeout=self.timeout)
             if rc != 0:
                 log.msg("Failed removing files")
                 raise buildstep.BuildStepFailed()
-            return rc
-        return d
 
     @staticmethod
     def getUnversionedFiles(xmlStr, keep_on_purge):
         try:
             result_xml = xml.dom.minidom.parseString(xmlStr)
-        except xml.parsers.expat.ExpatError:
+        except xml.parsers.expat.ExpatError as e:
             log.err("Corrupted xml, aborting step")
-            raise buildstep.BuildStepFailed()
+            raise buildstep.BuildStepFailed() from e
 
         for entry in result_xml.getElementsByTagName('entry'):
             (wc_status,) = entry.getElementsByTagName('wc-status')
@@ -392,18 +359,15 @@ class SVN(Source):
                 return res
         return 0
 
+    @defer.inlineCallbacks
     def checkSvn(self):
         cmd = remotecommand.RemoteShellCommand(self.workdir, ['svn', '--version'],
                                                env=self.env,
                                                logEnviron=self.logEnviron,
                                                timeout=self.timeout)
         cmd.useLog(self.stdio_log, False)
-        d = self.runCommand(cmd)
-
-        @d.addCallback
-        def evaluate(_):
-            return cmd.rc == 0
-        return d
+        yield self.runCommand(cmd)
+        return cmd.rc == 0
 
     def computeSourceRevision(self, changes):
         if not changes or None in [c.revision for c in changes]:
@@ -459,6 +423,7 @@ class SVN(Source):
             return canonical_uri[:-1]
         return canonical_uri
 
+    @defer.inlineCallbacks
     def _checkout(self):
         checkout_cmd = ['checkout', self.repourl, '.']
         if self.revision:
@@ -467,11 +432,11 @@ class SVN(Source):
             abandonOnFailure = (self.retry[1] <= 0)
         else:
             abandonOnFailure = True
-        d = self._dovccmd(checkout_cmd, abandonOnFailure=abandonOnFailure)
+        res = yield self._dovccmd(checkout_cmd, abandonOnFailure=abandonOnFailure)
 
-        def _retry(res):
+        if self.retry:
             if self.stopped or res == 0:
-                return res
+                return
             delay, repeats = self.retry
             if repeats > 0:
                 log.msg("Checkout failed, trying %d more times after %d seconds"
@@ -481,9 +446,4 @@ class SVN(Source):
                 df.addCallback(lambda _: self.runRmdir(self.workdir, timeout=self.timeout))
                 df.addCallback(lambda _: self._checkout())
                 reactor.callLater(delay, df.callback, None)
-                return df
-            return res
-
-        if self.retry:
-            d.addCallback(_retry)
-        return d
+                yield df

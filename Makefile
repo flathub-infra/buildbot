@@ -1,12 +1,14 @@
 # developer utilities
 DOCKERBUILD := docker build --build-arg http_proxy=$$http_proxy --build-arg https_proxy=$$https_proxy
+ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 .PHONY: docs pylint flake8 virtualenv
 
 
-VENV_NAME:=.venv$(VENV_PY_VERSION)
-PIP?=$(VENV_NAME)/bin/pip
-VENV_PY_VERSION?=python3
+VENV_NAME := .venv$(VENV_PY_VERSION)
+PIP ?= $(ROOT_DIR)/$(VENV_NAME)/bin/pip
+PYTHON ?= $(ROOT_DIR)/$(VENV_NAME)/bin/python
+VENV_PY_VERSION ?= python3
 
 WWW_PKGS := www/base www/console_view www/grid_view www/waterfall_view www/wsgi_dashboards www/badges
 WWW_EX_PKGS := www/nestedexample www/codeparameter
@@ -20,12 +22,26 @@ ALL_PKGS_TARGETS := $(addsuffix _pkg,$(ALL_PKGS))
 
 # build rst documentation
 docs:
+	$(MAKE) -C master/docs dev
+	@echo "You can now open master/docs/_build/html/index.html"
+
+docs-towncrier:
+	if command -v towncrier >/dev/null 2>&1 ;\
+	then \
+	towncrier --draft | grep  'No significant changes.' || yes n | towncrier ;\
+	fi
+
+docs-spelling:
+	$(MAKE) -C master/docs SPHINXOPTS=-W spelling
+
+docs-linkcheck:
+	$(MAKE) -C master/docs SPHINXOPTS=-q linkcheck
+
+docs-release: docs-towncrier
 	$(MAKE) -C master/docs
 
-# check rst documentation
-docschecks:
+docs-release-spelling: docs-towncrier
 	$(MAKE) -C master/docs SPHINXOPTS=-W spelling
-	$(MAKE) -C master/docs SPHINXOPTS=-q linkcheck
 
 # pylint the whole sourcecode (validate.sh will do that as well, but only process the modified files)
 pylint:
@@ -64,6 +80,11 @@ frontend_tests_headless: frontend_deps
 frontend: frontend_deps
 	for i in pkg $(WWW_PKGS); do $(PIP) install -e $$i || exit 1; done
 
+# build frontend wheels for installation elsewhere
+frontend_wheels: frontend_deps
+	for i in pkg $(WWW_PKGS); \
+		do (cd $$i; $(PYTHON) setup.py bdist_wheel || exit 1) || exit 1; done
+
 # do installation tests. Test front-end can build and install for all install methods
 frontend_install_tests: frontend_deps
 	trial pkg/test_buildbot_pkg.py
@@ -82,7 +103,7 @@ rmpyc:
 isort:
 	isort -rc worker master
 	git diff --name-only --stat "HEAD" | grep '.py$$' | xargs autopep8 -i
-	git commit -a -m "isort+autopep8 run"
+	git add -u
 
 
 docker: docker-buildbot-worker docker-buildbot-master
@@ -114,7 +135,7 @@ trial: virtualenv
 release_notes: $(VENV_NAME)
 	test ! -z "$(VERSION)"  #  usage: make release_notes VERSION=0.9.2
 	yes | towncrier --version $(VERSION) --date `date -u  +%F`
-	git commit -m "relnotes for $(VERSION)"
+	git commit -m "Release notes for $(VERSION)"
 
 $(ALL_PKGS_TARGETS): cleanup_for_tarballs frontend_deps
 	. $(VENV_NAME)/bin/activate && ./common/maketarball.sh $(patsubst %_pkg,%,$@)
@@ -127,16 +148,13 @@ cleanup_for_tarballs:
 tarballs: $(ALL_PKGS_TARGETS)
 .PHONY: tarballs
 
-
-clean:
-	git clean -xdf
 # helper for release creation
 release: virtualenv
 	test ! -z "$(VERSION)"  #  usage: make release VERSION=0.9.2
 	test -d "../bbdocs/.git"  #  make release should be done with bbdocs populated at the same level as buildbot dir
 	GPG_TTY=`tty` git tag -a -sf v$(VERSION) -m "TAG $(VERSION)"
 	git push buildbot "v$(VERSION)"  # tarballs are made by circleci.yml, and create a github release
-	export VERSION=$(VERSION) ; . .venv/bin/activate && make docs
+	export VERSION=$(VERSION) ; . .venv/bin/activate && make docs-release
 	rm -rf ../bbdocs/docs/$(VERSION)  # in case of re-run
 	cp -r master/docs/_build/html ../bbdocs/docs/$(VERSION)
 	cd ../bbdocs && git pull
@@ -148,7 +166,6 @@ finishrelease:
 	rm -rf dist
 	python3 ./common/download_release.py
 	rm -rf ./dist/v*
-	./common/smokedist.sh
 	twine upload --sign dist/*
 
 pyinstaller: virtualenv

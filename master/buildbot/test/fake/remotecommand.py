@@ -18,6 +18,7 @@ import functools
 from twisted.internet import defer
 from twisted.python import failure
 
+from buildbot.process.results import CANCELLED
 from buildbot.process.results import FAILURE
 from buildbot.process.results import SUCCESS
 from buildbot.test.fake import logfile
@@ -30,6 +31,10 @@ class FakeRemoteCommand:
 
     active = False
 
+    interrupted = False
+
+    _waiting_for_interrupt = False
+
     def __init__(self, remote_command, args,
                  ignore_updates=False, collectStdout=False, collectStderr=False,
                  decodeRC=None,
@@ -40,6 +45,7 @@ class FakeRemoteCommand:
         self.remote_command = remote_command
         self.args = args.copy()
         self.logs = {}
+        self._log_close_when_finished = {}
         self.delayedLogs = {}
         self.rc = -999
         self.collectStdout = collectStdout
@@ -52,22 +58,38 @@ class FakeRemoteCommand:
         if collectStderr:
             self.stderr = ''
 
+    @defer.inlineCallbacks
     def run(self, step, conn, builder_name):
+        if self._waiting_for_interrupt:
+            yield step.interrupt('interrupt reason')
+            if not self.interrupted:
+                raise RuntimeError("Interrupted step, but command was not interrupted")
+
         # delegate back to the test case
-        return self.testcase._remotecommand_run(self, step, conn, builder_name)
+        cmd = yield self.testcase._remotecommand_run(self, step, conn, builder_name)
+        for name, log_ in self.logs.items():
+            if self._log_close_when_finished[name]:
+                log_.finish()
+        return cmd
 
     def useLog(self, log_, closeWhenFinished=False, logfileName=None):
         if not logfileName:
             logfileName = log_.getName()
         self.logs[logfileName] = log_
+        self._log_close_when_finished[logfileName] = closeWhenFinished
 
     def useLogDelayed(self, logfileName, activateCallBack, closeWhenFinished=False):
         self.delayedLogs[logfileName] = (activateCallBack, closeWhenFinished)
 
     def interrupt(self, why):
-        raise NotImplementedError
+        if not self._waiting_for_interrupt:
+            raise RuntimeError("Got interrupt, but FakeRemoteCommand was not expecting it")
+        self._waiting_for_interrupt = False
+        self.interrupted = True
 
     def results(self):
+        if self.interrupted:
+            return CANCELLED
         if self.rc in self.decodeRC:
             return self.decodeRC[self.rc]
         return FAILURE
@@ -77,8 +99,12 @@ class FakeRemoteCommand:
 
     def fakeLogData(self, step, log, header='', stdout='', stderr=''):
         # note that this should not be used in the same test as useLog(Delayed)
-        self.logs[log] = fakelog = logfile.FakeLogFile(log, step)
+        self.logs[log] = fakelog = logfile.FakeLogFile(log)
+        self._log_close_when_finished[log] = False
         fakelog.fakeData(header=header, stdout=stdout, stderr=stderr)
+
+    def set_run_interrupt(self):
+        self._waiting_for_interrupt = True
 
     def __repr__(self):
         return "FakeRemoteCommand(" + repr(self.remote_command) + "," + repr(self.args) + ")"
@@ -149,19 +175,14 @@ class Expect:
 
     """
 
-    def __init__(self, remote_command, args, incomparable_args=None):
+    def __init__(self, remote_command, args, interrupted=False):
         """
-
-        Expect a command named C{remote_command}, with args C{args}.  Any args
-        in C{incomparable_args} are not cmopared, but must exist.
-
+        Expect a command named C{remote_command}, with args C{args}.
         """
-        if incomparable_args is None:
-            incomparable_args = []
         self.remote_command = remote_command
-        self.incomparable_args = incomparable_args
         self.args = args
         self.result = None
+        self.interrupted = interrupted
         self.behaviors = []
 
     @classmethod

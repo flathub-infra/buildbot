@@ -30,21 +30,28 @@ from buildbot.process.results import WARNINGS
 from buildbot.reporters import http
 from buildbot.util import giturlparse
 from buildbot.util import httpclientservice
+from buildbot.warnings import warn_deprecated
 
 HOSTED_BASE_URL = 'https://gitlab.com'
 
 
 class GitLabStatusPush(http.HttpStatusPushBase):
     name = "GitLabStatusPush"
-    neededDetails = dict(wantProperties=True)
+
+    def checkConfig(token, startDescription=None, endDescription=None,
+                    context=None, baseURL=None, verbose=False, wantProperties=True, **kwargs):
+        super().checkConfig(wantProperties=wantProperties,
+                            _has_old_arg_names={
+                                'wantProperties': wantProperties is not True
+                            }, **kwargs)
 
     @defer.inlineCallbacks
     def reconfigService(self, token,
                         startDescription=None, endDescription=None,
-                        context=None, baseURL=None, verbose=False, **kwargs):
+                        context=None, baseURL=None, verbose=False, wantProperties=True, **kwargs):
 
         token = yield self.renderSecrets(token)
-        yield super().reconfigService(**kwargs)
+        yield super().reconfigService(wantProperties=wantProperties, **kwargs)
 
         self.context = context or Interpolate('buildbot/%(prop:buildername)s')
         self.startDescription = startDescription or 'Build started.'
@@ -114,6 +121,21 @@ class GitLabStatusPush(http.HttpStatusPushBase):
 
     @defer.inlineCallbacks
     def send(self, build):
+        # the only case when this function is called is when the user derives this class, overrides
+        # send() and calls super().send(build) from there.
+        yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def sendMessage(self, reports):
+        build = reports[0]['builds'][0]
+        if self.send.__func__ is not GitLabStatusPush.send:
+            warn_deprecated('2.9.0', 'send() in reporters has been deprecated. Use sendMessage()')
+            yield self.send(build)
+        else:
+            yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def _send_impl(self, build):
         props = Properties.fromDict(build['properties'])
         props.master = self.master
 

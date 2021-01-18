@@ -17,15 +17,18 @@ label_mapping:
 env:
   global:
   - BUILDBOT_TEST_DB_URL=sqlite://
-  - HYPER_SIZE=m1
+  - NUM_CPU=700m
+  - MEMORY_SIZE=1G
   - CHROME_BIN=/usr/bin/chromium-browser
   matrix:
-  - TWISTED=latest SQLALCHEMY=latest TESTS=coverage
+  # include "ci" string into the name of the status that is eventually submitted to Github, so
+  # that the codecov.io service would wait until this build is finished before creating report.
+  - TWISTED=latest SQLALCHEMY=latest TESTS=ci/coverage
 
   # add js tests in separate job. Start it early because it is quite long
-  - TWISTED=latest SQLALCHEMY=latest TESTS=js_build HYPER_SIZE=m1
-  - TWISTED=latest SQLALCHEMY=latest TESTS=js_unit HYPER_SIZE=m2
-  - TWISTED=latest SQLALCHEMY=latest TESTS=smokes HYPER_SIZE=m2
+  - TWISTED=latest SQLALCHEMY=latest TESTS=js_build NUM_CPU=2 MEMORY_SIZE=2G
+  - TWISTED=latest SQLALCHEMY=latest TESTS=js_unit NUM_CPU=2 MEMORY_SIZE=2G
+  - TWISTED=latest SQLALCHEMY=latest TESTS=smokes NUM_CPU=4 MEMORY_SIZE=4G
 
   - TWISTED=17.9.0 SQLALCHEMY=latest TESTS=trial
 
@@ -52,7 +55,7 @@ env:
   #- TWISTED=latest SQLALCHEMY=latest TESTS=trial 'BUILDBOT_TEST_DB_URL=postgresql+pg8000:///bbtest?user=buildbot&password=x'
 
   # Test different versions of SQLAlchemy
-  - TWISTED=17.9.0 SQLALCHEMY=1.1.0 TESTS=trial
+  - TWISTED=17.9.0 SQLALCHEMY=1.2.0 TESTS=trial
   - TWISTED=17.9.0 SQLALCHEMY=latest TESTS=trial
 
   # Tests for the worker on old versions of twisted.
@@ -67,7 +70,7 @@ matrix:
     - python: "3.8"
       env: TWISTED=latest SQLALCHEMY=latest TESTS=isort
     - python: "3.8"
-      env: TWISTED=latest SQLALCHEMY=latest TESTS=pylint HYPER_SIZE=m3
+      env: TWISTED=latest SQLALCHEMY=latest TESTS=pylint NUM_CPU=2 MEMORY_SIZE=4G
     - python: "3.8"
       env: TWISTED=latest SQLALCHEMY=latest TESTS=docs
 
@@ -81,9 +84,10 @@ matrix:
     - python: "3.8"
       env: TWISTED=latest SQLALCHEMY=latest TESTS=interop WORKER_PYTHON=2.7
 
-    # keep worker supported on py2.7
+    # keep worker supported on py2.7.
+    # Twisted 20.3.0 is last version which supports py2.7.
     - python: "2.7"
-      env: TWISTED=latest SQLALCHEMY=latest TESTS=trial_worker
+      env: TWISTED=20.3.0 SQLALCHEMY=latest TESTS=trial_worker
 
 # Dependencies installation commands
 install:
@@ -156,7 +160,7 @@ script:
 
   # run tests under coverage for latest only (it's slower..)
   - title: coverage tests
-    condition: TESTS == "coverage"
+    condition: TESTS == "ci/coverage"
     cmd: coverage run --rcfile=.coveragerc $(which trial) --reporter=text --rterrors buildbot.test buildbot_worker.test
 
   # Run additional tests in their separate job
@@ -175,17 +179,12 @@ script:
   # Build documentation
   - title: docs
     condition: TESTS == "docs"
-    cmd: make docs
+    cmd: make docs-release
 
   # Run spell checker on documentation
   - title: spelling
     condition: TESTS == "docs"
-    cmd: make -C master/docs SPHINXOPTS=-W spelling
-
-  # Runs Sphinx' external link checker only on post submit build (it is too unstable)
-  - title: linkcheck
-    condition: TESTS == "docs" and not TRAVIS_PULL_REQUEST
-    cmd: make -C master/docs SPHINXOPTS=-q linkcheck
+    cmd: make docs-release-spelling
 
   - title: maketarballs
     condition: TESTS == "smokes"
@@ -205,7 +204,7 @@ notifications:
 after_script:
   - |
       # codecov
-      if [ $TESTS = coverage ]; then CODECOV_TOKEN="b80c80d7-689d-46d7-b1aa-59168bb4c9a9" codecov; fi
+      if [ $TESTS = ci/coverage ]; then CODECOV_TOKEN="b80c80d7-689d-46d7-b1aa-59168bb4c9a9" codecov; fi
   # List installed packages along with their versions.
   - "pip list"
 

@@ -20,13 +20,13 @@ from buildbot import config
 from buildbot.reporters.http import HttpStatusPushBase
 from buildbot.util import httpclientservice
 from buildbot.util.logger import Logger
+from buildbot.warnings import warn_deprecated
 
 log = Logger()
 
 
 class ZulipStatusPush(HttpStatusPushBase):
     name = "ZulipStatusPush"
-    neededDetails = dict(wantProperties=True)
 
     def checkConfig(self, endpoint, token, stream=None, **kwargs):
         if not isinstance(endpoint, str):
@@ -36,8 +36,8 @@ class ZulipStatusPush(HttpStatusPushBase):
         super().checkConfig(**kwargs)
 
     @defer.inlineCallbacks
-    def reconfigService(self, endpoint, token, stream=None, **kwargs):
-        super().reconfigService(**kwargs)
+    def reconfigService(self, endpoint, token, stream=None, wantProperties=True, **kwargs):
+        super().reconfigService(wantProperties=wantProperties, **kwargs)
         self._http = yield httpclientservice.HTTPClientService.getService(
             self.master, endpoint,
             debug=self.debug, verify=self.verify)
@@ -46,7 +46,22 @@ class ZulipStatusPush(HttpStatusPushBase):
 
     @defer.inlineCallbacks
     def send(self, build):
-        event = ("new", "finished")[0 if build["complete_at"] is None else 1]
+        # the only case when this function is called is when the user derives this class, overrides
+        # send() and calls super().send(build) from there.
+        yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def sendMessage(self, reports):
+        build = reports[0]['builds'][0]
+        if self.send.__func__ is not ZulipStatusPush.send:
+            warn_deprecated('2.9.0', 'send() in reporters has been deprecated. Use sendMessage()')
+            yield self.send(build)
+        else:
+            yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def _send_impl(self, build):
+        event = ("new", "finished")[0 if build["complete"] is False else 1]
         jsondata = dict(event=event, buildid=build["buildid"], buildername=build["builder"]["name"],
                         url=build["url"], project=build["properties"]["project"][0])
         if event == "new":

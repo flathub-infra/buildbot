@@ -142,7 +142,7 @@ class Dispatcher(service.AsyncService):
         # stop listening on the port when shut down
         assert self.port
         port, self.port = self.port, None
-        yield defer.maybeDeferred(port.stopListening)
+        yield port.stopListening()
         yield super().stopService()
 
     def register(self, username, password, pfactory):
@@ -161,35 +161,22 @@ class Dispatcher(service.AsyncService):
 
     # IRealm
 
+    @defer.inlineCallbacks
     def requestAvatar(self, username, mind, interface):
         assert interface == pb.IPerspective
         username = bytes2unicode(username)
-        if username not in self.users:
-            d = defer.succeed(None)  # no perspective
-        else:
+
+        persp = None
+        if username in self.users:
             _, afactory = self.users.get(username)
-            d = defer.maybeDeferred(afactory, mind, username)
+            persp = yield afactory(mind, username)
 
-        # check that we got a perspective
-        @d.addCallback
-        def check(persp):
-            if not persp:
-                raise ValueError("no perspective for '{}'".format(username))
-            return persp
+        if not persp:
+            raise ValueError("no perspective for '{}'".format(username))
 
-        # call the perspective's attached(mind)
-        @d.addCallback
-        def call_attached(persp):
-            d = defer.maybeDeferred(persp.attached, mind)
-            d.addCallback(lambda _: persp)  # keep returning the perspective
-            return d
+        yield persp.attached(mind)
 
-        # return the tuple requestAvatar is expected to return
-        @d.addCallback
-        def done(persp):
-            return (pb.IPerspective, persp, lambda: persp.detached(mind))
-
-        return d
+        return (pb.IPerspective, persp, lambda: persp.detached(mind))
 
     # ICredentialsChecker
 
@@ -203,8 +190,7 @@ class Dispatcher(service.AsyncService):
             if username in self.users:
                 password, _ = self.users[username]
                 password = yield p.render(password)
-                matched = yield defer.maybeDeferred(
-                    creds.checkPassword, unicode2bytes(password))
+                matched = creds.checkPassword(unicode2bytes(password))
                 if not matched:
                     log.msg("invalid login from user '{}'".format(username))
                     raise error.UnauthorizedLogin()

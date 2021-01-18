@@ -18,7 +18,7 @@ from twisted.internet import reactor
 from twisted.python import log
 
 from buildbot import config as bbconfig
-from buildbot.interfaces import WorkerTooOldError
+from buildbot.interfaces import WorkerSetupError
 from buildbot.process import buildstep
 from buildbot.steps.source.base import Source
 from buildbot.steps.worker import CompositeStepMixin
@@ -115,18 +115,18 @@ class Git(Source, GitStepMixin):
             bbconfig.error("Git: getDescription must be a boolean or a dict.")
 
     @defer.inlineCallbacks
-    def startVC(self, branch, revision, patch):
+    def run_vc(self, branch, revision, patch):
         self.branch = branch or 'HEAD'
         self.revision = revision
 
         self.method = self._getMethod()
-        self.stdio_log = self.addLogForRemoteCommands("stdio")
+        self.stdio_log = yield self.addLogForRemoteCommands("stdio")
 
         try:
             gitInstalled = yield self.checkFeatureSupport()
 
             if not gitInstalled:
-                raise WorkerTooOldError("git is not installed on worker")
+                raise WorkerSetupError("git is not installed on worker")
 
             patched = yield self.sourcedirIsPatched()
 
@@ -136,14 +136,14 @@ class Git(Source, GitStepMixin):
             yield self._downloadSshPrivateKeyIfNeeded()
             yield self._getAttrGroupMember('mode', self.mode)()
             if patch:
-                yield self.patch(None, patch=patch)
+                yield self.patch(patch)
             yield self.parseGotRevision()
             res = yield self.parseCommitDescription()
             yield self._removeSshPrivateKeyIfNeeded()
-            yield self.finish(res)
-        except Exception as e:
+            return res
+        except Exception:
             yield self._removeSshPrivateKeyIfNeeded()
-            yield self.failed(e)
+            raise
 
     @defer.inlineCallbacks
     def mode_full(self):
@@ -258,12 +258,6 @@ class Git(Source, GitStepMixin):
             self.workdir = old_workdir
 
     @defer.inlineCallbacks
-    def finish(self, res):
-        self.setStatus(self.cmd, res)
-        log.msg("Closing log, sending result of the command {} ".format(self.cmd))
-        yield self.finished(res)
-
-    @defer.inlineCallbacks
     def parseGotRevision(self, _=None):
         stdout = yield self._dovccmd(['rev-parse', 'HEAD'], collectStdout=True)
         revision = stdout.strip()
@@ -318,7 +312,7 @@ class Git(Source, GitStepMixin):
                 fetch_required = False
 
         if fetch_required:
-            command = ['fetch', '-t', self.repourl, self.branch]
+            command = ['fetch', '-f', '-t', self.repourl, self.branch]
             # If the 'progress' option is set, tell git fetch to output
             # progress information to the log. This can solve issues with
             # long fetches killed due to lack of output, but only works
@@ -368,14 +362,14 @@ class Git(Source, GitStepMixin):
         """Retry if clone failed"""
 
         command = ['clone']
-        switchToBranch = False
+        switchToBranch = self.branch != 'HEAD'
         if self.supportsBranch and self.branch != 'HEAD':
             if self.branch.startswith('refs/'):
                 # we can't choose this branch from 'git clone' directly; we
                 # must do so after the clone
-                switchToBranch = True
                 command += ['--no-checkout']
             else:
+                switchToBranch = False
                 command += ['--branch', self.branch]
         if shallowClone:
             command += ['--depth', str(int(shallowClone))]
@@ -584,7 +578,7 @@ class GitPush(buildstep.BuildStep, GitStepMixin, CompositeStepMixin):
             gitInstalled = yield self.checkFeatureSupport()
 
             if not gitInstalled:
-                raise WorkerTooOldError("git is not installed on worker")
+                raise WorkerSetupError("git is not installed on worker")
 
             yield self._downloadSshPrivateKeyIfNeeded()
             ret = yield self._doPush()
@@ -656,7 +650,7 @@ class GitTag(buildstep.BuildStep, GitStepMixin, CompositeStepMixin):
         gitInstalled = yield self.checkFeatureSupport()
 
         if not gitInstalled:
-            raise WorkerTooOldError("git is not installed on worker")
+            raise WorkerSetupError("git is not installed on worker")
 
         ret = yield self._doTag()
         return ret
@@ -735,7 +729,7 @@ class GitCommit(buildstep.BuildStep, GitStepMixin, CompositeStepMixin):
         gitInstalled = yield self.checkFeatureSupport()
 
         if not gitInstalled:
-            raise WorkerTooOldError("git is not installed on worker")
+            raise WorkerSetupError("git is not installed on worker")
 
         yield self._checkDetachedHead()
         yield self._doAdd()
@@ -749,7 +743,7 @@ class GitCommit(buildstep.BuildStep, GitStepMixin, CompositeStepMixin):
         rc = yield self._dovccmd(cmd, abandonOnFailure=False)
 
         if rc != RC_SUCCESS:
-            self.stdio_log.addStderr("You are in detached HEAD")
+            yield self.stdio_log.addStderr("You are in detached HEAD")
             raise buildstep.BuildStepFailed
 
     @defer.inlineCallbacks

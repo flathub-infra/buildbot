@@ -29,13 +29,13 @@ from buildbot.process.results import WARNINGS
 from buildbot.reporters import http
 from buildbot.util import httpclientservice
 from buildbot.util.logger import Logger
+from buildbot.warnings import warn_deprecated
 
 log = Logger()
 
 
 class GerritVerifyStatusPush(http.HttpStatusPushBase):
     name = "GerritVerifyStatusPush"
-    neededDetails = dict(wantProperties=True)
     # overridable constants
     RESULTS_TABLE = {
         SUCCESS: 1,
@@ -48,6 +48,15 @@ class GerritVerifyStatusPush(http.HttpStatusPushBase):
     }
     DEFAULT_RESULT = -1
 
+    def checkConfig(self, baseURL, auth, startDescription=None, endDescription=None,
+                    verification_name=None, abstain=False, category=None, reporter=None,
+                    verbose=False, wantProperties=True, **kwargs):
+        super().checkConfig(wantProperties=wantProperties,
+                            _has_old_arg_names={
+                                'builders': False,
+                                'wantProperties': wantProperties is not True
+                            }, **kwargs)
+
     @defer.inlineCallbacks
     def reconfigService(self,
                         baseURL,
@@ -59,9 +68,10 @@ class GerritVerifyStatusPush(http.HttpStatusPushBase):
                         category=None,
                         reporter=None,
                         verbose=False,
+                        wantProperties=True,
                         **kwargs):
         auth = yield self.renderSecrets(auth)
-        yield super().reconfigService(**kwargs)
+        yield super().reconfigService(wantProperties=wantProperties, **kwargs)
 
         if baseURL.endswith('/'):
             baseURL = baseURL[:-1]
@@ -192,6 +202,21 @@ class GerritVerifyStatusPush(http.HttpStatusPushBase):
 
     @defer.inlineCallbacks
     def send(self, build):
+        # the only case when this function is called is when the user derives this class, overrides
+        # send() and calls super().send(build) from there.
+        yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def sendMessage(self, reports):
+        build = reports[0]['builds'][0]
+        if self.send.__func__ is not GerritVerifyStatusPush.send:
+            warn_deprecated('2.9.0', 'send() in reporters has been deprecated. Use sendMessage()')
+            yield self.send(build)
+        else:
+            yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def _send_impl(self, build):
         props = Properties.fromDict(build['properties'])
         if build['complete']:
             value = self.RESULTS_TABLE.get(build['results'],

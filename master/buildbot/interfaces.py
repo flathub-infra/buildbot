@@ -23,6 +23,8 @@ Define the interfaces that are implemented by various buildbot classes.
 # pylint: disable=no-method-argument
 # pylint: disable=inherit-non-class
 
+from twisted.python.deprecate import deprecatedModuleAttribute
+from twisted.python.versions import Version
 from zope.interface import Attribute
 from zope.interface import Interface
 
@@ -33,8 +35,17 @@ class BuilderInUseError(Exception):
     pass
 
 
-class WorkerTooOldError(Exception):
+class WorkerSetupError(Exception):
     pass
+
+
+WorkerTooOldError = WorkerSetupError
+deprecatedModuleAttribute(
+    Version("buildbot", 2, 9, 0),
+    message="Use WorkerSetupError instead.",
+    moduleName="buildbot.interfaces",
+    name="WorkerTooOldError",
+)
 
 
 class LatentWorkerFailedToSubstantiate(Exception):
@@ -326,6 +337,12 @@ class IBuildStep(IPlugin):
 class IConfigured(Interface):
 
     def getConfigDict():
+        pass
+
+
+class IReportGenerator(Interface):
+
+    def generate(self, master, reporter, key, build):
         pass
 
 
@@ -1062,8 +1079,10 @@ class IHttpResponse(Interface):
         """
         :returns: json decoded content of the response via deferred
         """
-    master = Attribute('code',
-                       "http status code of the request's response (e.g 200)")
+    code = Attribute('code',
+                     "http status code of the request's response (e.g 200)")
+    url = Attribute('url',
+                    "request's url (e.g https://api.github.com/endpoint')")
 
 
 class IConfigurator(Interface):

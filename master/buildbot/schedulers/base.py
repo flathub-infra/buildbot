@@ -36,7 +36,7 @@ class BaseScheduler(ClusteredBuildbotService, StateMixin):
 
     def __init__(self, name, builderNames, properties=None,
                  codebases=DEFAULT_CODEBASES):
-        super(BaseScheduler, self).__init__(name=name)
+        super().__init__(name=name)
 
         ok = True
         if interfaces.IRenderable.providedBy(builderNames):
@@ -134,7 +134,7 @@ class BaseScheduler(ClusteredBuildbotService, StateMixin):
     def deactivate(self):
         if not self.enabled:
             return None
-        yield defer.maybeDeferred(self._stopConsumingChanges)
+        yield self._stopConsumingChanges()
         return None
 
     # service handling

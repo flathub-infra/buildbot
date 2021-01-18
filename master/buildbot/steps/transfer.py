@@ -22,7 +22,7 @@ from twisted.internet import defer
 from twisted.python import log
 
 from buildbot import config
-from buildbot.interfaces import WorkerTooOldError
+from buildbot.interfaces import WorkerSetupError
 from buildbot.process import remotecommand
 from buildbot.process import remotetransfer
 from buildbot.process.buildstep import FAILURE
@@ -31,7 +31,6 @@ from buildbot.process.buildstep import SUCCESS
 from buildbot.process.buildstep import BuildStep
 from buildbot.steps.worker import CompositeStepMixin
 from buildbot.util import flatten
-from buildbot.util.eventual import eventually
 
 
 def makeStatusRemoteCommand(step, remote_command, args):
@@ -57,31 +56,23 @@ class _TransferBuildStep(BuildStep):
         super().__init__(**buildstep_kwargs)
         self.workdir = workdir
 
+    @defer.inlineCallbacks
     def runTransferCommand(self, cmd, writer=None):
         # Run a transfer step, add a callback to extract the command status,
         # add an error handler that cancels the writer.
         self.cmd = cmd
-        d = self.runCommand(cmd)
-
-        @d.addCallback
-        def checkResult(_):
-            if writer and cmd.didFail():
-                writer.cancel()
-            return FAILURE if cmd.didFail() else SUCCESS
-
-        @d.addErrback
-        def cancel(res):
+        try:
+            yield self.runCommand(cmd)
+            return cmd.results()
+        finally:
             if writer:
                 writer.cancel()
-            return res
 
-        return d
-
+    @defer.inlineCallbacks
     def interrupt(self, reason):
-        self.addCompleteLog('interrupt', str(reason))
+        yield self.addCompleteLog('interrupt', str(reason))
         if self.cmd:
-            d = self.cmd.interrupt(reason)
-            return d
+            yield self.cmd.interrupt(reason)
         return None
 
 
@@ -118,15 +109,10 @@ class FileUpload(_TransferBuildStep):
         self.url = url
         self.urlText = urlText
 
-    def finished(self, results):
-        log.msg("File '{}' upload finished with results {}".format(
-            os.path.basename(self.workersrc), str(results)))
-        self.step_status.setText(self.descriptionDone)
-        super().finished(results)
-
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         self.checkWorkerHasCommand("uploadFile")
-        self.stdio_log = self.addLog("stdio")
+        self.stdio_log = yield self.addLog("stdio")
 
         source = self.workersrc
         masterdest = self.masterdest
@@ -150,9 +136,7 @@ class FileUpload(_TransferBuildStep):
             if urlText is None:
                 urlText = os.path.basename(masterdest)
 
-            self.addURL(urlText, self.url)
-
-        self.step_status.setText(self.description)
+            yield self.addURL(urlText, self.url)
 
         # we use maxsize to limit the amount of data on both sides
         fileWriter = remotetransfer.FileWriter(
@@ -161,7 +145,7 @@ class FileUpload(_TransferBuildStep):
         if self.keepstamp and self.workerVersionIsOlderThan("uploadFile", "2.13"):
             m = (("This worker ({}) does not support preserving timestamps. "
                   "Please upgrade the worker.").format(self.build.workername))
-            raise WorkerTooOldError(m)
+            raise WorkerSetupError(m)
 
         # default arguments
         args = {
@@ -178,15 +162,24 @@ class FileUpload(_TransferBuildStep):
             args['workersrc'] = source
 
         cmd = makeStatusRemoteCommand(self, 'uploadFile', args)
-        d = self.runTransferCommand(cmd, fileWriter)
-        d.addCallback(self.finished).addErrback(self.failed)
+        res = yield self.runTransferCommand(cmd, fileWriter)
+
+        log.msg("File '{}' upload finished with results {}".format(
+            os.path.basename(self.workersrc), str(res)))
+
+        return res
 
 
 class DirectoryUpload(_TransferBuildStep):
 
     name = 'upload'
 
-    renderables = ['workersrc', 'masterdest', 'url']
+    renderables = [
+        'workersrc',
+        'masterdest',
+        'url',
+        'urlText'
+    ]
 
     def __init__(self, workersrc=None, masterdest=None,
                  workdir=None, maxsize=None, blocksize=16 * 1024,
@@ -210,9 +203,10 @@ class DirectoryUpload(_TransferBuildStep):
         self.url = url
         self.urlText = urlText
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         self.checkWorkerHasCommand("uploadDirectory")
-        self.stdio_log = self.addLog("stdio")
+        self.stdio_log = yield self.addLog("stdio")
 
         source = self.workersrc
         masterdest = self.masterdest
@@ -231,7 +225,7 @@ class DirectoryUpload(_TransferBuildStep):
             if urlText is None:
                 urlText = os.path.basename(os.path.normpath(masterdest))
 
-            self.addURL(urlText, self.url)
+            yield self.addURL(urlText, self.url)
 
         # we use maxsize to limit the amount of data on both sides
         dirWriter = remotetransfer.DirectoryWriter(
@@ -252,8 +246,8 @@ class DirectoryUpload(_TransferBuildStep):
             args['workersrc'] = source
 
         cmd = makeStatusRemoteCommand(self, 'uploadDirectory', args)
-        d = self.runTransferCommand(cmd, dirWriter)
-        d.addCallback(self.finished).addErrback(self.failed)
+        res = yield self.runTransferCommand(cmd, dirWriter)
+        return res
 
 
 class MultipleFileUpload(_TransferBuildStep, CompositeStepMixin):
@@ -261,11 +255,16 @@ class MultipleFileUpload(_TransferBuildStep, CompositeStepMixin):
     name = 'upload'
     logEnviron = False
 
-    renderables = ['workersrcs', 'masterdest', 'url']
+    renderables = [
+        'workersrcs',
+        'masterdest',
+        'url',
+        'urlText'
+    ]
 
     def __init__(self, workersrcs=None, masterdest=None,
                  workdir=None, maxsize=None, blocksize=16 * 1024, glob=False,
-                 mode=None, compress=None, keepstamp=False, url=None,
+                 mode=None, compress=None, keepstamp=False, url=None, urlText=None,
                  **buildstep_kwargs):
 
         # Emulate that first two arguments are positional.
@@ -289,6 +288,7 @@ class MultipleFileUpload(_TransferBuildStep, CompositeStepMixin):
         self.glob = glob
         self.keepstamp = keepstamp
         self.url = url
+        self.urlText = urlText
 
     def uploadFile(self, source, masterdest):
         fileWriter = remotetransfer.FileWriter(
@@ -341,8 +341,8 @@ class MultipleFileUpload(_TransferBuildStep, CompositeStepMixin):
         cmd = makeStatusRemoteCommand(self, 'stat', args)
         yield self.runCommand(cmd)
         if cmd.rc != 0:
-            self.addCompleteLog('stderr',
-                                'File {} not available at worker'.format(args))
+            msg = 'File {}/{} not available at worker'.format(self.workdir, source)
+            yield self.addCompleteLog('stderr', msg)
             return FAILURE
         s = cmd.updates['stat'][-1]
         if stat.S_ISDIR(s[stat.ST_MODE]):
@@ -350,8 +350,8 @@ class MultipleFileUpload(_TransferBuildStep, CompositeStepMixin):
         elif stat.S_ISREG(s[stat.ST_MODE]):
             result = yield self.uploadFile(source, masterdest)
         else:
-            self.addCompleteLog('stderr',
-                                '{} is neither a regular file, nor a directory'.format(source))
+            msg = '{} is neither a regular file, nor a directory'.format(source)
+            yield self.addCompleteLog('stderr', msg)
             return FAILURE
 
         yield self.uploadDone(result, source, masterdest)
@@ -360,16 +360,22 @@ class MultipleFileUpload(_TransferBuildStep, CompositeStepMixin):
     def uploadDone(self, result, source, masterdest):
         pass
 
+    @defer.inlineCallbacks
     def allUploadsDone(self, result, sources, masterdest):
         if self.url is not None:
-            self.addURL(
-                os.path.basename(os.path.normpath(masterdest)), self.url)
+            urlText = self.urlText
 
-    def start(self):
+            if urlText is None:
+                urlText = os.path.basename(os.path.normpath(masterdest))
+
+            yield self.addURL(urlText, self.url)
+
+    @defer.inlineCallbacks
+    def run(self):
         self.checkWorkerHasCommand("uploadDirectory")
         self.checkWorkerHasCommand("uploadFile")
         self.checkWorkerHasCommand("stat")
-        self.stdio_log = self.addLog("stdio")
+        self.stdio_log = yield self.addLog("stdio")
 
         masterdest = os.path.expanduser(self.masterdest)
         sources = self.workersrcs if isinstance(self.workersrcs, list) else [self.workersrcs]
@@ -377,55 +383,37 @@ class MultipleFileUpload(_TransferBuildStep, CompositeStepMixin):
         if self.keepstamp and self.workerVersionIsOlderThan("uploadFile", "2.13"):
             m = (("This worker ({}) does not support preserving timestamps. "
                   "Please upgrade the worker.").format(self.build.workername))
-            raise WorkerTooOldError(m)
+            raise WorkerSetupError(m)
 
         if not sources:
-            return self.finished(SKIPPED)
+            return SKIPPED
 
-        @defer.inlineCallbacks
-        def globSources(sources):
+        if self.glob:
             results = yield defer.gatherResults([
                 self.runGlob(os.path.join(self.workdir, source), abandonOnFailure=False)
                 for source in sources
             ])
-            results = [self.workerPathToMasterPath(p) for p in flatten(results)]
-            return results
+            sources = [self.workerPathToMasterPath(p) for p in flatten(results)]
 
-        @defer.inlineCallbacks
-        def uploadSources(sources):
-            if not sources:
-                return SKIPPED
-            else:
-                for source in sources:
-                    result = yield self.startUpload(source, masterdest)
-                    if result == FAILURE:
-                        return FAILURE
-                return SUCCESS
+        log.msg("MultipleFileUpload started, from worker {!r} to master {!r}".format(sources,
+                                                                                     masterdest))
 
-        def logUpload(sources):
-            log.msg("MultipleFileUpload started, from worker %r to master %r" %
-                    (sources, masterdest))
-            nsrcs = len(sources)
-            self.descriptionDone = 'uploading {} {}'.format(nsrcs,
-                                                            'file' if nsrcs == 1 else 'files')
-            return sources
+        self.descriptionDone = ['uploading', str(len(sources)),
+                                'file' if len(sources) == 1 else 'files']
 
-        if self.glob:
-            s = globSources(sources)
+        if not sources:
+            result = SKIPPED
         else:
-            s = defer.succeed(sources)
+            result = SUCCESS
+            for source in sources:
+                result_single = yield self.startUpload(source, masterdest)
+                if result_single == FAILURE:
+                    result = FAILURE
+                    break
 
-        s.addCallback(logUpload)
-        d = s.addCallback(uploadSources)
+        yield self.allUploadsDone(result, sources, masterdest)
 
-        @d.addCallback
-        def allUploadsDone(result):
-            d = defer.maybeDeferred(
-                self.allUploadsDone, result, sources, masterdest)
-            d.addCallback(lambda _: result)
-            return d
-
-        d.addCallback(self.finished).addErrback(self.failed)
+        return result
 
 
 class FileDownload(_TransferBuildStep):
@@ -452,9 +440,10 @@ class FileDownload(_TransferBuildStep):
                 'mode must be an integer or None')
         self.mode = mode
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         self.checkWorkerHasCommand("downloadFile")
-        self.stdio_log = self.addLog("stdio")
+        self.stdio_log = yield self.addLog("stdio")
 
         # we are currently in the buildmaster's basedir, so any non-absolute
         # paths will be interpreted relative to that
@@ -463,19 +452,16 @@ class FileDownload(_TransferBuildStep):
         log.msg("FileDownload started, from master %r to worker %r" %
                 (source, workerdest))
 
-        self.descriptionDone = "downloading to {}".format(os.path.basename(workerdest))
+        self.descriptionDone = ["downloading to", os.path.basename(workerdest)]
 
         # setup structures for reading the file
         try:
             fp = open(source, 'rb')
         except IOError:
             # if file does not exist, bail out with an error
-            self.addCompleteLog('stderr',
-                                'File %r not available at master' % source)
-            # TODO: once BuildStep.start() gets rewritten to use
-            # maybeDeferred, just re-raise the exception here.
-            eventually(BuildStep.finished, self, FAILURE)
-            return
+            yield self.addCompleteLog('stderr', 'File {!r} not available at master'.format(source))
+            raise
+
         fileReader = remotetransfer.FileReader(fp)
 
         # default arguments
@@ -493,8 +479,8 @@ class FileDownload(_TransferBuildStep):
             args['workerdest'] = workerdest
 
         cmd = makeStatusRemoteCommand(self, 'downloadFile', args)
-        d = self.runTransferCommand(cmd)
-        d.addCallback(self.finished).addErrback(self.failed)
+        res = yield self.runTransferCommand(cmd)
+        return res
 
 
 class StringDownload(_TransferBuildStep):
@@ -521,10 +507,11 @@ class StringDownload(_TransferBuildStep):
                     mode))
         self.mode = mode
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         # we use 'downloadFile' remote command on the worker
         self.checkWorkerHasCommand("downloadFile")
-        self.stdio_log = self.addLog("stdio")
+        self.stdio_log = yield self.addLog("stdio")
 
         # we are currently in the buildmaster's basedir, so any non-absolute
         # paths will be interpreted relative to that
@@ -532,7 +519,7 @@ class StringDownload(_TransferBuildStep):
         log.msg("StringDownload started, from master to worker %r" %
                 workerdest)
 
-        self.descriptionDone = "downloading to {}".format(os.path.basename(workerdest))
+        self.descriptionDone = ["downloading to", os.path.basename(workerdest)]
 
         # setup structures for reading the file
         fileReader = remotetransfer.StringFileReader(self.s)
@@ -552,8 +539,8 @@ class StringDownload(_TransferBuildStep):
             args['workerdest'] = workerdest
 
         cmd = makeStatusRemoteCommand(self, 'downloadFile', args)
-        d = self.runTransferCommand(cmd)
-        d.addCallback(self.finished).addErrback(self.failed)
+        res = yield self.runTransferCommand(cmd)
+        return res
 
 
 class JSONStringDownload(StringDownload):
@@ -582,12 +569,12 @@ class JSONPropertiesDownload(StringDownload):
         if workerdest is None:
             raise TypeError("__init__() takes at least 2 arguments")
 
-        self.super_class = StringDownload
         if 's' in buildstep_kwargs:
             del buildstep_kwargs['s']
         super().__init__(s=None, workerdest=workerdest, **buildstep_kwargs)
 
-    def start(self):
+    @defer.inlineCallbacks
+    def run(self):
         properties = self.build.getProperties()
         props = {}
         for key, value, source in properties.asList():
@@ -599,4 +586,5 @@ class JSONPropertiesDownload(StringDownload):
                           for ss in self.build.getAllSourceStamps()],
         ),
         )
-        return self.super_class.start(self)
+        res = yield super().run()
+        return res

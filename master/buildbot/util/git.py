@@ -14,7 +14,7 @@
 # Copyright Buildbot Team Members
 
 import re
-from distutils.version import LooseVersion
+from pkg_resources import parse_version
 
 from twisted.internet import defer
 from twisted.python import log
@@ -75,27 +75,24 @@ class GitMixin:
         self.supportsSshPrivateKeyAsConfigOption = False
 
     def parseGitFeatures(self, version_stdout):
-
-        if 'git' not in version_stdout:
+        match = re.match(r"^git version (\d+(\.\d+)*)", version_stdout)
+        if not match:
             return
 
-        try:
-            version = version_stdout.strip().split(' ')[2]
-        except IndexError:
-            return
+        version = match.group(1)
 
         self.gitInstalled = True
-        if LooseVersion(version) >= LooseVersion("1.6.5"):
+        if parse_version(version) >= parse_version("1.6.5"):
             self.supportsBranch = True
-        if LooseVersion(version) >= LooseVersion("1.7.2"):
+        if parse_version(version) >= parse_version("1.7.2"):
             self.supportsProgress = True
-        if LooseVersion(version) >= LooseVersion("1.7.6"):
+        if parse_version(version) >= parse_version("1.7.6"):
             self.supportsSubmoduleForce = True
-        if LooseVersion(version) >= LooseVersion("1.7.8"):
+        if parse_version(version) >= parse_version("1.7.8"):
             self.supportsSubmoduleCheckout = True
-        if LooseVersion(version) >= LooseVersion("2.3.0"):
+        if parse_version(version) >= parse_version("2.3.0"):
             self.supportsSshPrivateKeyAsEnvOption = True
-        if LooseVersion(version) >= LooseVersion("2.10.0"):
+        if parse_version(version) >= parse_version("2.10.0"):
             self.supportsSshPrivateKeyAsConfigOption = True
 
     def adjustCommandParamsForSshPrivateKey(self, command, env,
@@ -278,20 +275,12 @@ class GitStepMixin(GitMixin):
         ssh_data_path = self._getSshDataPath()
         yield self.runMkdir(ssh_data_path)
 
-        if not self.supportsSshPrivateKeyAsEnvOption:
-            script_path = self._getSshWrapperScriptPath(ssh_data_path)
-            script_contents = getSshWrapperScriptContents(
-                self._getSshPrivateKeyPath(ssh_data_path))
-
-            yield self.downloadFileContentToWorker(script_path,
-                                                   script_contents,
-                                                   workdir=workdir, mode=0o700)
-
         private_key_path = self._getSshPrivateKeyPath(ssh_data_path)
         yield self.downloadFileContentToWorker(private_key_path,
                                                private_key,
                                                workdir=workdir, mode=0o400)
 
+        known_hosts_path = None
         if self.sshHostKey is not None or self.sshKnownHosts is not None:
             known_hosts_path = self._getSshHostKeyPath(ssh_data_path)
 
@@ -300,6 +289,14 @@ class GitStepMixin(GitMixin):
             yield self.downloadFileContentToWorker(known_hosts_path,
                                                    known_hosts_contents,
                                                    workdir=workdir, mode=0o400)
+
+        if not self.supportsSshPrivateKeyAsEnvOption:
+            script_path = self._getSshWrapperScriptPath(ssh_data_path)
+            script_contents = getSshWrapperScriptContents(private_key_path, known_hosts_path)
+
+            yield self.downloadFileContentToWorker(script_path,
+                                                   script_contents,
+                                                   workdir=workdir, mode=0o700)
 
         self.didDownloadSshPrivateKey = True
         return RC_SUCCESS

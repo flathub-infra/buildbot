@@ -26,8 +26,8 @@ from buildbot.worker.docker import DockerBaseWorker
 log = Logger()
 
 
-class MarathonLatentWorker(DockerBaseWorker,
-                           CompatibleLatentWorkerMixin):
+class MarathonLatentWorker(CompatibleLatentWorkerMixin,
+                           DockerBaseWorker):
     """Marathon is a distributed docker container launcher for Mesos"""
     instance = None
     image = None
@@ -112,6 +112,7 @@ class MarathonLatentWorker(DockerBaseWorker,
         res = yield self._http.delete("/v2/apps/{}".format(
             self.getApplicationId()))
         self.instance = None
+        self.resetWorkerPropsOnStop()
 
         if res.code != 200 and reportFailure:
             res_json = yield res.json()

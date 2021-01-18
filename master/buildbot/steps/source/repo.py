@@ -24,6 +24,7 @@ from zope.interface import implementer
 from buildbot import util
 from buildbot.interfaces import IRenderable
 from buildbot.process import buildstep
+from buildbot.process import results
 from buildbot.steps.source.base import Source
 
 
@@ -206,6 +207,7 @@ class Repo(Source):
     def _repoCmd(self, command, abandonOnFailure=True, **kwargs):
         return self._Cmd(["repo"] + command, abandonOnFailure=abandonOnFailure, **kwargs)
 
+    @defer.inlineCallbacks
     def _Cmd(self, command, abandonOnFailure=True, workdir=None, **kwargs):
         if workdir is None:
             workdir = self.workdir
@@ -217,19 +219,17 @@ class Repo(Source):
         # does not make sense to logEnviron for each command (just for first)
         self.logEnviron = False
         cmd.useLog(self.stdio_log, False)
-        self.stdio_log.addHeader("Starting command: {}\n".format(" ".join(command)))
-        self.step_status.setText(["{}".format(" ".join(command[:2]))])
-        d = self.runCommand(cmd)
+        yield self.stdio_log.addHeader("Starting command: {}\n".format(" ".join(command)))
+        self.description = ' '.join(command[:2])
+        # FIXME: enable when new style step is switched on yield self.updateSummary()
+        yield self.runCommand(cmd)
 
-        @d.addCallback
-        def evaluateCommand(_):
-            if abandonOnFailure and cmd.didFail():
-                self.descriptionDone = "repo failed at: {}".format(" ".join(command[:2]))
-                self.stdio_log.addStderr(("Source step failed while running command {}\n"
-                                          ).format(cmd))
-                raise buildstep.BuildStepFailed()
-            return cmd.rc
-        return d
+        if abandonOnFailure and cmd.didFail():
+            self.descriptionDone = "repo failed at: {}".format(" ".join(command[:2]))
+            msg = "Source step failed while running command {}\n".format(cmd)
+            yield self.stdio_log.addStderr(msg)
+            raise buildstep.BuildStepFailed()
+        return cmd.rc
 
     def repoDir(self):
         return self.build.path_module.join(self.workdir, ".repo")
@@ -237,40 +237,36 @@ class Repo(Source):
     def sourcedirIsUpdateable(self):
         return self.pathExists(self.repoDir())
 
-    def startVC(self, branch, revision, patch):
-        d = self.doStartVC()
-        d.addErrback(self.failed)
+    def run_vc(self, branch, revision, patch):
+        return self.doStartVC()
 
     @defer.inlineCallbacks
     def doStartVC(self):
-        self.stdio_log = self.addLogForRemoteCommands("stdio")
+        self.stdio_log = yield self.addLogForRemoteCommands("stdio")
 
         self.filterManifestPatches()
 
         if self.repoDownloads:
-            self.stdio_log.addHeader("will download:\nrepo download {}\n".format(
+            yield self.stdio_log.addHeader("will download:\nrepo download {}\n".format(
                     "\nrepo download ".join(self.repoDownloads)))
 
         self.willRetryInCaseOfFailure = True
 
-        d = self.doRepoSync()
+        try:
+            yield self.doRepoSync()
+        except buildstep.BuildStepFailed as e:
+            if not self.willRetryInCaseOfFailure:
+                raise
+            yield self.stdio_log.addStderr("got issue at first try:\n" + str(e) +
+                                           "\nRetry after clobber...")
+            yield self.doRepoSync(forceClobber=True)
 
-        @d.addErrback
-        def maybeRetry(why):
-            # in case the tree was corrupted somehow because of previous build
-            # we clobber one time, and retry everything
-            if why.check(buildstep.BuildStepFailed) and self.willRetryInCaseOfFailure:
-                self.stdio_log.addStderr("got issue at first try:\n" + str(why) +
-                                         "\nRetry after clobber...")
-                return self.doRepoSync(forceClobber=True)
-            return why  # propagate to self.failed
-        yield d
         yield self.maybeUpdateTarball()
 
         # starting from here, clobbering will not help
         yield self.doRepoDownloads()
         self.setStatus(self.lastCommand, 0)
-        yield self.finished(0)
+        return results.SUCCESS
 
     @defer.inlineCallbacks
     def doClobberStart(self):
@@ -293,8 +289,8 @@ class Repo(Source):
                              '--depth', str(self.depth)])
 
         if self.manifestOverrideUrl:
-            self.stdio_log.addHeader(("overriding manifest with {}\n"
-                                      ).format(self.manifestOverrideUrl))
+            msg = "overriding manifest with {}\n".format(self.manifestOverrideUrl)
+            yield self.stdio_log.addHeader(msg)
 
             local_path = self.build.path_module.join(self.workdir, self.manifestOverrideUrl)
             local_file = yield self.pathExists(local_path)
@@ -316,8 +312,9 @@ class Repo(Source):
             command.append('-c')
         if self.syncQuietly:
             command.append('-q')
-        self.step_status.setText(["repo sync"])
-        self.stdio_log.addHeader("synching manifest {} from branch {} from {}\n".format(
+        self.description = "repo sync"
+        # FIXME: enable when new style step is used: yield self.updateSummary()
+        yield self.stdio_log.addHeader("synching manifest {} from branch {} from {}\n".format(
                 self.manifestFile, self.manifestBranch, self.manifestURL))
         yield self._repoCmd(command)
 
@@ -345,7 +342,7 @@ class Repo(Source):
         self.repo_downloaded = ""
         for download in self.repoDownloads:
             command = ['download'] + download.split(' ')
-            self.stdio_log.addHeader("downloading changeset {}\n".format(download))
+            yield self.stdio_log.addHeader("downloading changeset {}\n".format(download))
 
             retry = self.mirror_sync_retry + 1
             while retry > 0:
@@ -354,8 +351,8 @@ class Repo(Source):
                 if not self._findErrorMessages(self.ref_not_found_re):
                     break
                 retry -= 1
-                self.stdio_log.addStderr("failed downloading changeset {}\n".format(download))
-                self.stdio_log.addHeader("wait one minute for mirror sync\n")
+                yield self.stdio_log.addStderr("failed downloading changeset {}\n".format(download))
+                yield self.stdio_log.addHeader("wait one minute for mirror sync\n")
                 yield self._sleep(self.mirror_sync_sleep)
 
             if retry == 0:

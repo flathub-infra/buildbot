@@ -22,16 +22,17 @@ import re
 import stat
 import time
 
+from twisted.internet import defer
 from twisted.python import log
 
 from buildbot import config
 from buildbot.process import logobserver
 from buildbot.process import remotecommand
-from buildbot.process.buildstep import FAILURE
-from buildbot.steps.shell import WarningCountingShellCommand
+from buildbot.process import results
+from buildbot.steps.shell import WarningCountingShellCommandNewStyle
 
 
-class DebPbuilder(WarningCountingShellCommand):
+class DebPbuilder(WarningCountingShellCommandNewStyle):
 
     """Build a debian package with pbuilder inside of a chroot."""
     name = "pbuilder"
@@ -45,7 +46,8 @@ class DebPbuilder(WarningCountingShellCommand):
 
     architecture = None
     distribution = 'stable'
-    basetgz = "/var/cache/pbuilder/%(distribution)s-%(architecture)s-buildbot.tgz"
+    basetgz = None
+    _default_basetgz = "/var/cache/pbuilder/{distribution}-{architecture}-buildbot.tgz"
     mirror = "http://cdn.debian.net/debian/"
     extrapackages = []
     keyring = None
@@ -54,6 +56,9 @@ class DebPbuilder(WarningCountingShellCommand):
     maxAge = 60 * 60 * 24 * 7
     pbuilder = '/usr/sbin/pbuilder'
     baseOption = '--basetgz'
+
+    renderables = ['architecture', 'distribution', 'basetgz', 'mirror', 'extrapackages', 'keyring',
+                   'components']
 
     def __init__(self,
                  architecture=None,
@@ -64,26 +69,6 @@ class DebPbuilder(WarningCountingShellCommand):
                  keyring=None,
                  components=None,
                  **kwargs):
-        """
-        Creates the DebPbuilder object.
-
-        @type architecture: str
-        @param architecture: the name of the architecture to build
-        @type distribution: str
-        @param distribution: the man of the distribution to use
-        @type basetgz: str
-        @param basetgz: the path or  path template of the basetgz
-        @type mirror: str
-        @param mirror: the mirror for building basetgz
-        @type extrapackages: list
-        @param extrapackages: adds packages specified to buildroot
-        @type keyring: str
-        @param keyring: keyring file to use for verification
-        @type components: str
-        @param components: components to use for chroot creation
-        @type kwargs: dict
-        @param kwargs: All further keyword arguments.
-        """
         super().__init__(**kwargs)
 
         if architecture:
@@ -98,29 +83,11 @@ class DebPbuilder(WarningCountingShellCommand):
             self.keyring = keyring
         if components:
             self.components = components
-
-        if self.architecture:
-            kwargs['architecture'] = self.architecture
-        else:
-            kwargs['architecture'] = 'local'
-        kwargs['distribution'] = self.distribution
-
         if basetgz:
-            self.basetgz = basetgz % kwargs
-        else:
-            self.basetgz = self.basetgz % kwargs
+            self.basetgz = basetgz
 
         if not self.distribution:
             config.error("You must specify a distribution.")
-
-        self.command = [
-            'pdebuild', '--buildresult', '.', '--pbuilder', self.pbuilder]
-        if self.architecture:
-            self.command += ['--architecture', self.architecture]
-        self.command += ['--', '--buildresult',
-                         '.', self.baseOption, self.basetgz]
-        if self.extrapackages:
-            self.command += ['--extrapackages', " ".join(self.extrapackages)]
 
         self.suppressions.append(
             (None, re.compile(r"\.pbuilderrc does not exist"), None, None))
@@ -128,15 +95,37 @@ class DebPbuilder(WarningCountingShellCommand):
         self.addLogObserver(
             'stdio', logobserver.LineConsumerLogObserver(self.logConsumer))
 
-    # Check for Basetgz
-    def start(self):
-        cmd = remotecommand.RemoteCommand('stat', {'file': self.basetgz})
-        d = self.runCommand(cmd)
-        d.addCallback(lambda res: self.checkBasetgz(cmd))
-        d.addErrback(self.failed)
-        return d
+    @defer.inlineCallbacks
+    def run(self):
+        if self.basetgz is None:
+            self.basetgz = self._default_basetgz
+            kwargs = {}
+            if self.architecture:
+                kwargs['architecture'] = self.architecture
+            else:
+                kwargs['architecture'] = 'local'
+            kwargs['distribution'] = self.distribution
+            self.basetgz = self.basetgz.format(**kwargs)
 
-    def checkBasetgz(self, cmd):
+        self.command = ['pdebuild', '--buildresult', '.', '--pbuilder', self.pbuilder]
+        if self.architecture:
+            self.command += ['--architecture', self.architecture]
+        self.command += ['--', '--buildresult', '.', self.baseOption, self.basetgz]
+        if self.extrapackages:
+            self.command += ['--extrapackages', " ".join(self.extrapackages)]
+
+        res = yield self.checkBasetgz()
+        if res != results.SUCCESS:
+            return res
+
+        res = yield super().run()
+        return res
+
+    @defer.inlineCallbacks
+    def checkBasetgz(self):
+        cmd = remotecommand.RemoteCommand('stat', {'file': self.basetgz})
+        yield self.runCommand(cmd)
+
         if cmd.rc != 0:
             log.msg("basetgz not found, initializing it.")
 
@@ -154,12 +143,18 @@ class DebPbuilder(WarningCountingShellCommand):
 
             cmd = remotecommand.RemoteShellCommand(self.workdir, command)
 
-            stdio_log = stdio_log = self.addLog("pbuilder")
+            stdio_log = yield self.addLog("pbuilder")
             cmd.useLog(stdio_log, True, "stdio")
-            d = self.runCommand(cmd)
-            self.step_status.setText(["PBuilder create."])
-            d.addCallback(lambda res: self.startBuild(cmd))
-            return d
+
+            self.description = ["PBuilder", "create."]
+            yield self.updateSummary()
+
+            yield self.runCommand(cmd)
+            if cmd.rc != 0:
+                log.msg("Failure when running {}.".format(cmd))
+                return results.FAILURE
+            return results.SUCCESS
+
         s = cmd.updates["stat"][-1]
         # basetgz will be a file when running in pbuilder
         # and a directory in case of cowbuilder
@@ -172,24 +167,17 @@ class DebPbuilder(WarningCountingShellCommand):
                            self.baseOption, self.basetgz]
 
                 cmd = remotecommand.RemoteShellCommand(self.workdir, command)
-                stdio_log = stdio_log = self.addLog("pbuilder")
+                stdio_log = yield self.addLog("pbuilder")
                 cmd.useLog(stdio_log, True, "stdio")
-                d = self.runCommand(cmd)
-                d.addCallback(lambda res: self.startBuild(cmd))
-                return d
-            return self.startBuild(cmd)
-        else:
-            log.msg("{} is not a file or a directory.".format(self.basetgz))
-            self.finished(FAILURE)
-        return None
 
-    def startBuild(self, cmd):
-        if cmd.rc != 0:
-            log.msg("Failure when running {}.".format(cmd))
-            self.finished(FAILURE)
-        else:
-            return super().start()
-        return None
+                yield self.runCommand(cmd)
+                if cmd.rc != 0:
+                    log.msg("Failure when running {}.".format(cmd))
+                    return results.FAILURE
+            return results.SUCCESS
+
+        log.msg("{} is not a file or a directory.".format(self.basetgz))
+        return results.FAILURE
 
     def logConsumer(self):
         r = re.compile(r"dpkg-genchanges  >\.\./(.+\.changes)")
@@ -205,7 +193,7 @@ class DebCowbuilder(DebPbuilder):
     """Build a debian package with cowbuilder inside of a chroot."""
     name = "cowbuilder"
 
-    basetgz = "/var/cache/pbuilder/%(distribution)s-%(architecture)s-buildbot.cow/"
+    _default_basetgz = "/var/cache/pbuilder/{distribution}-{architecture}-buildbot.cow/"
 
     pbuilder = '/usr/sbin/cowbuilder'
     baseOption = '--basepath'

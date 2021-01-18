@@ -26,8 +26,19 @@ Twisted: http://twistedmatrix.com
   In upcoming versions of Buildbot, a newer Twisted will also be required on the worker.
   As always, the most recent version is recommended.
 
+Certifi: https://github.com/certifi/python-certifi
+
+  Certifi provides collection of Root Certificates for validating the trustworthiness of SSL certificates. 
+  Unfortunately it does not support any addition of own company certificates.
+  At the moment you need to add your own .PEM content to cacert.pem manually.
+
 Of course, your project's build process will impose additional requirements on the workers.
 These hosts must have all the tools necessary to compile and test your project's source code.
+
+.. note::
+
+  If your internet connection is secured by a proxy server, please check your ``http_proxy`` and ``https_proxy`` environment variables.
+  Otherwise ``pip`` and other tools will fail to work.
 
 Windows Support
 ~~~~~~~~~~~~~~~
@@ -41,6 +52,11 @@ For best results, use the most recent available versions of these libraries on W
 Pywin32: http://sourceforge.net/projects/pywin32/
 
   Twisted requires PyWin32 in order to spawn processes on Windows.
+
+Build Tools for Visual Studio 2019 - Microsoft Visual C++ compiler
+
+  Twisted requires MSVC to compile some parts like tls during the installation, 
+  see https://twistedmatrix.com/trac/wiki/WindowsBuilds and https://wiki.python.org/moin/WindowsCompilers.
 
 .. _Buildmaster-Requirements:
 
@@ -68,7 +84,7 @@ Jinja2: http://jinja.pocoo.org/
 
 SQLAlchemy: http://www.sqlalchemy.org/
 
-  Buildbot requires SQLAlchemy version 1.1.0 or higher.
+  Buildbot requires SQLAlchemy version 1.2.0 or higher.
   SQLAlchemy allows Buildbot to build database schemas and queries for a wide variety of database systems.
 
 SQLAlchemy-Migrate: https://sqlalchemy-migrate.readthedocs.io/en/latest/
@@ -84,3 +100,48 @@ Python-Dateutil: http://labix.org/python-dateutil
 Autobahn:
 
   The master requires Autobahn version 0.16.0 or higher with Python 2.7.
+
+txrequests: https://github.com/tardyp/txrequests
+or
+treq: https://github.com/twisted/treq
+
+  Both libraries are optional, but a lot of Buildbot plugins assume that one of it is installed. 
+  Otherwise plugins will complain in the twisted log file if it is not installed. Here is 
+  a little comparison table:
+
+  +----------------------------------+------------+----------+
+  |                                  | txrequests |   treq   |
+  +----------------------------------+------------+----------+
+  | International Domains and URLs   | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Keep-Alive & Connection Pooling  | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Sessions with Cookie Persistence | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Browser-style SSL Verification   | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Basic Authentication             | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Digest Authentication            | yes        | no       |
+  +----------------------------------+------------+----------+
+  | Elegant Key/Value Cookies        | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Automatic Decompression          | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Unicode Response Bodies          | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Multi-part File Uploads          | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Connection Timeouts              | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | HTTP(S) Proxy Support            | yes        | no       |
+  +----------------------------------+------------+----------+
+  | .netrc support                   | yes        | no       |
+  +----------------------------------+------------+----------+
+  | Python 2.7                       | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Python 3.x                       | yes        | yes      |
+  +----------------------------------+------------+----------+
+  | Speed                            | slower     | fast     |
+  +----------------------------------+------------+----------+
+

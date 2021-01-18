@@ -6,6 +6,7 @@ from buildbot.reporters import utils
 from buildbot.reporters.http import HttpStatusPushBase
 from buildbot.util import httpclientservice
 from buildbot.util.logger import Logger
+from buildbot.warnings import warn_deprecated
 
 log = Logger()
 
@@ -41,17 +42,12 @@ class HipChatStatusPush(HttpStatusPushBase):
         self.builder_room_map = builder_room_map
         self.builder_user_map = builder_user_map
 
-    # returns a Deferred that returns None
-    def buildStarted(self, key, build):
-        return self.send(build, key[2])
-
-    # returns a Deferred that returns None
-    def buildFinished(self, key, build):
-        return self.send(build, key[2])
-
     @defer.inlineCallbacks
     def getBuildDetailsAndSendMessage(self, build, key):
-        yield utils.getDetailsForBuild(self.master, build, **self.neededDetails)
+        yield utils.getDetailsForBuild(self.master, build, wantProperties=self.wantProperties,
+                                       wantSteps=self.wantSteps,
+                                       wantPreviousBuild=self.wantPreviousBuild,
+                                       wantLogs=self.wantLogs)
         postData = yield self.getRecipientList(build, key)
         postData['message'] = yield self.getMessage(build, key)
         extra_params = yield self.getExtraParams(build, key)
@@ -82,7 +78,24 @@ class HipChatStatusPush(HttpStatusPushBase):
         return {}
 
     @defer.inlineCallbacks
-    def send(self, build, key):
+    def send(self, build):
+        # the only case when this function is called is when the user derives this class, overrides
+        # send() and calls super().send(build) from there.
+        yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def sendMessage(self, reports):
+        build = reports[0]['builds'][0]
+        if self.send.__func__ is not HipChatStatusPush.send:
+            warn_deprecated('2.9.0', 'send() in reporters has been deprecated. Use sendMessage()')
+            yield self.send(build)
+        else:
+            yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def _send_impl(self, build):
+        key = 'new' if build['complete'] is False else 'finished'
+
         postData = yield self.getBuildDetailsAndSendMessage(build, key)
         if not postData or 'message' not in postData or not postData['message']:
             return

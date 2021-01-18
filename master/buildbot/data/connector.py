@@ -54,6 +54,8 @@ class DataConnector(service.AsyncService):
         'buildbot.data.forceschedulers',
         'buildbot.data.root',
         'buildbot.data.properties',
+        'buildbot.data.test_results',
+        'buildbot.data.test_result_sets',
     ]
     name = "data"
 
@@ -107,9 +109,9 @@ class DataConnector(service.AsyncService):
     def getEndpoint(self, path):
         try:
             return self.matcher[path]
-        except KeyError:
+        except KeyError as e:
             raise exceptions.InvalidPathError(
-                "Invalid path: " + "/".join([str(p) for p in path]))
+                "Invalid path: " + "/".join([str(p) for p in path])) from e
 
     def getResourceType(self, name):
         return getattr(self.rtypes, name)

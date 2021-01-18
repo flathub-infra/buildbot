@@ -21,6 +21,7 @@ from buildbot.process.results import SUCCESS
 from buildbot.reporters import http
 from buildbot.util import httpclientservice
 from buildbot.util.logger import Logger
+from buildbot.warnings import warn_deprecated
 
 log = Logger()
 
@@ -38,6 +39,10 @@ _GET_TOKEN_DATA = {
 
 class BitbucketStatusPush(http.HttpStatusPushBase):
     name = "BitbucketStatusPush"
+
+    def checkConfig(self, oauth_key, oauth_secret, base_url=_BASE_URL, oauth_url=_OAUTH_URL,
+                    **kwargs):
+        super().checkConfig(_has_old_arg_names={'builders': False}, **kwargs)
 
     @defer.inlineCallbacks
     def reconfigService(self, oauth_key, oauth_secret,
@@ -60,6 +65,21 @@ class BitbucketStatusPush(http.HttpStatusPushBase):
 
     @defer.inlineCallbacks
     def send(self, build):
+        # the only case when this function is called is when the user derives this class, overrides
+        # send() and calls super().send(build) from there.
+        yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def sendMessage(self, reports):
+        build = reports[0]['builds'][0]
+        if self.send.__func__ is not BitbucketStatusPush.send:
+            warn_deprecated('2.9.0', 'send() in reporters has been deprecated. Use sendMessage()')
+            yield self.send(build)
+        else:
+            yield self._send_impl(build)
+
+    @defer.inlineCallbacks
+    def _send_impl(self, build):
         results = build['results']
         oauth_request = yield self.oauthhttp.post("",
                                                   data=_GET_TOKEN_DATA)

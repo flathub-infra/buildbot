@@ -16,6 +16,7 @@
 import inspect
 import re
 import sys
+from io import StringIO
 
 from twisted.internet import defer
 from twisted.internet import error
@@ -25,7 +26,6 @@ from twisted.python import failure
 from twisted.python import log
 from twisted.python import util as twutil
 from twisted.python import versions
-from twisted.python.compat import NativeStringIO
 from twisted.python.failure import Failure
 from twisted.python.reflect import accumulateClassList
 from twisted.web.util import formatFailure
@@ -35,7 +35,7 @@ from buildbot import config
 from buildbot import interfaces
 from buildbot import util
 from buildbot.interfaces import IRenderable
-from buildbot.interfaces import WorkerTooOldError
+from buildbot.interfaces import WorkerSetupError
 from buildbot.process import log as plog
 from buildbot.process import logobserver
 from buildbot.process import properties
@@ -56,6 +56,8 @@ from buildbot.process.results import worst_status
 from buildbot.util import bytes2unicode
 from buildbot.util import debounce
 from buildbot.util import flatten
+from buildbot.util.test_result_submitter import TestResultSubmitter
+from buildbot.warnings import warn_deprecated
 
 
 class BuildStepFailed(Exception):
@@ -222,7 +224,7 @@ class SyncLogFileWrapper(logobserver.LogObserver):
 
     def readlines(self):
         alltext = "".join(self.getChunks([self.STDOUT], onlyText=True))
-        io = NativeStringIO(alltext)
+        io = StringIO(alltext)
         return io.readlines()
 
     def getChunks(self, channels=None, onlyText=False):
@@ -365,6 +367,7 @@ class BuildStep(results.ResultComputingConfigMixin,
         self.stepid = None
         self.results = None
         self._start_unhandled_deferreds = None
+        self._test_result_submitters = {}
 
     def __new__(klass, *args, **kwargs):
         self = object.__new__(klass)
@@ -565,6 +568,7 @@ class BuildStep(results.ResultComputingConfigMixin,
 
             # run -- or skip -- the step
             if doStep:
+                yield self.addTestResultSets()
                 try:
                     self._running = True
                     self.results = yield self.run()
@@ -599,11 +603,6 @@ class BuildStep(results.ResultComputingConfigMixin,
             if self.results != CANCELLED:
                 self.results = EXCEPTION
 
-        # update the summary one last time, make sure that completes,
-        # and then don't update it any more.
-        self.realUpdateSummary()
-        yield self.realUpdateSummary.stop()
-
         # determine whether we should hide this step
         hidden = self.hideStepIf
         if callable(hidden):
@@ -618,26 +617,56 @@ class BuildStep(results.ResultComputingConfigMixin,
 
         yield self.master.data.updates.finishStep(self.stepid, self.results,
                                                   hidden)
-        # finish unfinished logs
-        all_finished = yield self.finishUnfinishedLogs()
-        if not all_finished:
+        # perform final clean ups
+        success = yield self._cleanup_logs()
+        if not success:
             self.results = EXCEPTION
+
+        # update the summary one last time, make sure that completes,
+        # and then don't update it any more.
+        self.realUpdateSummary()
+        yield self.realUpdateSummary.stop()
+
+        for sub in self._test_result_submitters.values():
+            yield sub.finish()
+
         self.releaseLocks()
 
         return self.results
 
     @defer.inlineCallbacks
-    def finishUnfinishedLogs(self):
-        ok = True
-        not_finished_logs = [v for (k, v) in self.logs.items()
-                             if not v.finished]
+    def _cleanup_logs(self):
+        all_success = True
+        not_finished_logs = [v for (k, v) in self.logs.items() if not v.finished]
         finish_logs = yield defer.DeferredList([v.finish() for v in not_finished_logs],
                                                consumeErrors=True)
         for success, res in finish_logs:
             if not success:
                 log.err(res, "when trying to finish a log")
-                ok = False
-        return ok
+                all_success = False
+
+        for log_ in self.logs.values():
+            if log_.had_errors():
+                all_success = False
+
+        return all_success
+
+    def addTestResultSets(self):
+        return defer.succeed(None)
+
+    @defer.inlineCallbacks
+    def addTestResultSet(self, description, category, value_unit):
+        sub = TestResultSubmitter()
+        yield sub.setup(self, description, category, value_unit)
+        setid = sub.get_test_result_set_id()
+        self._test_result_submitters[setid] = sub
+        return setid
+
+    def addTestResult(self, setid, value, test_name=None, test_code_path=None, line=None,
+                      duration_ns=None):
+        self._test_result_submitters[setid].add_test_result(value, test_name=test_name,
+                                                            test_code_path=test_code_path,
+                                                            line=line, duration_ns=duration_ns)
 
     def acquireLocks(self, res=None):
         if not self.locks:
@@ -791,7 +820,7 @@ class BuildStep(results.ResultComputingConfigMixin,
     def checkWorkerHasCommand(self, command):
         if not self.workerVersion(command):
             message = "worker is too old, does not know about {}".format(command)
-            raise WorkerTooOldError(message)
+            raise WorkerSetupError(message)
 
     def getWorkerName(self):
         return self.build.getWorkerName()
@@ -925,6 +954,12 @@ class BuildStep(results.ResultComputingConfigMixin,
         if self.descriptionSuffix:
             desc += self.descriptionSuffix
         return desc
+
+    def warn_deprecated_if_oldstyle_subclass(self, name):
+        if self.__class__.__name__ != name:
+            warn_deprecated('2.9.0', ('Subclassing old-style step {0} in {1} is deprecated, '
+                                      'please migrate to new-style equivalent {0}NewStyle'
+                                      ).format(name, self.__class__.__name__))
 
 
 components.registerAdapter(
@@ -1263,10 +1298,14 @@ class ShellMixin:
         return cmd
 
     def getResultSummary(self):
+        if self.descriptionDone is not None:
+            return super().getResultSummary()
         summary = util.command_to_string(self.command)
-        if not summary:
-            return super(ShellMixin, self).getResultSummary()
-        return {'step': summary}
+        if summary:
+            if self.results != SUCCESS:
+                summary += ' ({})'.format(Results[self.results])
+            return {'step': summary}
+        return super().getResultSummary()
 
 # Parses the logs for a list of regexs. Meant to be invoked like:
 # regexes = ((re.compile(...), FAILURE), (re.compile(...), WARNINGS))

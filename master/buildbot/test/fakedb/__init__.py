@@ -20,6 +20,8 @@ the real connector components.
 """
 
 from .base import FakeDBComponent
+from .build_data import BuildData
+from .build_data import FakeBuildDataComponent
 from .builders import Builder
 from .builders import BuilderMaster
 from .builders import BuildersTags
@@ -62,6 +64,12 @@ from .steps import FakeStepsComponent
 from .steps import Step
 from .tags import FakeTagsComponent
 from .tags import Tag
+from .test_result_sets import FakeTestResultSetsComponent
+from .test_result_sets import TestResultSet
+from .test_results import FakeTestResultsComponent
+from .test_results import TestCodePath
+from .test_results import TestName
+from .test_results import TestResult
 from .users import FakeUsersComponent
 from .users import User
 from .users import UserInfo
@@ -72,6 +80,7 @@ from .workers import Worker
 
 __all__ = [
     'Build',
+    'BuildData',
     'BuildProperty',
     'BuildRequest',
     'BuildRequestClaim',
@@ -93,6 +102,7 @@ __all__ = [
     'FakeBuildersComponent',
     'FakeBuildsComponent',
     'FakeBuildsetsComponent',
+    'FakeBuildDataComponent',
     'FakeChangeSourcesComponent',
     'FakeChangesComponent',
     'FakeDBComponent',
@@ -104,6 +114,8 @@ __all__ = [
     'FakeStateComponent',
     'FakeStepsComponent',
     'FakeTagsComponent',
+    'FakeTestResultSetsComponent',
+    'FakeTestResultsComponent',
     'FakeUsersComponent',
     'FakeWorkersComponent',
     'Log',
@@ -118,6 +130,10 @@ __all__ = [
     'SourceStamp',
     'Step',
     'Tag',
+    'TestCodePath',
+    'TestName',
+    'TestResultSet',
+    'TestResult',
     'User',
     'UserInfo',
     'Worker',
