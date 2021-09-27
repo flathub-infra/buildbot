@@ -1282,22 +1282,25 @@ def create_periodic_purge_factory():
     ])
     return periodic_purge_factory
 
-def get_runtimes(remote):
-    runtimes_command = "flatpak remote-ls --user --runtime --columns=application,branch,arch --arch='*' {}"
+def get_sdks(remote):
+    runtimes_command = "flatpak remote-ls --user --runtime --columns=ref --arch='*' --all {}"
     runtimes_run = subprocess.Popen(runtimes_command.format(remote), shell=True, stdout=subprocess.PIPE, universal_newlines=True)
     output, _ = runtimes_run.communicate()
     runtimes = {}
 
     for line in output.split('\n'):
         if len(line):
-            runtime, version, arch = line.split('\t')
+            _, name, arch, branch = line.split("/")
 
-            if runtime not in runtimes:
-                runtimes[runtime] = {}
-            if version not in runtimes[runtime]:
-                runtimes[runtime][version] = [arch]
+            if name.split('.')[-1] not in ('Platform', 'Sdk'):
+                continue
+
+            if name not in runtimes:
+                runtimes[name] = {}
+            if branch not in runtimes[name]:
+                runtimes[name][branch] = [arch]
             else:
-                runtimes[runtime][version].append(arch)
+                runtimes[name][branch].append(arch)
 
     return runtimes
 
@@ -1366,12 +1369,12 @@ class FlathubPropertiesStep(steps.BuildStep, CompositeStepMixin, buildbot.proces
             (sdk_name, _, sdk_version) = split_pref(manifest["sdk"], manifest["runtime-version"])
 
             # Get all runtimes to check for available architectures later
-            runtimes = get_runtimes('flathub')
-            if not lookup_runtime (runtimes, sdk_name, sdk_version) and flathub_default_branch in ('test', 'beta'):
+            sdks = get_sdks('flathub')
+            if not lookup_runtime (sdks, sdk_name, sdk_version) and flathub_default_branch in ('test', 'beta'):
                 # Check also in flathub-beta for test and beta builds
-                runtimes = get_runtimes('flathub-beta')
+                sdks = get_sdks('flathub-beta')
 
-            sdk_arches = set(lookup_runtime (runtimes, sdk_name, sdk_version))
+            sdk_arches = set(lookup_runtime (sdks, sdk_name, sdk_version))
             if len(sdk_arches) == 0:
                 self.descriptionDone = ["Could not find requested SDK %s//%s" % (sdk_name, sdk_version)]
                 defer.returnValue(FAILURE)
