@@ -17,12 +17,13 @@
 Steps and objects related to rpmlint.
 """
 
+from twisted.internet import defer
 
 from buildbot.steps.package import util as pkgutil
-from buildbot.steps.shell import TestNewStyle
+from buildbot.steps.shell import Test
 
 
-class RpmLint(TestNewStyle):
+class RpmLint(Test):
 
     """
     Rpmlint build step.
@@ -64,6 +65,7 @@ class RpmLint(TestNewStyle):
         self.obs = pkgutil.WEObserver()
         self.addLogObserver('stdio', self.obs)
 
+    @defer.inlineCallbacks
     def createSummary(self):
         """
         Create nice summary logs.
@@ -73,6 +75,6 @@ class RpmLint(TestNewStyle):
         warnings = self.obs.warnings
         errors = []
         if warnings:
-            self.addCompleteLog('%d Warnings' % len(warnings), "\n".join(warnings))
+            yield self.addCompleteLog('%d Warnings' % len(warnings), "\n".join(warnings))
         if errors:
-            self.addCompleteLog('%d Errors' % len(errors), "\n".join(errors))
+            yield self.addCompleteLog('%d Errors' % len(errors), "\n".join(errors))

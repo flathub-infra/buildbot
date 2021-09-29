@@ -14,13 +14,11 @@
 # Copyright Buildbot Team Members
 
 import datetime
-import inspect
 import os
 import re
 import sys
 import traceback
 import warnings
-from types import MethodType
 
 from twisted.python import failure
 from twisted.python import log
@@ -39,7 +37,6 @@ from buildbot.util import identifiers as util_identifiers
 from buildbot.util import safeTranslate
 from buildbot.util import service as util_service
 from buildbot.warnings import ConfigWarning
-from buildbot.warnings import warn_deprecated
 from buildbot.www import auth
 from buildbot.www import avatar
 from buildbot.www.authz import authz
@@ -232,7 +229,6 @@ class MasterConfig(util.ComparableMixin):
         "buildbotURL",
         "buildCacheSize",
         "builders",
-        "buildHorizon",
         "caches",
         "change_source",
         "codebaseGenerator",
@@ -240,12 +236,10 @@ class MasterConfig(util.ComparableMixin):
         "changeCacheSize",
         "changeHorizon",
         'db',
-        "db_poll_interval",
         "db_url",
         "logCompressionLimit",
         "logCompressionMethod",
         "logEncoding",
-        "logHorizon",
         "logMaxSize",
         "logMaxTailSize",
         "manhole",
@@ -263,9 +257,6 @@ class MasterConfig(util.ComparableMixin):
         "schedulers",
         "secretsProviders",
         "services",
-        # we had c['status'] = [] for a while in our default master.cfg
-        # so we need to keep it there
-        "status",
         "title",
         "titleURL",
         "user_managers",
@@ -403,19 +394,6 @@ class MasterConfig(util.ComparableMixin):
                     category=ConfigWarning)
         copy_str_or_callable_param('buildbotNetUsageData')
 
-        for horizon in ('logHorizon', 'buildHorizon', 'eventHorizon'):
-            if horizon in config_dict:
-                warn_deprecated(
-                    '0.9.0',
-                    "NOTE: `{}` is deprecated and ignored "
-                    "They are replaced by util.JanitorConfigurator".format(horizon))
-
-        if 'status' in config_dict:
-            warn_deprecated(
-                '0.9.0',
-                "NOTE: `status` targets are deprecated and ignored "
-                "They are replaced by reporters")
-
         copy_int_param('changeHorizon')
         copy_int_param('logCompressionLimit')
 
@@ -516,13 +494,10 @@ class MasterConfig(util.ComparableMixin):
 
         if 'db' in config_dict:
             db = config_dict['db']
-            if set(db.keys()) - set(['db_url', 'db_poll_interval']) and throwErrors:
+            if set(db.keys()) - set(['db_url']) and throwErrors:
                 error("unrecognized keys in c['db']")
-            config_dict = db
 
-        if 'db_poll_interval' in config_dict and throwErrors:
-            warn_deprecated(
-                "0.8.7", "db_poll_interval is deprecated and will be ignored")
+            config_dict = db
 
         # we don't attempt to parse db URLs here - the engine strategy will do
         # so.
@@ -739,14 +714,29 @@ class MasterConfig(util.ComparableMixin):
         if 'www' not in config_dict:
             return
         www_cfg = config_dict['www']
-        allowed = {'port', 'debug', 'json_cache_seconds',
-                   'rest_minimum_version', 'allowed_origins', 'jsonp',
-                   'plugins', 'auth', 'authz', 'avatar_methods', 'logfileName',
-                   'logRotateLength', 'maxRotatedFiles', 'versions',
-                   'change_hook_dialects', 'change_hook_auth',
-                   'default_page',
-                   'custom_templates_dir', 'cookie_expiration_time',
-                   'ui_default_config'}
+        allowed = {
+            'allowed_origins',
+            'auth',
+            'authz',
+            'avatar_methods',
+            'change_hook_auth',
+            'change_hook_dialects',
+            'cookie_expiration_time',
+            'custom_templates_dir',
+            'debug',
+            'default_page',
+            'json_cache_seconds',
+            'jsonp',
+            'logRotateLength',
+            'logfileName',
+            'maxRotatedFiles',
+            'plugins',
+            'port',
+            'rest_minimum_version',
+            'ui_default_config',
+            'versions',
+            'ws_ping_interval',
+        }
         unknown = set(list(www_cfg)) - allowed
 
         if unknown:
@@ -916,7 +906,7 @@ class BuilderConfig(util_config.ConfiguredMixin):
 
     def __init__(self, name=None, workername=None, workernames=None,
                  builddir=None, workerbuilddir=None, factory=None,
-                 tags=None, category=None,
+                 tags=None,
                  nextWorker=None, nextBuild=None, locks=None, env=None,
                  properties=None, collapseRequests=None, description=None,
                  canStartBuild=None, defaultProperties=None
@@ -972,17 +962,6 @@ class BuilderConfig(util_config.ConfiguredMixin):
         self.workerbuilddir = workerbuilddir
 
         # remainder are optional
-
-        if category and tags:
-            error(("builder '{}': builder categories are deprecated and "
-                   "replaced by tags; you should only specify tags").format(name))
-        if category:
-            warn_deprecated("0.9", ("builder '{}': builder categories are "
-                                    "deprecated and should be replaced with "
-                                    "'tags=[cat]'").format(name))
-            if not isinstance(category, str):
-                error("builder '{}': category must be a string".format(name))
-            tags = [category]
         if tags:
             if not isinstance(tags, list):
                 error("builder '{}': tags must be a list".format(name))
@@ -1003,16 +982,6 @@ class BuilderConfig(util_config.ConfiguredMixin):
         self.nextWorker = nextWorker
         if nextWorker and not callable(nextWorker):
             error('nextWorker must be a callable')
-        # Keeping support of the previous nextWorker API
-        if nextWorker:
-            argCount = self._countFuncArgs(nextWorker)
-            if (argCount == 2 or (isinstance(nextWorker, MethodType) and
-                                  argCount == 3)):
-                warn_deprecated(
-                    "0.9", "nextWorker now takes a "
-                    "3rd argument (build request)")
-                self.nextWorker = lambda x, y, z: nextWorker(
-                    x, y)  # pragma: no cover
         self.nextBuild = nextBuild
         if nextBuild and not callable(nextBuild):
             error('nextBuild must be a callable')
@@ -1059,14 +1028,3 @@ class BuilderConfig(util_config.ConfiguredMixin):
         if self.description:
             rv['description'] = self.description
         return rv
-
-    def _countFuncArgs(self, func):
-        if getattr(inspect, 'signature', None):
-            # Python 3
-            signature = inspect.signature(func)
-            argCount = len(signature.parameters)
-        else:
-            # Python 2
-            argSpec = inspect.getargspec(func)
-            argCount = len(argSpec.args)
-        return argCount

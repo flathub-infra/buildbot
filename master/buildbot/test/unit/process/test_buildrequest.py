@@ -13,6 +13,9 @@
 #
 # Copyright Buildbot Team Members
 
+import datetime
+import json
+
 import mock
 
 from twisted.internet import defer
@@ -139,7 +142,8 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
     #   changes but they have matching revisions.
 
     def makeBuildRequestRows(self, brid, bsid, changeid, ssid, codebase, branch=None,
-                             project=None, repository=None, patchid=None, revision=None):
+                             project=None, repository=None, patchid=None, revision=None,
+                             bs_properties=None):
         rows = [
             fakedb.SourceStamp(id=ssid, codebase=codebase, branch=branch,
                                project=project, repository=repository, patchid=patchid,
@@ -161,15 +165,17 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
                 fakedb.Patch(id=patchid, patch_base64='aGVsbG8sIHdvcmxk',
                  patch_author='bar', patch_comment='foo', subdir='/foo',
                  patchlevel=3))
+        if bs_properties:
+            for prop_name, prop_value in bs_properties.items():
+                rows.append(
+                    fakedb.BuildsetProperty(buildsetid=bsid, property_name=prop_name,
+                                            property_value=json.dumps(prop_value)),
+                )
 
         return rows
 
     @defer.inlineCallbacks
     def test_collapseRequests_collapse_default_with_codebases(self):
-
-        def collapseRequests_fn(master, builder, brdict1, brdict2):
-            return buildrequest.BuildRequest.canBeCollapsed(builder.master, brdict1, brdict2)
-
         rows = [
             fakedb.Builder(id=77, name='A'),
         ]
@@ -182,11 +188,65 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
         yield self.do_request_collapse(rows, [21], [19, 20])
 
     @defer.inlineCallbacks
+    def test_collapseRequests_collapse_default_does_not_collapse_older(self):
+        rows = [
+            fakedb.Builder(id=77, name='A'),
+        ]
+        rows += self.makeBuildRequestRows(21, 121, None, 221, 'C')
+        rows += self.makeBuildRequestRows(19, 119, None, 210, 'C')
+        rows += self.makeBuildRequestRows(20, 120, None, 220, 'C')
+        self.bldr.getCollapseRequestsFn = lambda: Builder._defaultCollapseRequestFn
+        yield self.do_request_collapse(rows, [19], [])
+        yield self.do_request_collapse(rows, [20], [19])
+        yield self.do_request_collapse(rows, [21], [20])
+
+    @defer.inlineCallbacks
+    def test_collapseRequests_collapse_default_does_not_collapse_concurrent_claims(self):
+        rows = [
+            fakedb.Builder(id=77, name='A'),
+        ]
+        rows += self.makeBuildRequestRows(21, 121, None, 221, 'C')
+        rows += self.makeBuildRequestRows(19, 119, None, 210, 'C')
+        rows += self.makeBuildRequestRows(20, 120, None, 220, 'C')
+
+        claimed = []
+
+        @defer.inlineCallbacks
+        def collapse_fn(master, builder, brdict1, brdict2):
+            if not claimed:
+                yield self.master.data.updates.claimBuildRequests([20])
+                claimed.append(20)
+            res = yield Builder._defaultCollapseRequestFn(master, builder, brdict1, brdict2)
+            return res
+
+        self.bldr.getCollapseRequestsFn = lambda: collapse_fn
+        yield self.do_request_collapse(rows, [21], [19])
+
+    @defer.inlineCallbacks
+    def test_collapseRequests_collapse_default_does_not_collapse_scheduler_props(self):
+        rows = [
+            fakedb.Builder(id=77, name='A'),
+        ]
+        rows += self.makeBuildRequestRows(21, 121, None, 221, 'C',
+                                          bs_properties={'prop': ('value', 'Scheduler')})
+        rows += self.makeBuildRequestRows(20, 120, None, 220, 'C',
+                                          bs_properties={'prop': ('value', 'Other source')})
+        rows += self.makeBuildRequestRows(19, 119, None, 219, 'C',
+                                          bs_properties={'prop': ('value2', 'Scheduler')})
+        rows += self.makeBuildRequestRows(18, 118, None, 218, 'C',
+                                          bs_properties={'prop': ('value', 'Scheduler')})
+        rows += self.makeBuildRequestRows(17, 117, None, 217, 'C',
+                                          bs_properties={'prop': ('value3', 'Other source')})
+        rows += self.makeBuildRequestRows(16, 116, None, 216, 'C')
+
+        self.bldr.getCollapseRequestsFn = lambda: Builder._defaultCollapseRequestFn
+        # only the same property coming from a scheduler is matched
+        yield self.do_request_collapse(rows, [21], [18])
+        # only takes into account properties coming from scheduler
+        yield self.do_request_collapse(rows, [20], [16, 17])
+
+    @defer.inlineCallbacks
     def test_collapseRequests_collapse_default_with_codebases_branches(self):
-
-        def collapseRequests_fn(master, builder, brdict1, brdict2):
-            return buildrequest.BuildRequest.canBeCollapsed(builder.master, brdict1, brdict2)
-
         rows = [
             fakedb.Builder(id=77, name='A'),
         ]
@@ -200,10 +260,6 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_collapseRequests_collapse_default_with_codebases_repository(self):
-
-        def collapseRequests_fn(master, builder, brdict1, brdict2):
-            return buildrequest.BuildRequest.canBeCollapsed(builder.master, brdict1, brdict2)
-
         rows = [
             fakedb.Builder(id=77, name='A'),
         ]
@@ -217,10 +273,6 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_collapseRequests_collapse_default_with_codebases_projects(self):
-
-        def collapseRequests_fn(master, builder, brdict1, brdict2):
-            return buildrequest.BuildRequest.canBeCollapsed(builder.master, brdict1, brdict2)
-
         rows = [
             fakedb.Builder(id=77, name='A'),
         ]
@@ -235,10 +287,6 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
     # * Neither source stamp has a patch (e.g., from a try scheduler)
     @defer.inlineCallbacks
     def test_collapseRequests_collapse_default_with_a_patch(self):
-
-        def collapseRequests_fn(master, builder, brdict1, brdict2):
-            return buildrequest.BuildRequest.canBeCollapsed(builder.master, brdict1, brdict2)
-
         rows = [
             fakedb.Builder(id=77, name='A'),
         ]
@@ -253,10 +301,6 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
     # * Either both source stamps are associated with changes..
     @defer.inlineCallbacks
     def test_collapseRequests_collapse_default_with_changes(self):
-
-        def collapseRequests_fn(master, builder, brdict1, brdict2):
-            return buildrequest.BuildRequest.canBeCollapsed(builder.master, brdict1, brdict2)
-
         rows = [
             fakedb.Builder(id=77, name='A'),
         ]
@@ -271,10 +315,6 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
     # * ... or neither are associated with changes but they have matching revisions.
     @defer.inlineCallbacks
     def test_collapseRequests_collapse_default_with_non_matching_revision(self):
-
-        def collapseRequests_fn(master, builder, brdict1, brdict2):
-            return buildrequest.BuildRequest.canBeCollapsed(builder.master, brdict1, brdict2)
-
         rows = [
             fakedb.Builder(id=77, name='A'),
         ]
@@ -285,6 +325,93 @@ class TestBuildRequestCollapser(TestReactorMixin, unittest.TestCase):
         self.bldr.getCollapseRequestsFn = lambda: Builder._defaultCollapseRequestFn
         yield self.do_request_collapse(rows, [22], [])
         yield self.do_request_collapse(rows, [21], [20])
+
+
+class TestSourceStamp(unittest.TestCase):
+    def test_asdict_minimal(self):
+        ssdatadict = {
+            'ssid': '123',
+            'branch': None,
+            'revision': None,
+            'patch': None,
+            'repository': 'testrepo',
+            'codebase': 'testcodebase',
+            'project': 'testproject',
+            'created_at': datetime.datetime(2019, 4, 1, 23, 38, 33, 154354),
+        }
+        ss = buildrequest.TempSourceStamp(ssdatadict)
+
+        self.assertEqual(ss.asDict(), {
+            'branch': None,
+            'codebase': 'testcodebase',
+            'patch_author': None,
+            'patch_body': None,
+            'patch_comment': None,
+            'patch_level': None,
+            'patch_subdir': None,
+            'project': 'testproject',
+            'repository': 'testrepo',
+            'revision': None
+        })
+
+    def test_asdict_no_patch(self):
+        ssdatadict = {
+            'ssid': '123',
+            'branch': 'testbranch',
+            'revision': 'testrev',
+            'patch': None,
+            'repository': 'testrepo',
+            'codebase': 'testcodebase',
+            'project': 'testproject',
+            'created_at': datetime.datetime(2019, 4, 1, 23, 38, 33, 154354),
+        }
+        ss = buildrequest.TempSourceStamp(ssdatadict)
+
+        self.assertEqual(ss.asDict(), {
+            'branch': 'testbranch',
+            'codebase': 'testcodebase',
+            'patch_author': None,
+            'patch_body': None,
+            'patch_comment': None,
+            'patch_level': None,
+            'patch_subdir': None,
+            'project': 'testproject',
+            'repository': 'testrepo',
+            'revision': 'testrev',
+        })
+
+    def test_asdict_with_patch(self):
+        ssdatadict = {
+            'ssid': '123',
+            'branch': 'testbranch',
+            'revision': 'testrev',
+            'patch': {
+                'patchid': 1234,
+                'body': b'testbody',
+                'level': 2,
+                'author': 'testauthor',
+                'comment': 'testcomment',
+                'subdir': 'testsubdir',
+            },
+            'repository': 'testrepo',
+            'codebase': 'testcodebase',
+            'project': 'testproject',
+            'created_at': datetime.datetime(2019, 4, 1, 23, 38, 33, 154354),
+        }
+        ss = buildrequest.TempSourceStamp(ssdatadict)
+
+        self.assertEqual(ss.asDict(), {
+            'branch': 'testbranch',
+            'codebase': 'testcodebase',
+            'patch_author': 'testauthor',
+            'patch_body': b'testbody',
+            'patch_comment': 'testcomment',
+            'patch_level': 2,
+            'patch_subdir': 'testsubdir',
+            'project': 'testproject',
+            'repository': 'testrepo',
+            'revision': 'testrev'
+        })
 
 
 class TestBuildRequest(TestReactorMixin, unittest.TestCase):

@@ -34,25 +34,34 @@ There are several common arguments for schedulers, although not all are availabl
 .. _Scheduler-Attr-Name:
 
 ``name``
+
     Each Scheduler must have a unique name.
     This is used in status displays, and is also available in the build property ``scheduler``.
 
 .. _Scheduler-Attr-BuilderNames:
 
 ``builderNames``
+
     This is the set of builders which this scheduler should trigger, specified as a list of names (strings).
     This can also be an :class:`~IRenderable` object which will render to a list of builder names (or a list of :class:`~IRenderable` that will render to builder names).
 
     .. note:: When ``builderNames`` is rendered, these additional :class:`~Properties` attributes are available:
 
        ``master``
+
            A reference to the :class:`~BuildMaster` object that owns this scheduler.
            This can be used to access the data API.
+
        ``sourcestamps``
+
            The list of sourcestamps that triggered the scheduler.
+
        ``changes``
+
            The list of changes associated with the sourcestamps.
+
        ``files``
+
            The list of modified files associated with the changes.
 
        Any property attached to the change(s) that triggered the scheduler will be combined and available when rendering `builderNames`.
@@ -124,9 +133,10 @@ There are several common arguments for schedulers, although not all are availabl
 .. _Scheduler-Attr-Properties:
 
 ``properties`` (optional)
+
     This is a dictionary specifying properties that will be transmitted to all builds started by this scheduler.
-    The ``owner`` property may be of particular interest, as its contents (as a list) will be added to the list of "interested users" (:ref:`Doing-Things-With-Users`) for each triggered build.
-    For example
+    The ``owner`` property may be of particular interest, as its contents (list) will be added to the list of "interested users" (:ref:`Doing-Things-With-Users`) for each triggered build.
+    For example:
 
     .. code-block:: python
 
@@ -138,9 +148,10 @@ There are several common arguments for schedulers, although not all are availabl
 .. _Scheduler-Attr-Codebases:
 
 ``codebases`` (optional)
+
     Specifies codebase definitions that are used when the scheduler processes data from more than one repository at the same time.
 
-    The ``codebases`` parameter is only used to fill in missing details about a codebases when scheduling a build.
+    The ``codebases`` parameter is only used to fill in missing details about a codebase when scheduling a build.
     For example, when a change to codebase ``A`` occurs, a scheduler must invent a sourcestamp for codebase ``B``.
     Source steps that specify codebase ``B`` as their codebase will use the invented timestamp.
 
@@ -149,7 +160,7 @@ There are several common arguments for schedulers, although not all are availabl
     This parameter can be specified in two forms:
 
         - as a list of strings.
-          This is the Simplest form, use it if no special overrides are needed.
+          This is the simplest form; use it if no special overrides are needed.
           In this form, just the names of the codebases are listed.
 
         - as a dictionary of dictionaries.
@@ -168,33 +179,37 @@ There are several common arguments for schedulers, although not all are availabl
 .. _Scheduler-Attr-FileIsImportant:
 
 ``fileIsImportant`` (optional)
-    A callable which takes one argument, a Change instance, and returns ``True`` if the change is worth building, and ``False`` if it is not.
+
+    A callable which takes as argument a Change instance and returns ``True`` if the change is worth building, and ``False`` if it is not.
     Unimportant Changes are accumulated until the build is triggered by an important change.
     The default value of ``None`` means that all Changes are important.
 
 .. _Scheduler-Attr-ChangeFilter:
 
 ``change_filter`` (optional)
-    The change filter that will determine which changes are recognized by this scheduler; :ref:`Change-Filters`.
-    Note that this is different from ``fileIsImportant``: if the change filter filters out a Change, then it is completely ignored by the scheduler.
-    If a Change is allowed by the change filter, but is deemed unimportant, then it will not cause builds to start, but will be remembered and shown in status displays.
+
+    The change filter that will determine which changes are recognized by this scheduler (see :ref:`Change-Filters`).
+    Note that this is different from ``fileIsImportant``; if the change filter filters out a change, the change is completely ignored by the scheduler.
+    If a change is allowed by the change filter but is deemed unimportant, it will not cause builds to start but will be remembered and shown in status displays.
     The default value of ``None`` does not filter any changes at all.
 
 .. _Scheduler-Attr-OnlyImportant:
 
 ``onlyImportant`` (optional)
+
     A boolean that, when ``True``, only adds important changes to the buildset as specified in the ``fileIsImportant`` callable.
     This means that unimportant changes are ignored the same way a ``change_filter`` filters changes.
-    This defaults to ``False`` and only applies when ``fileIsImportant`` is given.
+    The default value is ``False`` and only applies when ``fileIsImportant`` is given.
 
 .. _Scheduler-Attr-Reason:
 
 ``reason`` (optional)
+
     A string that will be used as the reason for the triggered build.
     By default it lists the type and name of the scheduler triggering the build.
 
 The remaining subsections represent a catalog of the available scheduler types.
-All these schedulers are defined in modules under :mod:`buildbot.schedulers`, and the docstrings there are the best source of documentation on the arguments taken by each one.
+All these schedulers are defined in modules under :mod:`buildbot.schedulers`, and their docstrings are the best source of documentation on the arguments each one takes.
 
 Scheduler Resiliency
 ~~~~~~~~~~~~~~~~~~~~
@@ -217,6 +232,7 @@ Change Filters
 
 Several schedulers perform filtering on an incoming set of changes.
 The filter can most generically be specified as a :class:`ChangeFilter`.
+
 Set up a :class:`ChangeFilter` like this:
 
 .. code-block:: python
@@ -224,7 +240,7 @@ Set up a :class:`ChangeFilter` like this:
     from buildbot.plugins import util
     my_filter = util.ChangeFilter(project_re="^baseproduct/.*", branch="devel")
 
-and then add it to a scheduler with the ``change_filter`` parameter:
+and then assign it to a scheduler with the ``change_filter`` parameter:
 
 .. code-block:: python
 
@@ -234,28 +250,33 @@ and then add it to a scheduler with the ``change_filter`` parameter:
 There are five attributes of changes on which you can filter:
 
 ``project``
-    the project string, as defined by the ChangeSource.
+
+    The project string, as defined by the ChangeSource.
 
 ``repository``
-    the repository in which this change occurred.
+
+    The repository in which the change occurred.
 
 ``branch``
-    the branch on which this change occurred.
+
+    The branch on which the change occurred.
     Note that 'trunk' or 'master' is often denoted by ``None``.
 
 ``category``
-    the category, again as defined by the ChangeSource.
+
+    The category, again as defined by the ChangeSource.
 
 ``codebase``
-    the change's codebase.
 
-For each attribute, the filter can look for a single, specific value:
+    The change's codebase.
+
+For each attribute, the filter can look for one specific value:
 
 .. code-block:: python
 
     my_filter = util.ChangeFilter(project='myproject')
 
-or accept any of a set of values:
+or accept a set of values:
 
 .. code-block:: python
 
@@ -270,17 +291,13 @@ or apply a regular expression, using the attribute name with a "``_re``" suffix:
     import re
     my_filter = util.ChangeFilter(category_re=re.compile('.*deve.*', re.I))
 
-:class:`buildbot.www.hooks.github.GitHubEventHandler` has a special
-``github_distinct`` property that can be used to filter whether or not
-non-distinct changes should be considered. For example, if a commit is pushed to
-a branch that is not being watched and then later pushed to a watched branch, by
-default, this will be recorded as two separate Changes. In order to record a
-change only the first time the commit appears, you can install a custom
-:class:`ChangeFilter` like this:
+:class:`buildbot.www.hooks.github.GitHubEventHandler` has a special ``github_distinct`` property that can be used to specify whether or not non-distinct changes should be considered.
+For example, if a commit is pushed to a branch that is not being watched and then later pushed to a watched branch, by default, this will be recorded as two separate changes.
+In order to record a change only the first time the commit appears, you can use a custom :class:`ChangeFilter` like this:
 
 .. code-block:: python
 
-    ChangeFilter(filter_fn = lambda c: c.properties.getProperty('github_distinct')
+    ChangeFilter(filter_fn=lambda c: c.properties.getProperty('github_distinct'))
 
 For anything more complicated, define a Python function to recognize the strings you want:
 
@@ -341,9 +358,6 @@ Each scheduler must have a unique name.
 Scheduler Types
 ~~~~~~~~~~~~~~~
 
-The remaining subsections represent a catalog of the available Scheduler types.
-All these Schedulers are defined in modules under :mod:`buildbot.schedulers`, and the docstrings there are the best source of documentation on the arguments taken by each one.
-
 .. bb:sched:: SingleBranchScheduler
 .. bb:sched:: Scheduler
 
@@ -357,8 +371,8 @@ It follows exactly one branch, and starts a configurable tree-stable-timer after
 When the timer expires, it starts a build on some set of Builders.
 This scheduler accepts a :meth:`fileIsImportant` function which can be used to ignore some Changes if they do not affect any *important* files.
 
-If ``treeStableTimer`` is not set, then this scheduler starts a build for every Change that matches its ``change_filter`` and statsfies :meth:`fileIsImportant`.
-If ``treeStableTimer`` is set, then a build is triggered for each set of Changes which arrive within the configured time, and match the filters.
+If ``treeStableTimer`` is not set, then this scheduler starts a build for every Change that matches its ``change_filter`` and satisfies :meth:`fileIsImportant`.
+If ``treeStableTimer`` is set, then a build is triggered for each set of Changes that arrive in intervals shorter than the configured time and match the filters.
 
 .. note::
 
@@ -371,40 +385,52 @@ If ``treeStableTimer`` is set, then a build is triggered for each set of Changes
 The arguments to this scheduler are:
 
 ``name``
+
     See :ref:`name scheduler argument <Scheduler-Attr-Name>`.
 
 ``builderNames``
+
     See :ref:`builderNames scheduler argument <Scheduler-Attr-BuilderNames>`.
 
 ``properties`` (optional)
+
     See :ref:`properties scheduler argument <Scheduler-Attr-Properties>`.
 
-``codebases`` (optional):
+``codebases`` (optional)
+
     See :ref:`codebases scheduler argument <Scheduler-Attr-Codebases>`.
 
 ``fileIsImportant`` (optional)
+
     See :ref:`fileIsImportant scheduler argument <Scheduler-Attr-FileIsImportant>`.
 
 ``change_filter`` (optional)
+
     See :ref:`change_filter scheduler argument <Scheduler-Attr-ChangeFilter>`.
 
 ``onlyImportant`` (optional)
+
     See :ref:`onlyImportant scheduler argument <Scheduler-Attr-OnlyImportant>`.
 
 ``reason`` (optional)
+
     See :ref:`reason scheduler argument <Scheduler-Attr-Reason>`.
 
 ``treeStableTimer``
+
     The scheduler will wait for this many seconds before starting the build.
-    If new changes are made during this interval, the timer will be restarted, so really the build will be started after a change and then after this many seconds of inactivity.
+    If new changes are made during this interval, the timer will be restarted.
+    So the build will be started after this many seconds of inactivity following the last change.
 
     If ``treeStableTimer`` is ``None``, then a separate build is started immediately for each Change.
 
 ``categories`` (deprecated; use change_filter)
+
     A list of categories of changes that this scheduler will respond to.
     If this is specified, then any non-matching changes are ignored.
 
 ``branch`` (deprecated; use change_filter)
+
     The scheduler will pay attention to this branch, ignoring Changes that occur on other branches.
     Setting ``branch`` equal to the special value of ``None`` means it should only pay attention to the default branch.
 
@@ -430,9 +456,9 @@ Example:
     c['schedulers'] = [quick, full]
 
 In this example, the two *quick* builders are triggered 60 seconds after the tree has been changed.
-The *full* builds do not run quite so quickly (they wait 5 minutes), so hopefully if the quick builds fail due to a missing file or really simple typo, the developer can discover and fix the problem before the full builds are started.
+The *full* builders do not run quite that quickly (they wait 5 minutes), so that hopefully, if the quick builds fail due to a missing file or a simple typo, the developer can discover and fix the problem before the full builds are started.
 Both schedulers only pay attention to the default branch: any changes on other branches are ignored.
-Each scheduler triggers a different set of Builders, referenced by name.
+Each scheduler triggers a different set of builders, referenced by name.
 
 .. note::
 
@@ -454,42 +480,53 @@ AnyBranchScheduler
 This scheduler uses a tree-stable-timer like the default one, but uses a separate timer for each branch.
 
 If ``treeStableTimer`` is not set, then this scheduler is indistinguishable from :bb:sched:`SingleBranchScheduler`.
-If ``treeStableTimer`` is set, then a build is triggered for each set of Changes which arrive within the configured time, and match the filters.
+If ``treeStableTimer`` is set, then a build is triggered for each set of Changes that arrive in intervals shorter than the configured time and match the filters.
 
 The arguments to this scheduler are:
 
 ``name``
+
     See :ref:`name scheduler argument <Scheduler-Attr-Name>`.
 
 ``builderNames``
+
     See :ref:`builderNames scheduler argument <Scheduler-Attr-BuilderNames>`.
 
 ``properties`` (optional)
+
     See :ref:`properties scheduler argument <Scheduler-Attr-Properties>`.
 
-``codebases`` (optional):
+``codebases`` (optional)
+
     See :ref:`codebases scheduler argument <Scheduler-Attr-Codebases>`.
 
 ``fileIsImportant`` (optional)
+
     See :ref:`fileIsImportant scheduler argument <Scheduler-Attr-FileIsImportant>`.
 
 ``change_filter`` (optional)
+
     See :ref:`change_filter scheduler argument <Scheduler-Attr-ChangeFilter>`.
 
 ``onlyImportant`` (optional)
+
     See :ref:`onlyImportant scheduler argument <Scheduler-Attr-OnlyImportant>`.
 
 ``reason`` (optional)
+
     See :ref:`reason scheduler argument <Scheduler-Attr-Reason>`.
 
 ``treeStableTimer``
-    The scheduler will wait for this many seconds before starting the build.
+
+    The scheduler will wait for this many seconds before starting a build.
     If new changes are made *on the same branch* during this interval, the timer will be restarted.
 
 ``branches`` (deprecated; use change_filter)
+
     Changes on branches not specified on this list will be ignored.
 
 ``categories`` (deprecated; use change_filter)
+
     A list of categories of changes that this scheduler will respond to.
     If this is specified, then any non-matching changes are ignored.
 
@@ -506,7 +543,7 @@ You could put the packaging step in the same Build as the compile and testing st
 Another example is if you want to skip the *full* builds after a failing *quick* build of the same source code.
 Or, if one Build creates a product (like a compiled library) that is used by some other Builder, you'd want to make sure the consuming Build is run *after* the producing one.
 
-You can use *dependencies* to express this relationship to the Buildbot.
+You can use *dependencies* to express this relationship to Buildbot.
 There is a special kind of scheduler named :bb:sched:`Dependent` that will watch an *upstream* scheduler for builds to complete successfully (on all of its Builders).
 Each time that happens, the same source code (i.e. the same ``SourceStamp``) will be used to start a new set of builds, on a different set of Builders.
 This *downstream* scheduler doesn't pay attention to Changes at all.
@@ -517,21 +554,26 @@ Note that, for SourceStamps generated by a :bb:sched:`Dependent` scheduler, the 
 If any changes are committed between the time the upstream scheduler begins its build and the time the dependent scheduler begins its build, then those changes will be included in the downstream build.
 See the :bb:sched:`Triggerable` scheduler for a more flexible dependency mechanism that can avoid this problem.
 
-The keyword arguments to this scheduler are:
+The arguments to this scheduler are:
 
 ``name``
+
     See :ref:`name scheduler argument <Scheduler-Attr-Name>`.
 
 ``builderNames``
+
     See :ref:`builderNames scheduler argument <Scheduler-Attr-BuilderNames>`.
 
 ``properties`` (optional)
+
     See :ref:`properties scheduler argument <Scheduler-Attr-Properties>`.
 
-``codebases`` (optional):
+``codebases`` (optional)
+
     See :ref:`codebases scheduler argument <Scheduler-Attr-Codebases>`.
 
 ``upstream``
+
     The upstream scheduler to watch.
     Note that this is an *instance*, not the name of the scheduler.
 
@@ -563,41 +605,52 @@ This simple scheduler just triggers a build every *N* seconds.
 The arguments to this scheduler are:
 
 ``name``
+
     See :ref:`name scheduler argument <Scheduler-Attr-Name>`.
 
 ``builderNames``
+
     See :ref:`builderNames scheduler argument <Scheduler-Attr-BuilderNames>`.
 
 ``properties`` (optional)
+
     See :ref:`properties scheduler argument <Scheduler-Attr-Properties>`.
 
-``codebases`` (optional):
+``codebases`` (optional)
+
     See :ref:`codebases scheduler argument <Scheduler-Attr-Codebases>`.
 
 ``fileIsImportant`` (optional)
+
     See :ref:`fileIsImportant scheduler argument <Scheduler-Attr-FileIsImportant>`.
 
 ``change_filter`` (optional)
+
     See :ref:`change_filter scheduler argument <Scheduler-Attr-ChangeFilter>`.
 
 ``onlyImportant`` (optional)
+
     See :ref:`onlyImportant scheduler argument <Scheduler-Attr-OnlyImportant>`.
 
 ``reason`` (optional)
+
     See :ref:`reason scheduler argument <Scheduler-Attr-Reason>`.
 
 ``createAbsoluteSourceStamps`` (optional)
+
     This option only has effect when using multiple codebases.
     When ``True``, it uses the last seen revision for each codebase that does not have a change.
     When ``False`` (the default), codebases without changes will use the revision from the ``codebases`` argument.
 
 ``onlyIfChanged`` (optional)
+
     If this is ``True``, then builds will not be scheduled at the designated time
     *unless* the specified branch has seen an important change since
     the previous build.
     By default this setting is ``False``.
 
 ``periodicBuildTimer``
+
     The time, in seconds, after which to start a build.
 
 Example:
@@ -627,64 +680,80 @@ This can run a build every night, every morning, every weekend, alternate Thursd
 Pass some subset of ``minute``, ``hour``, ``dayOfMonth``, ``month``, and ``dayOfWeek``\; each may be a single number or a list of valid values.
 The builds will be triggered whenever the current time matches these values.
 Wildcards are represented by a '*' string.
-All fields default to a wildcard except 'minute', so with no fields this defaults to a build every hour, on the hour.
+All fields default to a wildcard except 'minute', so with no fields, this defaults to a build every hour, on the hour.
 The full list of parameters is:
 
 ``name``
+
     See :ref:`name scheduler argument <Scheduler-Attr-Name>`.
 
 ``builderNames``
+
     See :ref:`builderNames scheduler argument <Scheduler-Attr-BuilderNames>`.
 
 ``properties`` (optional)
+
     See :ref:`properties scheduler argument <Scheduler-Attr-Properties>`.
 
-``codebases`` (optional):
+``codebases`` (optional)
+
     See :ref:`codebases scheduler argument <Scheduler-Attr-Codebases>`.
 
 ``fileIsImportant`` (optional)
+
     See :ref:`fileIsImportant scheduler argument <Scheduler-Attr-FileIsImportant>`.
 
 ``change_filter`` (optional)
+
     See :ref:`change_filter scheduler argument <Scheduler-Attr-ChangeFilter>`.
 
 ``onlyImportant`` (optional)
+
     See :ref:`onlyImportant scheduler argument <Scheduler-Attr-OnlyImportant>`.
 
 ``reason`` (optional)
+
     See :ref:`reason scheduler argument <Scheduler-Attr-Reason>`.
 
 ``createAbsoluteSourceStamps`` (optional)
+
     This option only has effect when using multiple codebases.
     When ``True``, it uses the last seen revision for each codebase that does not have a change.
     When ``False`` (the default), codebases without changes will use the revision from the ``codebases`` argument.
 
 ``onlyIfChanged`` (optional)
+
     If this is ``True``, then builds will not be scheduled at the designated time *unless* the change filter has accepted an important change since the previous build.
-    The default of this value is ``False``.
+    The default value is ``False``.
 
 ``branch`` (optional)
-    (deprecated; use ``change_filter`` and ``codebases``)
+
+    (Deprecated; use ``change_filter`` and ``codebases``.)
     The branch to build when the time comes, and the branch to filter for if ``change_filter`` is not specified.
     Remember that a value of ``None`` here means the default branch, and will not match other branches!
 
 ``minute`` (optional)
+
     The minute of the hour on which to start the build.
     This defaults to 0, meaning an hourly build.
 
 ``hour`` (optional)
+
     The hour of the day on which to start the build, in 24-hour notation.
     This defaults to \*, meaning every hour.
 
 ``dayOfMonth`` (optional)
+
     The day of the month to start a build.
     This defaults to ``*``, meaning every day.
 
 ``month`` (optional)
+
     The month in which to start the build, with January = 1.
     This defaults to ``*``, meaning every month.
 
 ``dayOfWeek`` (optional)
+
     The day of the week to start a build, with Monday = 0.
     This defaults to ``*``, meaning every day of the week.
 
@@ -692,10 +761,10 @@ For example, the following :file:`master.cfg` clause will cause a build to be st
 
 .. code-block:: python
 
-    from buildbot.plugins import schedulers
+    from buildbot.plugins import schedulers, util
     c['schedulers'].append(
         schedulers.Nightly(name='nightly',
-                           branch='master',
+                           change_filter=util.ChangeFilter(branch='master'),
                            builderNames=['builder1', 'builder2'],
                            hour=3, minute=0))
 
@@ -705,7 +774,7 @@ This scheduler will perform a build each Monday morning at 6:23am and again at 8
 
     c['schedulers'].append(
         schedulers.Nightly(name='BeforeWork',
-                           branch='default',
+                           change_filter=util.ChangeFilter(branch='default'),
                            builderNames=['builder1'],
                            dayOfWeek=0, hour=[6,8], minute=23,
                            onlyIfChanged=True))
@@ -715,23 +784,23 @@ The following runs a build every two hours, using Python's :func:`range` functio
 .. code-block:: python
 
     c.schedulers.append(
-        timed.Nightly(name='every2hours',
-            branch=None, # default branch
-            builderNames=['builder1'],
-            hour=range(0, 24, 2)))
+        schedulers.Nightly(name='every2hours',
+                           change_filter=util.ChangeFilter(branch=None),  # default branch
+                           builderNames=['builder1'],
+                           hour=range(0, 24, 2)))
 
 Finally, this example will run only on December 24th:
 
 .. code-block:: python
 
     c['schedulers'].append(
-        timed.Nightly(name='SleighPreflightCheck',
-            branch=None, # default branch
-            builderNames=['flying_circuits', 'radar'],
-            month=12,
-            dayOfMonth=24,
-            hour=12,
-            minute=0))
+        schedulers.Nightly(name='SleighPreflightCheck',
+                           change_filter=util.ChangeFilter(branch=None),  # default branch
+                           builderNames=['flying_circuits', 'radar'],
+                           month=12,
+                           dayOfMonth=24,
+                           hour=12,
+                           minute=0))
 
 .. bb:sched:: Try_Jobdir
 .. bb:sched:: Try_Userpass
@@ -741,7 +810,7 @@ Finally, this example will run only on December 24th:
 Try Schedulers
 ::::::::::::::
 
-This scheduler allows developers to use the :command:`buildbot try` command to trigger builds of code they have not yet committed.
+This scheduler allows developers to use the :bb:cmdline:`buildbot try<try>` command to trigger builds of code they have not yet committed.
 See :bb:cmdline:`try` for complete details.
 
 Two implementations are available: :bb:sched:`Try_Jobdir` and :bb:sched:`Try_Userpass`.
@@ -755,12 +824,13 @@ All of them enforce more security than the usual buildmaster ports do.
 Any source code being built can be used to compromise the worker accounts, but in general that code must be checked out from the VC repository first, so only people with commit privileges can get control of the workers.
 The usual force-build control channels can waste worker time but do not allow arbitrary commands to be executed by people who don't have those commit privileges.
 However, the source code patch that is provided with the trial build does not have to go through the VC system first, so it is important to make sure these builds cannot be abused by a non-committer to acquire as much control over the workers as a committer has.
-Ideally, only developers who have commit access to the VC repository would be able to start trial builds, but unfortunately the buildmaster does not, in general, have access to VC system's user list.
+Ideally, only developers who have commit access to the VC repository would be able to start trial builds, but unfortunately, the buildmaster does not, in general, have access to the VC system's user list.
 
 As a result, the try scheduler requires a bit more configuration.
 There are currently two ways to set this up:
 
 ``jobdir`` (ssh)
+
     This approach creates a command queue directory, called the :file:`jobdir`, in the buildmaster's working directory.
     The buildmaster admin sets the ownership and permissions of this directory to only grant write access to the desired set of developers, all of whom must have accounts on the machine.
     The :command:`buildbot try` command creates a special file containing the source stamp information and drops it in the jobdir, just like a standard maildir.
@@ -777,6 +847,7 @@ There are currently two ways to set this up:
     The arguments must include the inlet directory and the revision information.
 
 ``user+password`` (PB)
+
     In this approach, each developer gets a username/password pair, which are all listed in the buildmaster's configuration file.
     When the developer runs :command:`buildbot try`, their machine connects to the buildmaster via PB and authenticates themselves using that username and password, then sends a PB command to start the trial build.
 
@@ -798,8 +869,7 @@ and then use the following scheduler in the buildmaster's config file:
 
     from buildbot.plugins import schedulers
     s = schedulers.Try_Jobdir(name="try1",
-                              builderNames=["full-linux", "full-netbsd",
-                                            "full-OSX"],
+                              builderNames=["full-linux", "full-netbsd", "full-OSX"],
                               jobdir="jobdir")
     c['schedulers'] = [s]
 
@@ -825,13 +895,12 @@ Remember to use good passwords for this: the security of the worker accounts dep
 
     from buildbot.plugins import schedulers
     s = schedulers.Try_Userpass(name="try2",
-                                builderNames=["full-linux", "full-netbsd",
-                                              "full-OSX"],
+                                builderNames=["full-linux", "full-netbsd", "full-OSX"],
                                 port=8031,
                                 userpass=[("alice","pw1"), ("bob", "pw2")])
     c['schedulers'] = [s]
 
-Like most places in the buildbot, the ``port`` argument takes a `strports` specification.
+Like in most classes in Buildbot, the ``port`` argument takes a `strports` specification.
 See :mod:`twisted.application.strports` for details.
 
 .. bb:sched:: Triggerable
@@ -854,18 +923,23 @@ The scheduler filters out all codebases from :bb:step:`Trigger` steps that are n
 The parameters are just the basics:
 
 ``name``
+
     See :ref:`name scheduler argument <Scheduler-Attr-Name>`.
 
 ``builderNames``
+
     See :ref:`builderNames scheduler argument <Scheduler-Attr-BuilderNames>`.
 
 ``properties`` (optional)
+
     See :ref:`properties scheduler argument <Scheduler-Attr-Properties>`.
 
-``codebases`` (optional):
+``codebases`` (optional)
+
     See :ref:`codebases scheduler argument <Scheduler-Attr-Codebases>`.
 
 ``reason`` (optional)
+
     See :ref:`reason scheduler argument <Scheduler-Attr-Reason>`.
 
 This class is only useful in conjunction with the :bb:step:`Trigger` step.
@@ -873,14 +947,14 @@ Here is a fully-worked example:
 
 .. code-block:: python
 
-    from buildbot.plugins import schedulers, util, steps
+    from buildbot.plugins import schedulers, steps, util
 
     checkin = schedulers.SingleBranchScheduler(name="checkin",
-                                               branch=None,
+                                               change_filter=util.ChangeFilter(branch=None),
                                                treeStableTimer=5*60,
                                                builderNames=["checkin"])
     nightly = schedulers.Nightly(name='nightly',
-                                 branch=None,
+                                 change_filter=util.ChangeFilter(branch=None),
                                  builderNames=['nightly'],
                                  hour=3, minute=0)
 
@@ -922,36 +996,46 @@ The :bb:sched:`NightlyTriggerable` scheduler is a mix of the :bb:sched:`Nightly`
 This scheduler triggers builds at a particular time of day, week, or year, exactly as the :bb:sched:`Nightly` scheduler.
 However, the source stamp set that is used is provided by the last :bb:step:`Trigger` step that targeted this scheduler.
 
-The parameters are just the basics:
+The following parameters are just the basics:
 
 ``name``
+
     See :ref:`name scheduler argument <Scheduler-Attr-Name>`.
 
 ``builderNames``
+
     See :ref:`builderNames scheduler argument <Scheduler-Attr-BuilderNames>`.
 
 ``properties`` (optional)
+
     See :ref:`properties scheduler argument <Scheduler-Attr-Properties>`.
 
 ``codebases`` (optional)
+
     See :ref:`codebases scheduler argument <Scheduler-Attr-Codebases>`.
 
 ``reason`` (optional)
+
     See :ref:`reason scheduler argument <Scheduler-Attr-Reason>`.
 
 ``minute`` (optional)
+
     See :bb:sched:`Nightly`.
 
 ``hour`` (optional)
+
     See :bb:sched:`Nightly`.
 
 ``dayOfMonth`` (optional)
+
     See :bb:sched:`Nightly`.
 
 ``month`` (optional)
+
     See :bb:sched:`Nightly`.
 
 ``dayOfWeek`` (optional)
+
     See :bb:sched:`Nightly`.
 
 This class is only useful in conjunction with the :bb:step:`Trigger` step.
@@ -961,10 +1045,10 @@ Here is a fully-worked example:
 
 .. code-block:: python
 
-    from buildbot.plugins import schedulers, util, steps
+    from buildbot.plugins import schedulers, steps, util
 
     checkin = schedulers.SingleBranchScheduler(name="checkin",
-                                               branch=None,
+                                               change_filter=util.ChangeFilter(branch=None),
                                                treeStableTimer=5*60,
                                                builderNames=["checkin"])
     nightly = schedulers.NightlyTriggerable(name='nightly',
@@ -997,15 +1081,17 @@ If you click on that button, a dialog will let you choose various parameters for
 
 The Buildbot framework allows you to customize exactly how the build form looks, which builders have a force build form (it might not make sense to force build every builder), and who is allowed to force builds on which builders.
 
-How you do so is by configuring a :bb:sched:`ForceScheduler`, and add it into the list :bb:cfg:`schedulers`.
+You do so by configuring a :bb:sched:`ForceScheduler` and adding it to the list of :bb:cfg:`schedulers`.
 
 The scheduler takes the following parameters:
 
 ``name``
+
     See :ref:`name scheduler argument <Scheduler-Attr-Name>`.
-    Force buttons are ordered by this property in the UI (so you can prefix by 01, 02 etc in order to control precisely the order).
+    Force buttons are ordered by this property in the UI (so you can prefix by 01, 02, etc, in order to control precisely the order).
 
 ``builderNames``
+
     List of builders where the force button should appear.
     See :ref:`builderNames scheduler argument <Scheduler-Attr-BuilderNames>`.
 
@@ -1077,8 +1163,8 @@ What you need in your config file is something like:
                                     label="reason:",
                                     required=True, size=80),
 
-        # in case you don't require authentication this will display
-        # input for user to type his name
+        # in case you don't require authentication, this will display
+        # input for user to type their name
         username=util.UserNameParameter(label="your name:",
                                         size=80),
         # A completely customized property list.  The name of the
@@ -1156,7 +1242,7 @@ All parameter types have a few common arguments:
 
 ``default`` (optional; default: "")
 
-    The default value for the parameter, that is used if there is no user input.
+    The default value for the parameter that is used if there is no user input.
 
 ``required`` (optional; default: False)
 
@@ -1216,26 +1302,28 @@ NestedParameter
 
 This parameter type is a special parameter which contains other parameters.
 This can be used to group a set of parameters together, and define the layout of your form.
-You can recursively include NestedParameter into NestedParameter, to build very complex UI.
+You can recursively include NestedParameter into NestedParameter, to build very complex UIs.
 
 It adds the following arguments:
 
-``layout`` (optional, default: "vertical")
+``layout`` (optional, default is "vertical")
 
     The layout defines how the fields are placed in the form.
 
     The layouts implemented in the standard web application are:
 
     * ``simple``: fields are displayed one by one without alignment.
+
         They take the horizontal space that they need.
 
     * ``vertical``: all fields are displayed vertically, aligned in columns (as per the ``column`` attribute of the NestedParameter)
 
-    * ``tabs``: Each field gets its own `tab <https://getbootstrap.com/components/>`_.
+    * ``tabs``: each field gets its own `tab <https://getbootstrap.com/components/>`_.
+
         This can be used to declare complex build forms which won't fit into one screen.
         The children fields are usually other NestedParameters with vertical layout.
 
-``columns`` (optional, accepted values are 1,2,3,4)
+``columns`` (optional, accepted values are 1, 2, 3, 4)
 
     The number of columns to use for a `vertical` layout.
     If omitted, it is set to 1 unless there are more than 3 visible child fields in which case it is set to 2.
@@ -1247,7 +1335,7 @@ FixedParameter
 
     FixedParameter(name="branch", default="trunk"),
 
-This parameter type will not be shown on the web form, and always generate a property with its default value.
+This parameter type will not be shown on the web form and always generates a property with its default value.
 
 StringParameter
 ###############
@@ -1263,9 +1351,9 @@ It adds the following arguments:
 
 ``regex`` (optional)
 
-    A string that will be compiled as a regex, and used to validate the input of this parameter.
+    A string that will be compiled as a regex and used to validate the input of this parameter.
 
-``size`` (optional; default: 10)
+``size`` (optional; default is 10)
 
     The width of the input field (in characters).
 
@@ -1279,17 +1367,17 @@ TextParameter
         default="This is a development build", cols=60, rows=5)
 
 This parameter type is similar to StringParameter, except that it is represented in the HTML form as a ``textarea``, allowing multi-line input.
-It adds the StringParameter arguments, this type allows:
+It adds the StringParameter arguments and the following ones:
 
-``cols`` (optional; default: 80)
+``cols`` (optional; default is 80)
 
     The number of columns the ``textarea`` will have.
 
-``rows`` (optional; default: 20)
+``rows`` (optional; default is 20)
 
-    The number of rows the ``textarea`` will have
+    The number of rows the ``textarea`` will have.
 
-This class could be subclassed in order to have more customization e.g.
+This class could be subclassed to have more customization, e.g.
 
 * developer could send a list of Git branches to pull from
 * developer could send a list of Gerrit changes to cherry-pick,
@@ -1328,11 +1416,13 @@ UserNameParameter
 This parameter type accepts a username.
 If authentication is active, it will use the authenticated user instead of displaying a text-entry box.
 
-``size`` (optional; default: 10)
+``size`` (optional; default is 10)
+
     The width of the input field (in characters).
 
-``need_email`` (optional; default True)
-    If true, require a full email address rather than arbitrary text.
+``need_email`` (optional; default is True)
+
+    If true, requires a full email address rather than arbitrary text.
 
 .. bb:sched:: ChoiceStringParameter
 
@@ -1344,8 +1434,8 @@ ChoiceStringParameter
     ChoiceStringParameter(name="branch",
         choices=["main","devel"], default="main")
 
-This parameter type lets the user choose between several choices (e.g the list of branches you are supporting, or the test campaign to run).
-If ``multiple`` is false, then its result is a string - one of the choices.
+This parameter type lets the user choose between several choices (e.g. the list of branches you are supporting, or the test campaign to run).
+If ``multiple`` is false, then its result is a string with one of the choices.
 If ``multiple`` is true, then the result is a list of strings from the choices.
 
 Note that for some use cases, the choices need to be generated dynamically.
@@ -1358,7 +1448,7 @@ Its arguments, in addition to the common options, are:
 
     The list of available choices.
 
-``strict`` (optional; default: True)
+``strict`` (optional; default is True)
 
     If true, verify that the user's input is from the list.
     Note that this only affects the validation of the form request; even if this argument is False, there is no HTML form component available to enter an arbitrary value.
@@ -1429,27 +1519,23 @@ This is a parameter group to specify a sourcestamp for a given codebase.
 
     The name of the codebase.
 
-``branch`` (optional; default: StringParameter)
+``branch`` (optional; default is StringParameter)
 
     A :ref:`parameter <ForceScheduler-Parameters>` specifying the branch to build.
-    The default value is a string parameter.
 
-``revision`` (optional; default: StringParameter)
+``revision`` (optional; default is StringParameter)
 
     A :ref:`parameter <ForceScheduler-Parameters>` specifying the revision to build.
-    The default value is a string parameter.
 
-``repository`` (optional; default: StringParameter)
+``repository`` (optional; default is StringParameter)
 
     A :ref:`parameter <ForceScheduler-Parameters>` specifying the repository for the build.
-    The default value is a string parameter.
 
-``project`` (optional; default: StringParameter)
+``project`` (optional; default is StringParameter)
 
     A :ref:`parameter <ForceScheduler-Parameters>` specifying the project for the build.
-    The default value is a string parameter.
 
-``patch`` (optional; default: None)
+``patch`` (optional; default is None)
 
     A :bb:sched:`PatchParameter` specifying that the user can upload a patch for this codebase.
 
@@ -1503,7 +1589,7 @@ InheritBuildParameter
 
 .. note::
 
-    InheritBuildParameter is not yet ported to data API, and cannot be used with buildbot nine yet(:bug:`3521`).
+    InheritBuildParameter is not yet ported to data API, and cannot be used with buildbot nine yet (:bug:`3521`).
 
 This is a special parameter for inheriting force build properties from another build.
 The user is presented with a list of compatible builds from which to choose, and all forced-build parameters from the selected build are copied into the new build.
@@ -1512,26 +1598,26 @@ The new parameter is:
 ``compatible_builds``
 
    A function to find compatible builds in the build history.
-   This function is given the master :py:class:`~buildbot.status.master.Status` instance as first argument, and the current builder name as second argument, or None when forcing all builds.
+   This function is given the master instance as first argument, and the current builder name as second argument, or None when forcing all builds.
 
 Example:
 
 .. code-block:: python
 
-    def get_compatible_builds(status, builder):
+    @defer.inlineCallbacks
+    def get_compatible_builds(master, builder):
         if builder is None: # this is the case for force_build_all
             return ["cannot generate build list here"]
         # find all successful builds in builder1 and builder2
         builds = []
-        for builder in ["builder1","builder2"]:
-            builder_status = status.getBuilder(builder)
-            for num in range(1,40): # 40 last builds
-                b = builder_status.getBuild(-num)
-                if not b:
+        for builder in ["builder1", "builder2"]:
+            # get 40 last builds for the builder
+            build_dicts = yield master.data.get(('builders', builder, 'builds'),
+                                                order=['-buildid'], limit=40)
+            for build_dict in build_dicts:
+                if build_dict['results'] != SUCCESS:
                     continue
-                if b.getResults() == FAILURE:
-                    continue
-                builds.append(builder+"/"+str(b.getNumber()))
+                builds.append(builder + "/" + str(build_dict['number']))
         return builds
 
     # ...
@@ -1552,7 +1638,7 @@ WorkerChoiceParameter
 
 .. note::
 
-    WorkerChoiceParameter is not yet ported to data API, and cannot be used with buildbot nine yet(:bug:`3521`).
+    WorkerChoiceParameter is not yet ported to data API, and cannot be used with buildbot nine yet (:bug:`3521`).
 
 This parameter allows a scheduler to require that a build is assigned to the chosen worker.
 The choice is assigned to the `workername` property for the build.
@@ -1584,4 +1670,4 @@ AnyPropertyParameter
 This parameter type can only be used in ``properties``, and allows the user to specify both the property name and value in the web form.
 
 This Parameter is here to reimplement old Buildbot behavior, and should be avoided.
-Stricter parameter name and type should be preferred.
+Stricter parameter names and types should be preferred.

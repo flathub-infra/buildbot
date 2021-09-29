@@ -19,7 +19,6 @@ import re
 from twisted.internet import defer
 from twisted.python import log
 
-from buildbot import config
 from buildbot.process.properties import Interpolate
 from buildbot.process.properties import Properties
 from buildbot.process.results import CANCELLED
@@ -31,10 +30,10 @@ from buildbot.process.results import SUCCESS
 from buildbot.process.results import WARNINGS
 from buildbot.reporters.base import ReporterBase
 from buildbot.reporters.generators.build import BuildStartEndStatusGenerator
+from buildbot.reporters.generators.buildrequest import BuildRequestGenerator
 from buildbot.reporters.message import MessageFormatterRenderable
 from buildbot.util import httpclientservice
 from buildbot.util.giturlparse import giturlparse
-from buildbot.warnings import warn_deprecated
 
 HOSTED_BASE_URL = 'https://api.github.com'
 
@@ -42,47 +41,19 @@ HOSTED_BASE_URL = 'https://api.github.com'
 class GitHubStatusPush(ReporterBase):
     name = "GitHubStatusPush"
 
-    def checkConfig(self, token, startDescription=None, endDescription=None,
-                    context=None, baseURL=None, verbose=False, wantProperties=True,
-                    builders=None, debug=None, verify=None,
-                    wantSteps=False, wantPreviousBuild=False, wantLogs=False, generators=None,
+    def checkConfig(self, token, context=None, baseURL=None, verbose=False,
+                    debug=None, verify=None, generators=None,
                     **kwargs):
 
-        old_arg_names = {
-            'startDescription': startDescription is not None,
-            'endDescription': endDescription is not None,
-            'wantProperties': wantProperties is not True,
-            'builders': builders is not None,
-            'wantSteps': wantSteps is not False,
-            'wantPreviousBuild': wantPreviousBuild is not False,
-            'wantLogs': wantLogs is not False,
-        }
-
-        passed_old_arg_names = [k for k, v in old_arg_names.items() if v]
-
-        if passed_old_arg_names:
-
-            old_arg_names_msg = ', '.join(passed_old_arg_names)
-            if generators is not None:
-                config.error(("can't specify generators and deprecated {} arguments ({}) at the "
-                              "same time").format(self.__class__.__name__, old_arg_names_msg))
-            warn_deprecated('2.10.0',
-                            ('The arguments {} passed to {} have been deprecated. Use generators '
-                             'instead').format(old_arg_names_msg, self.__class__.__name__))
-
         if generators is None:
-            generators = self._create_generators_from_old_args(builders, wantProperties, wantSteps,
-                                                               wantPreviousBuild, wantLogs,
-                                                               startDescription, endDescription)
+            generators = self._create_default_generators()
 
         super().checkConfig(generators=generators, **kwargs)
         httpclientservice.HTTPClientService.checkAvailable(self.__class__.__name__)
 
     @defer.inlineCallbacks
-    def reconfigService(self, token, startDescription=None, endDescription=None,
-                        context=None, baseURL=None, verbose=False, wantProperties=True,
-                        builders=None, debug=None, verify=None,
-                        wantSteps=False, wantPreviousBuild=False, wantLogs=False, generators=None,
+    def reconfigService(self, token, context=None, baseURL=None, verbose=False,
+                        debug=None, verify=None, generators=None,
                         **kwargs):
         token = yield self.renderSecrets(token)
         self.debug = debug
@@ -91,9 +62,7 @@ class GitHubStatusPush(ReporterBase):
         self.context = self.setup_context(context)
 
         if generators is None:
-            generators = self._create_generators_from_old_args(builders, wantProperties, wantSteps,
-                                                               wantPreviousBuild, wantLogs,
-                                                               startDescription, endDescription)
+            generators = self._create_default_generators()
 
         yield super().reconfigService(generators=generators, **kwargs)
 
@@ -112,18 +81,14 @@ class GitHubStatusPush(ReporterBase):
     def setup_context(self, context):
         return context or Interpolate('buildbot/%(prop:buildername)s')
 
-    def _create_generators_from_old_args(self, builders, wantProperties, wantSteps,
-                                         wantPreviousBuild, wantLogs,
-                                         startDescription, endDescription):
-        # wantProperties is ignored, because MessageFormatterRenderable always wants properties.
-        # wantSteps and wantPreviousBuild are ignored ignored, because they are not used in
-        # this reporter.
-        start_formatter = MessageFormatterRenderable(startDescription or 'Build started.')
-        end_formatter = MessageFormatterRenderable(endDescription or 'Build done.')
+    def _create_default_generators(self):
+        start_formatter = MessageFormatterRenderable('Build started.')
+        end_formatter = MessageFormatterRenderable('Build done.')
+        pending_formatter = MessageFormatterRenderable('Build pending.')
 
         return [
-            BuildStartEndStatusGenerator(builders=builders, add_logs=wantLogs,
-                                         start_formatter=start_formatter,
+            BuildRequestGenerator(formatter=pending_formatter),
+            BuildStartEndStatusGenerator(start_formatter=start_formatter,
                                          end_formatter=end_formatter)
         ]
 
@@ -160,27 +125,37 @@ class GitHubStatusPush(ReporterBase):
             '/'.join(['/repos', repo_user, repo_name, 'statuses', sha]),
             json=payload)
 
-    @defer.inlineCallbacks
-    def send(self, build):
-        # the only case when this function is called is when the user derives this class, overrides
-        # send() and calls super().send(build) from there.
-        yield self._send_impl(build, self._cached_report)
-
     def is_status_2xx(self, code):
         return code // 100 == 2
 
-    @defer.inlineCallbacks
-    def sendMessage(self, reports):
-        build = reports[0]['builds'][0]
-        if self.send.__func__ is not GitHubStatusPush.send:
-            warn_deprecated('2.9.0', 'send() in reporters has been deprecated. Use sendMessage()')
-            self._cached_report = reports[0]
-            yield self.send(build)
-        else:
-            yield self._send_impl(build, reports[0])
+    def _extract_issue(self, props):
+        branch = props.getProperty('branch')
+        if branch:
+            m = re.search(r"refs/pull/([0-9]*)/(head|merge)", branch)
+            if m:
+                return m.group(1)
+        return None
+
+    def _extract_github_info(self, sourcestamp):
+        repo_owner = None
+        repo_name = None
+        project = sourcestamp['project']
+        repository = sourcestamp['repository']
+        if project and "/" in project:
+            repo_owner, repo_name = project.split('/')
+        elif repository:
+            giturl = giturlparse(repository)
+            if giturl:
+                repo_owner = giturl.owner
+                repo_name = giturl.repo
+
+        return repo_owner, repo_name
 
     @defer.inlineCallbacks
-    def _send_impl(self, build, report):
+    def sendMessage(self, reports):
+        report = reports[0]
+        build = reports[0]['builds'][0]
+
         props = Properties.fromDict(build['properties'])
         props.master = self.master
 
@@ -205,25 +180,10 @@ class GitHubStatusPush(ReporterBase):
         if not sourcestamps:
             return
 
-        for sourcestamp in sourcestamps:
-            issue = None
-            branch = props.getProperty('branch')
-            if branch:
-                m = re.search(r"refs/pull/([0-9]*)/(head|merge)", branch)
-                if m:
-                    issue = m.group(1)
+        issue = self._extract_issue(props)
 
-            repo_owner = None
-            repo_name = None
-            project = sourcestamp['project']
-            repository = sourcestamp['repository']
-            if project and "/" in project:
-                repo_owner, repo_name = project.split('/')
-            elif repository:
-                giturl = giturlparse(repository)
-                if giturl:
-                    repo_owner = giturl.owner
-                    repo_name = giturl.repo
+        for sourcestamp in sourcestamps:
+            repo_owner, repo_name = self._extract_github_info(sourcestamp)
 
             if not repo_owner or not repo_name:
                 log.msg('Skipped status update because required repo information is missing.')
@@ -290,26 +250,21 @@ class GitHubCommentPush(GitHubStatusPush):
     def setup_context(self, context):
         return ''
 
-    def _create_generators_from_old_args(self, builders, wantProperties, wantSteps,
-                                         wantPreviousBuild, wantLogs,
-                                         startDescription, endDescription):
-        # wantProperties is ignored, because MessageFormatterRenderable always wants properties.
-        # wantSteps and wantPreviousBuild are ignored ignored, because they are not used in
-        # this reporter.
-        start_formatter = MessageFormatterRenderable(startDescription)
-        end_formatter = MessageFormatterRenderable(endDescription or 'Build done.')
+    def _create_default_generators(self):
+        start_formatter = MessageFormatterRenderable(None)
+        end_formatter = MessageFormatterRenderable('Build done.')
 
         return [
-            BuildStartEndStatusGenerator(builders=builders, add_logs=wantLogs,
-                                         start_formatter=start_formatter,
+            BuildStartEndStatusGenerator(start_formatter=start_formatter,
                                          end_formatter=end_formatter)
         ]
 
     @defer.inlineCallbacks
-    def _send_impl(self, build, report):
+    def sendMessage(self, reports):
+        report = reports[0]
         if 'body' not in report or report['body'] is None:
             return
-        yield super()._send_impl(build, report)
+        yield super().sendMessage(reports)
 
     @defer.inlineCallbacks
     def createStatus(self,

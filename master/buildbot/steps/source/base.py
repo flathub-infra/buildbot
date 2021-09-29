@@ -20,13 +20,12 @@ from twisted.python import log
 from buildbot.process import buildstep
 from buildbot.process import properties
 from buildbot.process import remotecommand
-from buildbot.process.buildstep import LoggingBuildStep
 from buildbot.process.results import FAILURE
 from buildbot.steps.worker import CompositeStepMixin
 from buildbot.util import bytes2unicode
 
 
-class Source(LoggingBuildStep, CompositeStepMixin):
+class Source(buildstep.BuildStep, CompositeStepMixin):
 
     """This is a base class to generate a source tree in the worker.
     Each version control system has a specialized subclass, and is expected
@@ -271,7 +270,7 @@ class Source(LoggingBuildStep, CompositeStepMixin):
                 # root is optional.
                 patch = s.patch
                 if patch:
-                    yield self.addCompleteLog("patch", bytes2unicode(patch[1]))
+                    yield self.addCompleteLog("patch", bytes2unicode(patch[1], errors='ignore'))
             else:
                 log.msg("No sourcestamp found in build for codebase '{}'".format(self.codebase))
                 self.descriptionDone = "Codebase {} not in build".format(self.codebase)

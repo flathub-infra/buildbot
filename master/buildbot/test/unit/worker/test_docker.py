@@ -156,13 +156,14 @@ class TestDockerLatentWorker(unittest.TestCase, TestReactorMixin):
                                     encoding='gzip')
         id, name = yield bs.start_instance(self.build)
         client = docker.APIClient.latest
-        self.assertEqual(client.call_args_create_host_config, [
-            {'network_mode': 'fake',
-             'dns': ['1.1.1.1', '1.2.3.4'],
-             'init': True,
-             'binds': ['/tmp:/tmp:ro'],
-             }
-        ])
+        expected = {
+            'network_mode': 'fake',
+            'dns': ['1.1.1.1', '1.2.3.4'],
+            'binds': ['/tmp:/tmp:ro'],
+        }
+        if dockerworker.docker_py_version >= 2.2:
+            expected['init'] = True
+        self.assertEqual(client.call_args_create_host_config, [expected])
 
     @defer.inlineCallbacks
     def test_constructor_host_config_build_set_init(self):
@@ -388,6 +389,13 @@ class TestDockerLatentWorker(unittest.TestCase, TestReactorMixin):
             'existing', 'pass', 'tcp://1234:2375', 'busybox:latest', ['bin/bash'])
         id, name = yield bs.start_instance(self.build)
         self.assertEqual(name, 'busybox:latest')
+
+    @defer.inlineCallbacks
+    def test_constructor_hostname(self):
+        bs = yield self.setupWorker(
+            'bot', 'pass', 'http://localhost:2375',
+            image="myworker_image", hostname="myworker_hostname")
+        self.assertEqual(bs.hostname, 'myworker_hostname')
 
 
 class testDockerPyStreamLogs(unittest.TestCase):

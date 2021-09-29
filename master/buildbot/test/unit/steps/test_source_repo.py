@@ -22,7 +22,6 @@ from buildbot.process.results import SUCCESS
 from buildbot.steps.source import repo
 from buildbot.test.fake.remotecommand import Expect
 from buildbot.test.fake.remotecommand import ExpectShell
-from buildbot.test.unit.changes.test_gerritchangesource import TestGerritChangeSource
 from buildbot.test.util import sourcesteps
 from buildbot.test.util.misc import TestReactorMixin
 
@@ -117,8 +116,10 @@ class TestRepo(sourcesteps.SourceStepMixin, TestReactorMixin,
             + 0,
         )
 
-    def expectRepoSync(self, which_fail=-1, breakatfail=False, depth=0,
+    def expectRepoSync(self, which_fail=-1, breakatfail=False, depth=0, initoptions=None,
                        syncoptions=None, override_commands=None):
+        if initoptions is None:
+            initoptions = []
         if syncoptions is None:
             syncoptions = ["-c"]
         if override_commands is None:
@@ -129,7 +130,7 @@ class TestRepo(sourcesteps.SourceStepMixin, TestReactorMixin,
                     'bash', '-c', self.step._getCleanupCommand()]),
             self.ExpectShell(
                 command=['repo', 'init', '-u', 'git://myrepo.com/manifest.git',
-                         '-b', 'mb', '-m', 'mf', '--depth', str(depth)])
+                         '-b', 'mb', '-m', 'mf', '--depth', str(depth)] + initoptions)
         ] + override_commands + [
             self.ExpectShell(command=['repo', 'sync', '--force-sync'] + syncoptions),
             self.ExpectShell(
@@ -152,6 +153,13 @@ class TestRepo(sourcesteps.SourceStepMixin, TestReactorMixin,
         self.mySetupStep(repoDownloads=None, depth=2)
         self.expectClobber()
         self.expectRepoSync(depth=2)
+        return self.myRunStep()
+
+    def test_basic_submodule(self):
+        """basic first time repo sync with submodule"""
+        self.mySetupStep(repoDownloads=None, submodules=True)
+        self.expectClobber()
+        self.expectRepoSync(initoptions=["--submodules"])
         return self.myRunStep()
 
     def test_update(self):
@@ -522,8 +530,19 @@ class TestRepo(sourcesteps.SourceStepMixin, TestReactorMixin,
     def test_repo_downloads_from_change_source(self):
         """basic repo download from change source, and check that repo_downloaded is updated"""
         self.mySetupStep(repoDownloads=repo.RepoDownloadsFromChangeSource())
-        chdict = TestGerritChangeSource.expected_change
-        change = Change(None, None, None, properties=chdict['properties'])
+        change = Change(None, None, None, properties={
+            'event.change.owner.email': 'dustin@mozilla.com',
+            'event.change.subject': 'fix 1234',
+            'event.change.project': 'pr',
+            'event.change.owner.name': 'Dustin',
+            'event.change.number': '4321',
+            'event.change.url': 'http://buildbot.net',
+            'event.change.branch': 'br',
+            'event.type': 'patchset-created',
+            'event.patchSet.revision': 'abcdef',
+            'event.patchSet.number': '12',
+            'event.source': 'GerritChangeSource'
+        })
         self.build.allChanges = lambda x=None: [change]
         self.expectnoClobber()
         self.expectRepoSync()
@@ -541,8 +560,19 @@ class TestRepo(sourcesteps.SourceStepMixin, TestReactorMixin,
         """basic repo download from change source, and check that repo_downloaded is updated"""
         self.mySetupStep(
             repoDownloads=repo.RepoDownloadsFromChangeSource("mycodebase"))
-        chdict = TestGerritChangeSource.expected_change
-        change = Change(None, None, None, properties=chdict['properties'])
+        change = Change(None, None, None, properties={
+            'event.change.owner.email': 'dustin@mozilla.com',
+            'event.change.subject': 'fix 1234',
+            'event.change.project': 'pr',
+            'event.change.owner.name': 'Dustin',
+            'event.change.number': '4321',
+            'event.change.url': 'http://buildbot.net',
+            'event.change.branch': 'br',
+            'event.type': 'patchset-created',
+            'event.patchSet.revision': 'abcdef',
+            'event.patchSet.number': '12',
+            'event.source': 'GerritChangeSource'
+        })
         # getSourceStamp is faked by SourceStepMixin
         ss = self.build.getSourceStamp("")
         ss.changes = [change]

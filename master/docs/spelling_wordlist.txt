@@ -61,6 +61,7 @@ Baz
 bb
 bbcollections
 bbproto
+bbworker
 bdist
 behaviour
 Bitbucket
@@ -131,6 +132,7 @@ callee
 camelCase
 canAcquireLocks
 cancelled
+canceller
 cancelling
 candidated
 canonicalize
@@ -241,6 +243,8 @@ debouncer
 debounces
 decodable
 decodeRC
+deduplicated
+deduplication
 deepcopy
 deferreds
 Deferreds
@@ -254,6 +258,7 @@ dicts
 didn
 didn
 diff
+diffinfo
 diffs
 dirname
 dirwatcher
@@ -275,6 +280,7 @@ docstrings
 doesn
 dom
 downloadFile
+dpkg
 dropdown
 dumpMailsToLog
 durations
@@ -380,6 +386,7 @@ htpasswd
 http
 https
 Hyperlinks
+IConfigurator
 ie
 img
 implementers
@@ -399,6 +406,7 @@ inlineCallbacks
 inrepo
 inrepos
 instantiation
+instantiations
 insubstantiating
 insubstantiation
 integrators
@@ -452,6 +460,7 @@ kwargs
 latin
 ldap
 lexically
+lexicographically
 libaprutil
 libvirt
 Libvirt
@@ -492,6 +501,7 @@ maildir
 maildirs
 Maildirs
 mailstatus
+makeChecker
 matcher
 matchers
 MaxQ
@@ -515,6 +525,7 @@ mistyped
 mixin
 Mixins
 mkdir
+mouseover
 mq
 Msbuild
 MsBuild
@@ -576,12 +587,14 @@ os
 OSes
 Ostinato
 osx
+othermirror
 overloadable
 param
 parameterizes
 parseable
 parsers
 passthrough
+passwd
 passwordless
 patchlevel
 patchset
@@ -644,12 +657,13 @@ pyasn
 pyflakes
 Pyflakes
 pyjade
+pylint
 pypi
 pypugjs
 pysqlite
 pythonic
 Pythonic
-Pywin
+pywin
 qcow
 qmail
 queried
@@ -845,7 +859,7 @@ travis
 triallog
 triggerable
 Triggerable
-trustRoot
+trustRoots
 tryclient
 tuple
 tuples
@@ -882,9 +896,13 @@ unorthodoxy
 Unregister
 unsubscribe
 unsubscribes
+unsubscription
 untracked
 untrusted
 unversioned
+unpause
+unpaused
+unpausing
 UpCloud
 uploadDirectory
 uploader

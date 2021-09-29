@@ -115,7 +115,7 @@ Buildrequests will all have the same sourcestamp, but probably different propert
 
 .. note::
 
-    In most of the cases, just setting collapseRequests=False for triggered builders will do the trick.
+    In most cases, just setting ``collapseRequests=False`` for triggered builders will do the trick.
 
 In other cases, ``parent_buildid`` from buildset can be used:
 
@@ -173,7 +173,7 @@ A simple ``prioritizeBuilders`` implementation might look like this:
 .. code-block:: python
 
     def prioritizeBuilders(buildmaster, builders):
-        """Prioritize builders.  'finalRelease' builds have the highest
+        """Prioritize builders. 'finalRelease' builds have the highest
         priority, so they should be built before running tests, or
         creating builds."""
         builderPriorities = {
@@ -653,8 +653,8 @@ Factory Workdir Functions
 
 .. note::
 
-    While factory workdir function is still supported, it is better to just use the fact that workdir is a :index:`renderables <renderable>` attribute of every step.
-    A Renderable has access to much more contextual information, and also can return a deferred.
+    While the factory workdir function is still supported, it is better to just use the fact that workdir is a :index:`renderable <renderable>` attribute of a step.
+    A Renderable has access to much more contextual information and can also return a deferred.
     So you could say ``build_factory.workdir = util.Interpolate("%(src:repository)s`` to achieve similar goal.
 
 It is sometimes helpful to have a build's workdir determined at runtime based on the parameters of the build.
@@ -740,7 +740,7 @@ The whole thing looks like this:
 
 .. code-block:: python
 
-    class Frobnify(LoggingBuildStep):
+    class Frobnify(BuildStep):
         def __init__(self,
                 frob_what="frobee",
                 frob_how_many=None,
@@ -830,7 +830,7 @@ Updating Status Strings
 
 Each step can summarize its current status in a very short string.
 For example, a compile step might display the file being compiled.
-This information can be helpful users eager to see their build finish.
+This information can be helpful to users eager to see their build finish.
 
 Similarly, a build has a set of short strings collected from its steps summarizing the overall state of the build.
 Useful information here might include the number of tests run, but probably not the results of a ``make clean`` step.
@@ -987,7 +987,7 @@ The full version is in :src:`master/buildbot/steps/python_twisted.py`.
 This parser only pays attention to stdout, since that's where trial writes the progress lines.
 It has a mode flag named ``finished`` to ignore everything after the ``====`` marker, and a scary-looking regular expression to match each line while hopefully ignoring other messages that might get displayed as the test runs.
 
-Each time it identifies a test has been completed, it increments its counter and delivers the new progress value to the step with ``self.step.setProgress``.
+Each time it identifies that a test has been completed, it increments its counter and delivers the new progress value to the step with ``self.step.setProgress``.
 This helps Buildbot to determine the ETA for the step.
 
 To connect this parser into the :bb:step:`Trial` build step, ``Trial.__init__`` ends with the following clause:
@@ -1011,13 +1011,22 @@ For example:
 
 .. code-block:: python
 
-    class MakeTarball(ShellCommand):
-        def start(self):
+    class MakeTarball(buildstep.ShellMixin, buildstep.BuildStep):
+        def __init__(self, **kwargs):
+            kwargs = self.setupShellMixin(kwargs)
+            super().__init__(**kwargs)
+
+        @defer.inlineCallbacks
+        def run(self):
             if self.getProperty("os") == "win":
-                self.setCommand([ ... ]) # windows-only command
+                # windows-only command
+                cmd = yield self.makeRemoteShellCommand(commad=[ ... ])
             else:
-                self.setCommand([ ... ]) # equivalent for other systems
-            super().start()
+                # equivalent for other systems
+                cmd = yield self.makeRemoteShellCommand(commad=[ ... ])
+            yield self.runCommand(cmd)
+            return cmd.results()
+
 
 Remember that properties set in a step may not be available until the next step begins.
 In particular, any :class:`Property` or :class:`Interpolate` instances for the current step are interpolated before the step starts, so they cannot use the value of any properties determined in that step.
@@ -1121,6 +1130,7 @@ If the path does not exist (or anything fails) we mark the step as failed; if th
 
 
     from buildbot.plugins import steps, util
+    from buildbot.process import remotecommand
     from buildbot.interfaces import WorkerSetupError
     import stat
 
@@ -1130,49 +1140,41 @@ If the path does not exist (or anything fails) we mark the step as failed; if th
             super().__init__(**kwargs)
             self.dirname = dirname
 
-        def start(self):
+        @defer.inlineCallbacks
+        def run(self):
             # make sure the worker knows about stat
             workerver = (self.workerVersion('stat'),
                         self.workerVersion('glob'))
             if not all(workerver):
                 raise WorkerSetupError('need stat and glob')
 
-            cmd = buildstep.RemoteCommand('stat', {'file': self.dirname})
+            cmd = remotecommand.RemoteCommand('stat', {'file': self.dirname})
 
-            d = self.runCommand(cmd)
-            d.addCallback(lambda res: self.evaluateStat(cmd))
-            d.addErrback(self.failed)
-            return d
+            yield self.runCommand(cmd)
 
-        def evaluateStat(self, cmd):
             if cmd.didFail():
-                self.step_status.setText(["File not found."])
-                self.finished(util.FAILURE)
-                return
+                self.description = ["File not found."]
+                return util.FAILURE
+
             s = cmd.updates["stat"][-1]
             if not stat.S_ISDIR(s[stat.ST_MODE]):
-                self.step_status.setText(["'tis not a directory"])
-                self.finished(util.WARNINGS)
-                return
+                self.description = ["'tis not a directory"]
+                return util.WARNINGS
 
-            cmd = buildstep.RemoteCommand('glob', {'path': self.dirname + '/*.pyc'})
+            cmd = remotecommand.RemoteCommand('glob', {'path': self.dirname + '/*.pyc'})
 
-            d = self.runCommand(cmd)
-            d.addCallback(lambda res: self.evaluateGlob(cmd))
-            d.addErrback(self.failed)
-            return d
+            yield self.runCommand(cmd)
 
-        def evaluateGlob(self, cmd):
             if cmd.didFail():
-                self.step_status.setText(["Glob failed."])
-                self.finished(util.FAILURE)
-                return
+                self.description = ["Glob failed."]
+                return util.FAILURE
+
             files = cmd.updates["files"][-1]
             if len(files):
-                self.step_status.setText(["Found pycs"]+files)
+                self.description = ["Found pycs"] + files
             else:
-                self.step_status.setText(["No pycs found"])
-            self.finished(util.SUCCESS)
+                self.description = ["No pycs found"]
+            return util.SUCCESS
 
 
 For more information on the available commands, see :doc:`../developer/master-worker`.
@@ -1208,7 +1210,7 @@ There is a Buildbot plugin which allows to write a server side generated dashboa
 
 - You could use HTTP in order to access Buildbot :ref:`REST_API`, but you can also use the :ref:`Data_API`, via the provided synchronous wrapper.
 
-    .. py:method:: buildbot_api.dataGet(path, filters=None, fields=None, order=None, limit=None, offset=None):
+    .. py:method:: buildbot_api.dataGet(path, filters=None, fields=None, order=None, limit=None, offset=None)
 
         :param tuple path: A tuple of path elements representing the API path to fetch.
             Numbers can be passed as strings or integers.

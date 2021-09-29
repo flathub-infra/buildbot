@@ -23,12 +23,15 @@ from twisted.trial import unittest
 from buildbot import config
 from buildbot import locks
 from buildbot.machine.base import Machine
+from buildbot.plugins import util
 from buildbot.process import properties
+from buildbot.secrets.manager import SecretManager
 from buildbot.test import fakedb
 from buildbot.test.fake import bworkermanager
 from buildbot.test.fake import fakemaster
 from buildbot.test.fake import fakeprotocol
 from buildbot.test.fake import worker
+from buildbot.test.fake.secrets import FakeSecretStorage
 from buildbot.test.util import interfaces
 from buildbot.test.util import logging
 from buildbot.test.util.misc import TestReactorMixin
@@ -126,7 +129,7 @@ class RealWorkerItfc(TestReactorMixin, unittest.TestCase, WorkerInterfaceTests):
         yield self.workers.setServiceParent(self.master)
         self.master.workers = self.workers
         yield self.wrk.setServiceParent(self.master.workers)
-        self.conn = fakeprotocol.FakeConnection(self.master, self.wrk)
+        self.conn = fakeprotocol.FakeConnection(self.wrk)
         yield self.wrk.attached(self.conn)
 
 
@@ -139,7 +142,7 @@ class FakeWorkerItfc(TestReactorMixin, unittest.TestCase,
         self.wrk = worker.FakeWorker(self.master)
 
     def callAttached(self):
-        self.conn = fakeprotocol.FakeConnection(self.master, self.wrk)
+        self.conn = fakeprotocol.FakeConnection(self.wrk)
         return self.wrk.attached(self.conn)
 
 
@@ -161,7 +164,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
         if configured:
             yield worker.setServiceParent(self.workers)
         if attached:
-            worker.conn = fakeprotocol.FakeConnection(self.master, worker)
+            worker.conn = fakeprotocol.FakeConnection(worker)
         return worker
 
     @defer.inlineCallbacks
@@ -182,6 +185,20 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
         self.assertEqual(bs.missing_timeout, ConcreteWorker.DEFAULT_MISSING_TIMEOUT)
         self.assertEqual(bs.properties.getProperty('workername'), 'bot')
         self.assertEqual(bs.access, [])
+
+    @defer.inlineCallbacks
+    def test_constructor_secrets(self):
+        fake_storage_service = FakeSecretStorage()
+
+        secret_service = SecretManager()
+        secret_service.services = [fake_storage_service]
+        yield secret_service.setServiceParent(self.master)
+
+        fake_storage_service.reconfigService(secretdict={"passkey": "1234"})
+
+        bs = yield self.createWorker('bot', util.Secret('passkey'))
+        yield bs.startService()
+        self.assertEqual(bs.password, '1234')
 
     @defer.inlineCallbacks
     def test_constructor_full(self):
@@ -471,14 +488,39 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
         yield bs.setServiceParent(bsmanager)
 
     @defer.inlineCallbacks
+    def test_startService_paused_true(self):
+        """Test that paused state is restored on a buildbot restart"""
+        self.master.db.insertTestData([
+            fakedb.Worker(id=9292, name='bot', paused=1)
+        ])
+
+        worker = yield self.createWorker()
+
+        yield worker.startService()
+
+        self.assertTrue(worker.isPaused())
+        self.assertFalse(worker._graceful)
+
+    @defer.inlineCallbacks
+    def test_startService_graceful_true(self):
+        """Test that graceful state is NOT restored on a buildbot restart"""
+        self.master.db.insertTestData([
+            fakedb.Worker(id=9292, name='bot', graceful=1)
+        ])
+
+        worker = yield self.createWorker()
+
+        yield worker.startService()
+
+        self.assertFalse(worker.isPaused())
+        self.assertFalse(worker._graceful)
+
+    @defer.inlineCallbacks
     def test_startService_getWorkerInfo_empty(self):
         worker = yield self.createWorker()
         yield worker.startService()
 
-        self.assertEqual(worker.worker_status.getAdmin(), None)
-        self.assertEqual(worker.worker_status.getHost(), None)
-        self.assertEqual(worker.worker_status.getAccessURI(), None)
-        self.assertEqual(worker.worker_status.getVersion(), None)
+        self.assertEqual(len(worker.info.asDict()), 0)
 
         # check that a new worker row was added for this worker
         bs = yield self.master.db.workers.getWorker(name='bot')
@@ -499,10 +541,13 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
         yield worker.startService()
 
         self.assertEqual(worker.workerid, 9292)
-        self.assertEqual(worker.worker_status.getAdmin(), 'TheAdmin')
-        self.assertEqual(worker.worker_status.getHost(), 'TheHost')
-        self.assertEqual(worker.worker_status.getAccessURI(), 'TheURI')
-        self.assertEqual(worker.worker_status.getVersion(), 'TheVersion')
+
+        self.assertEqual(worker.info.asDict(), {
+            'version': ('TheVersion', 'Worker'),
+            'admin': ('TheAdmin', 'Worker'),
+            'host': ('TheHost', 'Worker'),
+            'access_uri': ('TheURI', 'Worker'),
+        })
 
     @defer.inlineCallbacks
     def test_attached_remoteGetWorkerInfo(self):
@@ -512,7 +557,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
         ENVIRON = {}
         COMMANDS = {'cmd1': '1', 'cmd2': '1'}
 
-        conn = fakeprotocol.FakeConnection(worker.master, worker)
+        conn = fakeprotocol.FakeConnection(worker)
         conn.info = {
             'admin': 'TheAdmin',
             'host': 'TheHost',
@@ -520,15 +565,20 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
             'environ': ENVIRON,
             'basedir': 'TheBaseDir',
             'system': 'TheWorkerSystem',
-            'version': 'version',
+            'version': 'TheVersion',
             'worker_commands': COMMANDS,
         }
         yield worker.attached(conn)
 
-        # check the values get set right
-        self.assertEqual(worker.worker_status.getAdmin(), "TheAdmin")
-        self.assertEqual(worker.worker_status.getHost(), "TheHost")
-        self.assertEqual(worker.worker_status.getAccessURI(), "TheURI")
+        self.assertEqual(worker.info.asDict(), {
+            'version': ('TheVersion', 'Worker'),
+            'admin': ('TheAdmin', 'Worker'),
+            'host': ('TheHost', 'Worker'),
+            'access_uri': ('TheURI', 'Worker'),
+            'basedir': ('TheBaseDir', 'Worker'),
+            'system': ('TheWorkerSystem', 'Worker'),
+        })
+
         self.assertEqual(worker.worker_environ, ENVIRON)
         self.assertEqual(worker.worker_basedir, 'TheBaseDir')
         self.assertEqual(worker.worker_system, 'TheWorkerSystem')
@@ -540,7 +590,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
         yield worker.startService()
         yield worker.reconfigServiceWithSibling(worker)
 
-        conn = fakeprotocol.FakeConnection(worker.master, worker)
+        conn = fakeprotocol.FakeConnection(worker)
         conn.info = {}
         yield worker.attached(conn)
 
@@ -560,7 +610,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
         worker = yield self.createWorker()
         yield worker.startService()
 
-        conn = fakeprotocol.FakeConnection(worker.master, worker)
+        conn = fakeprotocol.FakeConnection(worker)
         conn.info = {
             'admin': 'TheAdmin',
             'host': 'TheHost',
@@ -569,10 +619,12 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
         }
         yield worker.attached(conn)
 
-        self.assertEqual(worker.worker_status.getAdmin(), 'TheAdmin')
-        self.assertEqual(worker.worker_status.getHost(), 'TheHost')
-        self.assertEqual(worker.worker_status.getAccessURI(), 'TheURI')
-        self.assertEqual(worker.worker_status.getVersion(), 'TheVersion')
+        self.assertEqual(worker.info.asDict(), {
+            'version': ('TheVersion', 'Worker'),
+            'admin': ('TheAdmin', 'Worker'),
+            'host': ('TheHost', 'Worker'),
+            'access_uri': ('TheURI', 'Worker'),
+        })
 
         # and the db is updated too:
         db_worker = yield self.master.db.workers.getWorker(name="bot")
@@ -643,11 +695,204 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
     def test_worker_actions_pause(self):
         worker = yield self.createWorker(attached=False)
         yield worker.startService()
-        worker.controlWorker(("worker", 1, "pause"), {'reason': "none"})
-        self.assertEqual(worker._paused, True)
+        self.assertTrue(worker.canStartBuild())
 
-        worker.controlWorker(("worker", 1, "unpause"), {'reason': "none"})
+        worker.controlWorker(("worker", 1, "pause"), {"reason": "none"})
+        self.assertEqual(worker._paused, True)
+        self.assertFalse(worker.canStartBuild())
+
+        worker.controlWorker(("worker", 1, "unpause"), {"reason": "none"})
         self.assertEqual(worker._paused, False)
+        self.assertTrue(worker.canStartBuild())
+
+    @defer.inlineCallbacks
+    def test_worker_quarantine_doesnt_affect_pause(self):
+        worker = yield self.createWorker(attached=False)
+        yield worker.startService()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+        self.assertFalse(worker._paused)
+
+        # put worker into quarantine.
+        # Check canStartBuild() is False, and paused state is not changed
+        worker.putInQuarantine()
+        self.assertFalse(worker._paused)
+        self.assertFalse(worker.canStartBuild())
+        self.assertIsNotNone(worker.quarantine_timer)
+
+        # human manually pauses the worker
+        worker.controlWorker(("worker", 1, "pause"), {"reason": "none"})
+        self.assertTrue(worker._paused)
+        self.assertFalse(worker.canStartBuild())
+
+        # simulate wait for quarantine to end
+        # Check canStartBuild() is still False, and paused state is not changed
+        self.master.reactor.advance(10)
+        self.assertTrue(worker._paused)
+        self.assertFalse(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+    @defer.inlineCallbacks
+    def test_worker_quarantine_unpausing_exits_quarantine(self):
+        worker = yield self.createWorker(attached=False)
+        yield worker.startService()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+        # put worker into quarantine whilst unpaused.
+        worker.putInQuarantine()
+        self.assertFalse(worker._paused)
+        self.assertFalse(worker.canStartBuild())
+
+        # pause and unpause the worker
+        worker.controlWorker(("worker", 1, "pause"), {"reason": "none"})
+        self.assertFalse(worker.canStartBuild())
+        worker.controlWorker(("worker", 1, "unpause"), {"reason": "none"})
+        self.assertTrue(worker.canStartBuild())
+
+        # put worker into quarantine whilst paused.
+        worker.controlWorker(("worker", 1, "pause"), {"reason": "none"})
+        worker.putInQuarantine()
+        self.assertTrue(worker._paused)
+        self.assertFalse(worker.canStartBuild())
+
+        # unpause worker should start the build
+        worker.controlWorker(("worker", 1, "unpause"), {"reason": "none"})
+        self.assertFalse(worker._paused)
+        self.assertTrue(worker.canStartBuild())
+
+    @defer.inlineCallbacks
+    def test_worker_quarantine_unpausing_doesnt_reset_timeout(self):
+        worker = yield self.createWorker(attached=False)
+        yield worker.startService()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+        # pump up the quarantine wait time
+        for quarantine_wait in (10, 20, 40, 80):
+            worker.putInQuarantine()
+            self.assertFalse(worker.canStartBuild())
+            self.assertIsNotNone(worker.quarantine_timer)
+            self.master.reactor.advance(quarantine_wait)
+            self.assertTrue(worker.canStartBuild())
+            self.assertIsNone(worker.quarantine_timer)
+
+        # put worker into quarantine (160s)
+        worker.putInQuarantine()
+        self.assertFalse(worker._paused)
+        self.assertFalse(worker.canStartBuild())
+
+        # pause and unpause the worker to exit quarantine
+        worker.controlWorker(("worker", 1, "pause"), {"reason": "none"})
+        self.assertFalse(worker.canStartBuild())
+        worker.controlWorker(("worker", 1, "unpause"), {"reason": "none"})
+        self.assertFalse(worker._paused)
+        self.assertTrue(worker.canStartBuild())
+
+        # next build fails. check timeout is 320s
+        worker.putInQuarantine()
+        self.master.reactor.advance(319)
+        self.assertFalse(worker.canStartBuild())
+        self.assertIsNotNone(worker.quarantine_timer)
+        self.master.reactor.advance(1)
+        self.assertIsNone(worker.quarantine_timer)
+        self.assertTrue(worker.canStartBuild())
+
+    @defer.inlineCallbacks
+    def test_worker_quarantine_wait_times(self):
+        worker = yield self.createWorker(attached=False)
+        yield worker.startService()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+        for quarantine_wait in (10, 20, 40, 80, 160, 320, 640, 1280, 2560, 3600, 3600):
+            # put worker into quarantine
+            worker.putInQuarantine()
+            self.assertFalse(worker.canStartBuild())
+            self.assertIsNotNone(worker.quarantine_timer)
+
+            # simulate wait just before quarantine ends
+            self.master.reactor.advance(quarantine_wait - 1)
+            self.assertFalse(worker.canStartBuild())
+            self.assertIsNotNone(worker.quarantine_timer)
+
+            # simulate wait to just after quarantine ends
+            self.master.reactor.advance(1)
+            self.assertTrue(worker.canStartBuild())
+            self.assertIsNone(worker.quarantine_timer)
+
+    @defer.inlineCallbacks
+    def test_worker_quarantine_reset(self):
+        worker = yield self.createWorker(attached=False)
+        yield worker.startService()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+        # pump up the quarantine wait time
+        for quarantine_wait in (10, 20, 40, 80):
+            worker.putInQuarantine()
+            self.assertFalse(worker.canStartBuild())
+            self.assertIsNotNone(worker.quarantine_timer)
+            self.master.reactor.advance(quarantine_wait)
+            self.assertTrue(worker.canStartBuild())
+            self.assertIsNone(worker.quarantine_timer)
+
+        # Now get a successful build
+        worker.resetQuarantine()
+
+        # the workers quarantine period should reset back to 10
+        worker.putInQuarantine()
+        self.master.reactor.advance(10)
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+    @defer.inlineCallbacks
+    def test_worker_quarantine_whilst_quarantined(self):
+        worker = yield self.createWorker(attached=False)
+        yield worker.startService()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+        # put worker in quarantine
+        worker.putInQuarantine()
+        self.assertFalse(worker.canStartBuild())
+        self.assertIsNotNone(worker.quarantine_timer)
+
+        # simulate wait for half the time, and put in quarantine again
+        self.master.reactor.advance(5)
+        worker.putInQuarantine()
+        self.assertFalse(worker.canStartBuild())
+        self.assertIsNotNone(worker.quarantine_timer)
+
+        # simulate wait for another 5 seconds, and we should leave quarantine
+        self.master.reactor.advance(5)
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+        # simulate wait for yet another 5 seconds, and ensure nothing changes
+        self.master.reactor.advance(5)
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+    @defer.inlineCallbacks
+    def test_worker_quarantine_stop_timer(self):
+        worker = yield self.createWorker(attached=False)
+        yield worker.startService()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+        # Call stopQuarantineTimer whilst not quarantined
+        worker.stopQuarantineTimer()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
+
+        # Call stopQuarantineTimer whilst quarantined
+        worker.putInQuarantine()
+        self.assertFalse(worker.canStartBuild())
+        self.assertIsNotNone(worker.quarantine_timer)
+        worker.stopQuarantineTimer()
+        self.assertTrue(worker.canStartBuild())
+        self.assertIsNone(worker.quarantine_timer)
 
 
 class TestAbstractLatentWorker(TestReactorMixin, unittest.TestCase):

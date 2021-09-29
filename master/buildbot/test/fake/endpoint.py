@@ -34,7 +34,11 @@ testData = {
 
 class TestsEndpoint(base.Endpoint):
     isCollection = True
-    pathPatterns = "/test"
+    pathPatterns = """
+    /tests
+    /test
+    """
+    rootLinkName = 'tests'
 
     def get(self, resultSpec, kwargs):
         # results are sorted by ID for test stability
@@ -64,7 +68,10 @@ class FailEndpoint(base.Endpoint):
 
 class TestEndpoint(base.Endpoint):
     isCollection = False
-    pathPatterns = "/test/n:testid"
+    pathPatterns = """
+    /tests/n:testid
+    /test/n:testid
+    """
 
     def get(self, resultSpec, kwargs):
         if kwargs['testid'] == 0:
@@ -81,6 +88,7 @@ class Test(base.ResourceType):
     name = "test"
     plural = "tests"
     endpoints = [TestsEndpoint, TestEndpoint, FailEndpoint, RawTestsEndpoint]
+    keyFields = ["id"]
 
     class EntityType(types.Entity):
         id = types.Integer()
@@ -88,3 +96,55 @@ class Test(base.ResourceType):
         success = types.Boolean()
         tags = types.List(of=types.String())
     entityType = EntityType(name)
+
+
+graphql_schema = """
+# custom scalar types for buildbot data model
+scalar Date   # stored as utc unix timestamp
+scalar Binary # arbitrary data stored as base85
+scalar JSON  # arbitrary json stored as string, mainly used for properties values
+type Query {
+  tests(id: Int,
+   id__contains: Int,
+   id__eq: Int,
+   id__ge: Int,
+   id__gt: Int,
+   id__le: Int,
+   id__lt: Int,
+   id__ne: Int,
+   info: String,
+   info__contains: String,
+   info__eq: String,
+   info__ge: String,
+   info__gt: String,
+   info__le: String,
+   info__lt: String,
+   info__ne: String,
+   success: Boolean,
+   success__contains: Boolean,
+   success__eq: Boolean,
+   success__ge: Boolean,
+   success__gt: Boolean,
+   success__le: Boolean,
+   success__lt: Boolean,
+   success__ne: Boolean,
+   tags: String,
+   tags__contains: String,
+   tags__eq: String,
+   tags__ge: String,
+   tags__gt: String,
+   tags__le: String,
+   tags__lt: String,
+   tags__ne: String,
+   order: String,
+   limit: Int,
+   offset: Int): [Test]!
+  test(id: Int): Test
+}
+type Test {
+  id: Int!
+  info: String!
+  success: Boolean!
+  tags: [String]!
+}
+"""

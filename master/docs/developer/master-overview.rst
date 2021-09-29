@@ -34,8 +34,8 @@ The master has a number of useful attributes:
 
 ``master.workers``
     A :py:class:`buildbot.worker.manager.WorkerManager` instance that
-    provides wrapper around multiple master-worker protocols(e.g. PB) to unify
-    calls for them from higher level code 
+    provides wrappers around multiple master-worker protocols (e.g. PB) to unify
+    calls for them from higher level code.
 
 ``master.change_svc``
     A :py:class:`buildbot.changes.manager.ChangeManager` instance that manages
@@ -48,7 +48,7 @@ The master has a number of useful attributes:
 
     The botmaster acts as the parent service for a
     :py:class:`buildbot.process.botmaster.BuildRequestDistributor` instance (at
-    ``master.botmaster.brd``) as well as all active workers
+    ``master.botmaster.brd``), as well as all active workers
     (:py:class:`buildbot.worker.AbstractWorker` instances) and builders
     (:py:class:`buildbot.process.builder.Builder` instances).
 
@@ -70,11 +70,6 @@ The master has a number of useful attributes:
 ``master.debug``
     A :py:class:`buildbot.process.debug.DebugServices` instance that manages
     debugging-related access -- the manhole, in particular.
-
-``master.status`` (deprecated)
-    A :py:class:`buildbot.status.master.Status` instance that provides access
-    to all status data.  This instance is also the service parent for all
-    status listeners.
 
 ``master.masterid``
     This is the ID for this master, from the ``masters`` table.

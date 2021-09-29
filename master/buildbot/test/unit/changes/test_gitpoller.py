@@ -25,9 +25,10 @@ from buildbot.changes import gitpoller
 from buildbot.test.fake.private_tempdir import MockPrivateTemporaryDirectory
 from buildbot.test.util import changesource
 from buildbot.test.util import config
-from buildbot.test.util import gpo
 from buildbot.test.util import logging
 from buildbot.test.util.misc import TestReactorMixin
+from buildbot.test.util.runprocess import ExpectMaster
+from buildbot.test.util.runprocess import MasterRunProcessMixin
 from buildbot.util import bytes2unicode
 from buildbot.util import unicode2bytes
 
@@ -35,87 +36,95 @@ from buildbot.util import unicode2bytes
 os.environ['TEST_THAT_ENVIRONMENT_GETS_PASSED_TO_SUBPROCESSES'] = 'TRUE'
 
 
-class GitOutputParsing(gpo.GetProcessOutputMixin, unittest.TestCase):
+class TestGitPollerBase(MasterRunProcessMixin,
+                        changesource.ChangeSourceMixin,
+                        logging.LoggingMixin,
+                        TestReactorMixin,
+                        unittest.TestCase):
 
-    """Test GitPoller methods for parsing git output"""
+    REPOURL = 'git@example.com:~foo/baz.git'
+    REPOURL_QUOTED = 'git%40example.com%3A%7Efoo%2Fbaz.git'
 
+    POLLER_WORKDIR = os.path.join('basedir', 'gitpoller-work')
+
+    def createPoller(self):
+        # this is overridden in TestGitPollerWithSshPrivateKey
+        return gitpoller.GitPoller(self.REPOURL)
+
+    @defer.inlineCallbacks
     def setUp(self):
-        self.poller = gitpoller.GitPoller('git@example.com:~foo/baz.git')
-        self.setUpGetProcessOutput()
+        self.setUpTestReactor()
+        self.setup_master_run_process()
+        yield self.setUpChangeSource()
+        yield self.master.startService()
+
+        self.poller = yield self.attachChangeSource(self.createPoller())
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.master.stopService()
+        yield self.tearDownChangeSource()
+
+
+class TestGitPoller(TestGitPollerBase):
 
     dummyRevStr = '12345abcde'
 
+    @defer.inlineCallbacks
     def _perform_git_output_test(self, methodToTest, args,
                                  desiredGoodOutput, desiredGoodResult,
                                  emptyRaisesException=True):
 
-        # make this call to self.patch here so that we raise a SkipTest if it
-        # is not supported
-        self.expectCommands(
-            gpo.Expect('git', *args)
-            .path('gitpoller-work'),
+        self.expect_commands(
+            ExpectMaster(['git'] + args)
+            .workdir(self.POLLER_WORKDIR),
         )
 
-        d = defer.succeed(None)
-
-        @d.addCallback
-        def call_empty(_):
-            # we should get an Exception with empty output from git
-            return methodToTest(self.dummyRevStr)
-
-        def cb_empty(_):
+        # we should get an Exception with empty output from git
+        try:
+            yield methodToTest(self.dummyRevStr)
             if emptyRaisesException:
-                self.fail(
-                    "getProcessOutput should have failed on empty output")
-
-        def eb_empty(f):
+                self.fail("run_process should have failed on empty output")
+        except Exception as e:
             if not emptyRaisesException:
-                self.fail(
-                    "getProcessOutput should NOT have failed on empty output")
+                import traceback
+                traceback.print_exc()
+                self.fail("run_process should NOT have failed on empty output: " + repr(e))
 
-        d.addCallbacks(cb_empty, eb_empty)
-        d.addCallback(lambda _: self.assertAllCommandsRan())
+        self.assert_all_commands_ran()
 
         # and the method shouldn't suppress any exceptions
-        self.expectCommands(
-            gpo.Expect('git', *args)
-            .path('gitpoller-work')
+        self.expect_commands(
+            ExpectMaster(['git'] + args)
+            .workdir(self.POLLER_WORKDIR)
             .exit(1),
         )
 
-        @d.addCallback
-        def call_exception(_):
-            return methodToTest(self.dummyRevStr)
-
-        def cb_exception(_):
-            self.fail("getProcessOutput should have failed on stderr output")
-
-        def eb_exception(f):
+        try:
+            yield methodToTest(self.dummyRevStr)
+            self.fail("run_process should have failed on stderr output")
+        except Exception:
             pass
-        d.addCallbacks(cb_exception, eb_exception)
-        d.addCallback(lambda _: self.assertAllCommandsRan())
+
+        self.assert_all_commands_ran()
 
         # finally we should get what's expected from good output
-        self.expectCommands(
-            gpo.Expect('git', *args)
-            .path('gitpoller-work')
+        self.expect_commands(
+            ExpectMaster(['git'] + args)
+            .workdir(self.POLLER_WORKDIR)
             .stdout(desiredGoodOutput)
         )
 
-        @d.addCallback
-        def call_desired(_):
-            return methodToTest(self.dummyRevStr)
+        r = yield methodToTest(self.dummyRevStr)
 
-        @d.addCallback
-        def cb_desired(r):
-            self.assertEqual(r, desiredGoodResult)
-            # check types
-            if isinstance(r, str):
-                self.assertIsInstance(r, str)
-            elif isinstance(r, list):
-                [self.assertIsInstance(e, str) for e in r]
-        d.addCallback(lambda _: self.assertAllCommandsRan())
-        return d
+        self.assertEqual(r, desiredGoodResult)
+        # check types
+        if isinstance(r, str):
+            self.assertIsInstance(r, str)
+        elif isinstance(r, list):
+            [self.assertIsInstance(e, str) for e in r]
+
+        self.assert_all_commands_ran()
 
     def test_get_commit_author(self):
         authorStr = 'Sammy Jankis <email@example.com>'
@@ -174,37 +183,6 @@ class GitOutputParsing(gpo.GetProcessOutputMixin, unittest.TestCase):
                                                  self.dummyRevStr, '--'],
                                              stampBytes, float(stampStr))
 
-    # _get_changes is tested in TestGitPoller, below
-
-
-class TestGitPollerBase(gpo.GetProcessOutputMixin,
-                        changesource.ChangeSourceMixin,
-                        logging.LoggingMixin,
-                        TestReactorMixin,
-                        unittest.TestCase):
-
-    REPOURL = 'git@example.com:~foo/baz.git'
-    REPOURL_QUOTED = 'git%40example.com%3A%7Efoo%2Fbaz.git'
-
-    def createPoller(self):
-        # this is overridden in TestGitPollerWithSshPrivateKey
-        return gitpoller.GitPoller(self.REPOURL)
-
-    @defer.inlineCallbacks
-    def setUp(self):
-        self.setUpTestReactor()
-        self.setUpGetProcessOutput()
-        yield self.setUpChangeSource()
-
-        self.poller = self.createPoller()
-        yield self.poller.setServiceParent(self.master)
-
-    def tearDown(self):
-        return self.tearDownChangeSource()
-
-
-class TestGitPoller(TestGitPollerBase):
-
     def test_describe(self):
         self.assertSubstring("GitPoller", self.poller.describe())
 
@@ -219,49 +197,50 @@ class TestGitPoller(TestGitPollerBase):
     @defer.inlineCallbacks
     def test_checkGitFeatures_git_not_installed(self):
         self.setUpLogging()
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'Command not found'),
         )
 
         yield self.assertFailure(self.poller._checkGitFeatures(),
                                  EnvironmentError)
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
 
     @defer.inlineCallbacks
     def test_checkGitFeatures_git_bad_version(self):
         self.setUpLogging()
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git ')
         )
 
-        yield self.assertFailure(self.poller._checkGitFeatures(),
-                                 EnvironmentError)
+        with self.assertRaises(EnvironmentError):
+            yield self.poller._checkGitFeatures()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
 
     @defer.inlineCallbacks
     def test_poll_initial(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5\n'),
         )
 
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         })
@@ -271,81 +250,100 @@ class TestGitPoller(TestGitPollerBase):
                 'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
             })
 
-    def test_poll_failInit(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+    @defer.inlineCallbacks
+    def test_poll_initial_poller_not_running(self):
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work')
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
+            .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
+                    b'refs/heads/master\n'),
+        )
+
+        self.poller.doPoll.running = False
+        yield self.poller.poll()
+
+        self.assert_all_commands_ran()
+        self.assertEqual(self.poller.lastRev, {})
+
+    def test_poll_failInit(self):
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
+            .stdout(b'git version 1.7.5\n'),
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR])
             .exit(1),
         )
 
+        self.poller.doPoll.running = True
         d = self.assertFailure(self.poller.poll(), EnvironmentError)
 
-        d.addCallback(lambda _: self.assertAllCommandsRan())
+        d.addCallback(lambda _: self.assert_all_commands_ran())
         return d
 
     def test_poll_failFetch(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL]),
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .exit(1),
         )
 
+        self.poller.doPoll.running = True
         d = self.assertFailure(self.poller.poll(), EnvironmentError)
-        d.addCallback(lambda _: self.assertAllCommandsRan())
+        d.addCallback(lambda _: self.assert_all_commands_ran())
         return d
 
     @defer.inlineCallbacks
     def test_poll_failRevParse(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse', 'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .exit(1),
         )
 
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(len(self.flushLoggedErrors()), 1)
         self.assertEqual(self.poller.lastRev, {})
 
     @defer.inlineCallbacks
     def test_poll_failLog(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^fa3ae8ed68e664d4db24798611b352e3c6509930',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^fa3ae8ed68e664d4db24798611b352e3c6509930',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .exit(1),
         )
 
@@ -353,78 +351,84 @@ class TestGitPoller(TestGitPollerBase):
         self.poller.lastRev = {
             'master': 'fa3ae8ed68e664d4db24798611b352e3c6509930'
         }
+
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(len(self.flushLoggedErrors()), 1)
         self.assertEqual(self.poller.lastRev, {
             'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         })
 
+    @defer.inlineCallbacks
     def test_poll_GitError(self):
         # Raised when git exits with status code 128. See issue 2468
-        self.expectCommands(
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work')
+        self.expect_commands(
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR])
             .exit(128),
         )
 
-        d = self.assertFailure(self.poller._dovccmd('init', ['--bare',
-                                                             'gitpoller-work']), gitpoller.GitError)
+        with self.assertRaises(gitpoller.GitError):
+            yield self.poller._dovccmd('init', ['--bare', self.POLLER_WORKDIR])
 
-        d.addCallback(lambda _: self.assertAllCommandsRan())
-        return d
+        self.assert_all_commands_ran()
 
+    @defer.inlineCallbacks
     def test_poll_GitError_log(self):
         self.setUpLogging()
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work')
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR])
             .exit(128),
         )
 
-        d = self.poller.poll()
-        d.addCallback(lambda _: self.assertAllCommandsRan())
+        self.poller.doPoll.running = True
+        yield self.poller.poll()
+
+        self.assert_all_commands_ran()
         self.assertLogged("command.*on repourl.*failed.*exit code 128.*")
-        return d
 
     @defer.inlineCallbacks
     def test_poll_nothingNew(self):
         # Test that environment variables get propagated to subprocesses
         # (See #2116)
         self.patch(os, 'environ', {'ENVVAR': 'TRUE'})
-        self.addGetProcessOutputExpectEnv({'ENVVAR': 'TRUE'})
+        self.add_run_process_expect_env({'ENVVAR': 'TRUE'})
 
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'no interesting output'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b''),
         )
 
         self.poller.lastRev = {
             'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         }
+
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.master.db.state.assertStateByClass(
             name=bytes2unicode(self.REPOURL), class_name='GitPoller',
             lastRev={
@@ -433,34 +437,35 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_multipleBranches_initial(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2\t'
                     b'refs/heads/release\n'
                     b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master',
-                       '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master',
+                          '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2'),
         )
 
         # do the poll
         self.poller.branches = ['master', 'release', 'not_on_remote']
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
             'release': '9118f4ab71963d23d02d4bdc54876ac8bf05acf2'
@@ -468,44 +473,44 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_multipleBranches(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2\t'
                     b'refs/heads/release\n'
                     b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master',
-                       '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master',
+                          '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
-                       '^fa3ae8ed68e664d4db24798611b352e3c6509930',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
+                          '^fa3ae8ed68e664d4db24798611b352e3c6509930',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([
                 b'64a5dc2a4bd4f558b5dd193d47c83c7d7abc9a1a',
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241'])),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '9118f4ab71963d23d02d4bdc54876ac8bf05acf2',
-                       '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '9118f4ab71963d23d02d4bdc54876ac8bf05acf2',
+                          '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([
                 b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2'
             ])),
@@ -539,9 +544,10 @@ class TestGitPoller(TestGitPollerBase):
             'master': 'fa3ae8ed68e664d4db24798611b352e3c6509930',
             'release': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         }
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
             'release': '9118f4ab71963d23d02d4bdc54876ac8bf05acf2'
@@ -600,27 +606,27 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_multipleBranches_buildPushesWithNoCommits_default(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/release\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work'),
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR),
 
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b''),
         )
 
@@ -630,39 +636,38 @@ class TestGitPoller(TestGitPollerBase):
             'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
 
         }
-
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
-            'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
             'release': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         })
         self.assertEqual(len(self.master.data.updates.changesAdded), 0)
 
     @defer.inlineCallbacks
     def test_poll_multipleBranches_buildPushesWithNoCommits_true(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/release\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work'),
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR),
 
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b''),
         )
 
@@ -696,11 +701,11 @@ class TestGitPoller(TestGitPollerBase):
         }
 
         self.poller.buildPushesWithNoCommits = True
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
-            'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
             'release': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         })
         self.assertEqual(self.master.data.updates.changesAdded, [
@@ -722,28 +727,28 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_multipleBranches_buildPushesWithNoCommits_true_fast_forward(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/release\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work'),
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR),
 
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^0ba9d553b7217ab4bbad89ad56dc0332c7d57a8c',
-                       '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^0ba9d553b7217ab4bbad89ad56dc0332c7d57a8c',
+                          '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b''),
         )
 
@@ -778,11 +783,11 @@ class TestGitPoller(TestGitPollerBase):
         }
 
         self.poller.buildPushesWithNoCommits = True
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
-            'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241',
             'release': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         })
         self.assertEqual(self.master.data.updates.changesAdded, [
@@ -804,27 +809,27 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_multipleBranches_buildPushesWithNoCommits_true_not_tip(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/release\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work'),
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR),
 
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^0ba9d553b7217ab4bbad89ad56dc0332c7d57a8c',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^0ba9d553b7217ab4bbad89ad56dc0332c7d57a8c',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b''),
         )
 
@@ -858,11 +863,11 @@ class TestGitPoller(TestGitPollerBase):
         }
 
         self.poller.buildPushesWithNoCommits = True
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
-            'master': '0ba9d553b7217ab4bbad89ad56dc0332c7d57a8c',
             'release': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         })
         self.assertEqual(self.master.data.updates.changesAdded, [
@@ -884,26 +889,25 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_allBranches_single(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect(
-                'git', 'log', '--ignore-missing', '--format=%H',
-                '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                '^fa3ae8ed68e664d4db24798611b352e3c6509930',
-                '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing', '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^fa3ae8ed68e664d4db24798611b352e3c6509930',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([
                 b'64a5dc2a4bd4f558b5dd193d47c83c7d7abc9a1a',
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241'])),
@@ -936,9 +940,10 @@ class TestGitPoller(TestGitPollerBase):
         self.poller.lastRev = {
             'refs/heads/master': 'fa3ae8ed68e664d4db24798611b352e3c6509930',
         }
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'refs/heads/master':
             '4423cdbcbb89c14e50dd5f4152415afd686c5241',
@@ -967,83 +972,80 @@ class TestGitPoller(TestGitPollerBase):
         # Test that environment variables get propagated to subprocesses
         # (See #2116)
         self.patch(os, 'environ', {'ENVVAR': 'TRUE'})
-        self.addGetProcessOutputExpectEnv({'ENVVAR': 'TRUE'})
+        self.add_run_process_expect_env({'ENVVAR': 'TRUE'})
 
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'no interesting output'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b''),
         )
 
         self.poller.lastRev = {
             'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         }
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'master': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         })
 
     @defer.inlineCallbacks
     def test_poll_allBranches_multiple(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'\n'.join([
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241\trefs/heads/master',
                 b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2\trefs/heads/release',
             ])),
-            gpo.Expect(
-                'git', 'fetch', self.REPOURL,
-                '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master',
-                '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master',
+                          '+release:refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect(
-                'git', 'log', '--ignore-missing', '--format=%H',
-                '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
-                '^fa3ae8ed68e664d4db24798611b352e3c6509930',
-                '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing', '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
+                          '^fa3ae8ed68e664d4db24798611b352e3c6509930',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([
                 b'64a5dc2a4bd4f558b5dd193d47c83c7d7abc9a1a',
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241'])),
-            gpo.Expect(
-                'git', 'rev-parse', 'refs/buildbot/' + self.REPOURL_QUOTED + '/release')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse', 'refs/buildbot/' + self.REPOURL_QUOTED + '/release'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2'),
-            gpo.Expect(
-                'git', 'log', '--ignore-missing', '--format=%H',
-                '9118f4ab71963d23d02d4bdc54876ac8bf05acf2',
-                '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
-                '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing', '--format=%H',
+                          '9118f4ab71963d23d02d4bdc54876ac8bf05acf2',
+                          '^4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2'])),
         )
 
@@ -1075,9 +1077,10 @@ class TestGitPoller(TestGitPollerBase):
             'refs/heads/master': 'fa3ae8ed68e664d4db24798611b352e3c6509930',
             'refs/heads/release': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         }
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'refs/heads/master':
             '4423cdbcbb89c14e50dd5f4152415afd686c5241',
@@ -1112,30 +1115,28 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_callableFilteredBranches(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'\n'.join([
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241\trefs/heads/master',
                 b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2\trefs/heads/release',
             ])),
-            gpo.Expect(
-                'git', 'fetch', self.REPOURL,
-                '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect(
-                'git', 'log', '--ignore-missing', '--format=%H',
-                '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
-                '^fa3ae8ed68e664d4db24798611b352e3c6509930',
-                '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing', '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
+                          '^fa3ae8ed68e664d4db24798611b352e3c6509930',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([
                 b'64a5dc2a4bd4f558b5dd193d47c83c7d7abc9a1a',
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241']))
@@ -1174,17 +1175,15 @@ class TestGitPoller(TestGitPollerBase):
             'refs/heads/master': 'fa3ae8ed68e664d4db24798611b352e3c6509930',
             'refs/heads/release': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         }
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
 
         # The release branch id should remain unchanged,
         # because it was ignored.
         self.assertEqual(self.poller.lastRev, {
-            'refs/heads/master':
-            '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-            'refs/heads/release':
-            'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
+            'refs/heads/master': '4423cdbcbb89c14e50dd5f4152415afd686c5241'
         })
 
         added = self.master.data.updates.changesAdded
@@ -1207,33 +1206,31 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_branchFilter(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'\n'.join([
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                 b'refs/pull/410/merge',
                 b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2\t'
                 b'refs/pull/410/head',
             ])),
-            gpo.Expect(
-                'git', 'fetch', self.REPOURL,
-                '+refs/pull/410/head:refs/buildbot/' + self.REPOURL_QUOTED + '/refs/pull/410/head')
-            .path('gitpoller-work'),
-            gpo.Expect(
-                'git', 'rev-parse',
-                'refs/buildbot/' + self.REPOURL_QUOTED + '/refs/pull/410/head')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+refs/pull/410/head:refs/buildbot/' + self.REPOURL_QUOTED +
+                          '/refs/pull/410/head'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/refs/pull/410/head'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2'),
-            gpo.Expect(
-                'git', 'log', '--ignore-missing', '--format=%H',
-                '9118f4ab71963d23d02d4bdc54876ac8bf05acf2',
-                '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
-                '^fa3ae8ed68e664d4db24798611b352e3c6509930',
-                '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing', '--format=%H',
+                          '9118f4ab71963d23d02d4bdc54876ac8bf05acf2',
+                          '^bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5',
+                          '^fa3ae8ed68e664d4db24798611b352e3c6509930',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([b'9118f4ab71963d23d02d4bdc54876ac8bf05acf2'])),
         )
 
@@ -1272,11 +1269,11 @@ class TestGitPoller(TestGitPollerBase):
             'master': 'fa3ae8ed68e664d4db24798611b352e3c6509930',
             'refs/pull/410/head': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         }
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
-            'master': 'fa3ae8ed68e664d4db24798611b352e3c6509930',
             'refs/pull/410/head': '9118f4ab71963d23d02d4bdc54876ac8bf05acf2'
         })
 
@@ -1295,31 +1292,29 @@ class TestGitPoller(TestGitPollerBase):
         # Test that environment variables get propagated to subprocesses
         # (See #2116)
         self.patch(os, 'environ', {'ENVVAR': 'TRUE'})
-        self.addGetProcessOutputExpectEnv({'ENVVAR': 'TRUE'})
+        self.add_run_process_expect_env({'ENVVAR': 'TRUE'})
 
-        # patch out getProcessOutput and getProcessOutputAndValue for the
-        # benefit of the _get_changes method
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'no interesting output'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect('git', 'log', '--ignore-missing',
-                       '--format=%H',
-                       '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                       '^fa3ae8ed68e664d4db24798611b352e3c6509930',
-                       '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing',
+                          '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^fa3ae8ed68e664d4db24798611b352e3c6509930',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([
                 b'64a5dc2a4bd4f558b5dd193d47c83c7d7abc9a1a',
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241'
@@ -1352,6 +1347,7 @@ class TestGitPoller(TestGitPollerBase):
         self.poller.lastRev = {
             'master': 'fa3ae8ed68e664d4db24798611b352e3c6509930'
         }
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
         # check the results
@@ -1389,7 +1385,7 @@ class TestGitPoller(TestGitPollerBase):
             'src': 'git',
             'when_timestamp': 1273258009,
         }])
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
 
         self.master.db.state.assertStateByClass(
             name=bytes2unicode(self.REPOURL), class_name='GitPoller',
@@ -1399,26 +1395,25 @@ class TestGitPoller(TestGitPollerBase):
 
     @defer.inlineCallbacks
     def test_poll_callableCategory(self):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\n'),
-            gpo.Expect(
-                'git', 'log', '--ignore-missing', '--format=%H',
-                '4423cdbcbb89c14e50dd5f4152415afd686c5241',
-                '^fa3ae8ed68e664d4db24798611b352e3c6509930',
-                '--')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'log', '--ignore-missing', '--format=%H',
+                          '4423cdbcbb89c14e50dd5f4152415afd686c5241',
+                          '^fa3ae8ed68e664d4db24798611b352e3c6509930',
+                          '--'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'\n'.join([
                 b'64a5dc2a4bd4f558b5dd193d47c83c7d7abc9a1a',
                 b'4423cdbcbb89c14e50dd5f4152415afd686c5241'])),
@@ -1457,9 +1452,10 @@ class TestGitPoller(TestGitPollerBase):
         self.poller.lastRev = {
             'refs/heads/master': 'fa3ae8ed68e664d4db24798611b352e3c6509930',
         }
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'refs/heads/master':
             '4423cdbcbb89c14e50dd5f4152415afd686c5241',
@@ -1485,20 +1481,16 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(added[1]['src'], 'git')
         self.assertEqual(added[1]['category'], '64a5dc')
 
-    @defer.inlineCallbacks
     def test_startService(self):
-        yield self.poller.startService()
-
-        self.assertEqual(
-            self.poller.workdir, os.path.join('basedir', 'gitpoller-work'))
+        self.assertEqual(self.poller.workdir, self.POLLER_WORKDIR)
         self.assertEqual(self.poller.lastRev, {})
-
-        yield self.poller.stopService()
 
     @defer.inlineCallbacks
     def test_startService_loadLastRev(self):
-        self.master.db.state.fakeState(
-            name=bytes2unicode(self.REPOURL), class_name='GitPoller',
+        yield self.poller.stopService()
+
+        self.master.db.state.set_fake_state(
+            self.poller,
             lastRev={"master": "fa3ae8ed68e664d4db24798611b352e3c6509930"},
         )
 
@@ -1507,8 +1499,6 @@ class TestGitPoller(TestGitPollerBase):
         self.assertEqual(self.poller.lastRev, {
             "master": "fa3ae8ed68e664d4db24798611b352e3c6509930"
         })
-
-        yield self.poller.stopService()
 
 
 class TestGitPollerWithSshPrivateKey(TestGitPollerBase):
@@ -1522,14 +1512,14 @@ class TestGitPollerWithSshPrivateKey(TestGitPollerBase):
     @defer.inlineCallbacks
     def test_check_git_features_ssh_1_7(self, write_local_file_mock,
                                         temp_dir_mock):
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 1.7.5\n'),
         )
 
         yield self.assertFailure(self.poller._checkGitFeatures(), EnvironmentError)
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
 
         self.assertEqual(len(temp_dir_mock.dirs), 0)
         write_local_file_mock.assert_not_called()
@@ -1539,29 +1529,30 @@ class TestGitPollerWithSshPrivateKey(TestGitPollerBase):
     @mock.patch('buildbot.changes.gitpoller.writeLocalFile')
     @defer.inlineCallbacks
     def test_poll_initial_2_10(self, write_local_file_mock, temp_dir_mock):
-        key_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
+        key_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
 
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 2.10.0\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git',
-                       '-c', 'core.sshCommand=ssh -i "{0}"'.format(key_path),
-                       'ls-remote', '--refs', self.REPOURL),
-            gpo.Expect('git',
-                       '-c', 'core.sshCommand=ssh -i "{0}"'.format(key_path),
-                       'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git',
+                          '-c', 'core.sshCommand=ssh -o "BatchMode=yes" -i "{0}"'.format(key_path),
+                          'ls-remote', '--refs', self.REPOURL]),
+            ExpectMaster(['git',
+                          '-c', 'core.sshCommand=ssh -o "BatchMode=yes" -i "{0}"'.format(key_path),
+                          'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5\n'),
         )
 
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         })
@@ -1571,7 +1562,7 @@ class TestGitPollerWithSshPrivateKey(TestGitPollerBase):
                 'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
             })
 
-        temp_dir_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@')
+        temp_dir_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@')
         self.assertEqual(temp_dir_mock.dirs,
                          [(temp_dir_path, 0o700),
                           (temp_dir_path, 0o700)])
@@ -1583,28 +1574,29 @@ class TestGitPollerWithSshPrivateKey(TestGitPollerBase):
     @mock.patch('buildbot.changes.gitpoller.writeLocalFile')
     @defer.inlineCallbacks
     def test_poll_initial_2_3(self, write_local_file_mock, temp_dir_mock):
-        key_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
+        key_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
 
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 2.3.0\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git', 'ls-remote', '--refs', self.REPOURL)
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git', 'ls-remote', '--refs', self.REPOURL])
             .stdout(b'4423cdbcbb89c14e50dd5f4152415afd686c5241\t'
                     b'refs/heads/master\n'),
-            gpo.Expect('git', 'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
-            .env({'GIT_SSH_COMMAND': 'ssh -i "{0}"'.format(key_path)}),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
+            .env({'GIT_SSH_COMMAND': 'ssh -o "BatchMode=yes" -i "{0}"'.format(key_path)}),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5\n'),
         )
 
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         })
@@ -1614,7 +1606,7 @@ class TestGitPollerWithSshPrivateKey(TestGitPollerBase):
                 'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
             })
 
-        temp_dir_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@')
+        temp_dir_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@')
         self.assertEqual(temp_dir_mock.dirs,
                          [(temp_dir_path, 0o700),
                           (temp_dir_path, 0o700)])
@@ -1627,29 +1619,30 @@ class TestGitPollerWithSshPrivateKey(TestGitPollerBase):
     @defer.inlineCallbacks
     def test_poll_failFetch_git_2_10(self, write_local_file_mock,
                                      temp_dir_mock):
-        key_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
+        key_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
 
         # make sure we cleanup the private key when fetch fails
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 2.10.0\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git',
-                       '-c', 'core.sshCommand=ssh -i "{0}"'.format(key_path),
-                       'ls-remote', '--refs', self.REPOURL),
-            gpo.Expect('git',
-                       '-c', 'core.sshCommand=ssh -i "{0}"'.format(key_path),
-                       'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git',
+                          '-c', 'core.sshCommand=ssh -o "BatchMode=yes" -i "{0}"'.format(key_path),
+                          'ls-remote', '--refs', self.REPOURL]),
+            ExpectMaster(['git',
+                          '-c', 'core.sshCommand=ssh -o "BatchMode=yes" -i "{0}"'.format(key_path),
+                          'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .exit(1),
         )
 
+        self.poller.doPoll.running = True
         yield self.assertFailure(self.poller.poll(), EnvironmentError)
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
 
-        temp_dir_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@')
+        temp_dir_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@')
         self.assertEqual(temp_dir_mock.dirs,
                          [(temp_dir_path, 0o700),
                           (temp_dir_path, 0o700)])
@@ -1669,37 +1662,34 @@ class TestGitPollerWithSshHostKey(TestGitPollerBase):
     @defer.inlineCallbacks
     def test_poll_initial_2_10(self, write_local_file_mock, temp_dir_mock):
 
-        key_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
-        known_hosts_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@',
+        key_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
+        known_hosts_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@',
                                         'ssh-known-hosts')
 
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 2.10.0\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git',
-                       '-c',
-                       'core.sshCommand=ssh -i "{0}" '
-                       '-o "UserKnownHostsFile={1}"'.format(
-                               key_path, known_hosts_path),
-                       'ls-remote', '--refs', self.REPOURL),
-            gpo.Expect('git',
-                       '-c',
-                       'core.sshCommand=ssh -i "{0}" '
-                       '-o "UserKnownHostsFile={1}"'.format(
-                               key_path, known_hosts_path),
-                       'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git',
+                          '-c', 'core.sshCommand=ssh -o "BatchMode=yes" -i "{0}" '
+                          '-o "UserKnownHostsFile={1}"'.format(key_path, known_hosts_path),
+                          'ls-remote', '--refs', self.REPOURL]),
+            ExpectMaster(['git',
+                          '-c', 'core.sshCommand=ssh -o "BatchMode=yes" -i "{0}" '
+                          '-o "UserKnownHostsFile={1}"'.format(key_path, known_hosts_path),
+                          'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5\n'),
         )
 
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         })
@@ -1709,7 +1699,7 @@ class TestGitPollerWithSshHostKey(TestGitPollerBase):
                 'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
             })
 
-        temp_dir_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@')
+        temp_dir_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@')
         self.assertEqual(temp_dir_mock.dirs,
                          [(temp_dir_path, 0o700),
                           (temp_dir_path, 0o700)])
@@ -1737,37 +1727,34 @@ class TestGitPollerWithSshKnownHosts(TestGitPollerBase):
     @defer.inlineCallbacks
     def test_poll_initial_2_10(self, write_local_file_mock, temp_dir_mock):
 
-        key_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
-        known_hosts_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@',
+        key_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@', 'ssh-key')
+        known_hosts_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@',
                                         'ssh-known-hosts')
 
-        self.expectCommands(
-            gpo.Expect('git', '--version')
+        self.expect_commands(
+            ExpectMaster(['git', '--version'])
             .stdout(b'git version 2.10.0\n'),
-            gpo.Expect('git', 'init', '--bare', 'gitpoller-work'),
-            gpo.Expect('git',
-                       '-c',
-                       'core.sshCommand=ssh -i "{0}" '
-                       '-o "UserKnownHostsFile={1}"'.format(
-                               key_path, known_hosts_path),
-                       'ls-remote', '--refs', self.REPOURL),
-            gpo.Expect('git',
-                       '-c',
-                       'core.sshCommand=ssh -i "{0}" '
-                       '-o "UserKnownHostsFile={1}"'.format(
-                               key_path, known_hosts_path),
-                       'fetch', self.REPOURL,
-                       '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work'),
-            gpo.Expect('git', 'rev-parse',
-                       'refs/buildbot/' + self.REPOURL_QUOTED + '/master')
-            .path('gitpoller-work')
+            ExpectMaster(['git', 'init', '--bare', self.POLLER_WORKDIR]),
+            ExpectMaster(['git',
+                          '-c', 'core.sshCommand=ssh -o "BatchMode=yes" -i "{0}" '
+                          '-o "UserKnownHostsFile={1}"'.format(key_path, known_hosts_path),
+                          'ls-remote', '--refs', self.REPOURL]),
+            ExpectMaster(['git',
+                          '-c', 'core.sshCommand=ssh -o "BatchMode=yes" -i "{0}" '
+                          '-o "UserKnownHostsFile={1}"'.format(key_path, known_hosts_path),
+                          'fetch', self.REPOURL,
+                          '+master:refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR),
+            ExpectMaster(['git', 'rev-parse',
+                          'refs/buildbot/' + self.REPOURL_QUOTED + '/master'])
+            .workdir(self.POLLER_WORKDIR)
             .stdout(b'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5\n'),
         )
 
+        self.poller.doPoll.running = True
         yield self.poller.poll()
 
-        self.assertAllCommandsRan()
+        self.assert_all_commands_ran()
         self.assertEqual(self.poller.lastRev, {
             'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
         })
@@ -1777,7 +1764,7 @@ class TestGitPollerWithSshKnownHosts(TestGitPollerBase):
                 'master': 'bf0b01df6d00ae8d1ffa0b2e2acbe642a6cd35d5'
             })
 
-        temp_dir_path = os.path.join('gitpoller-work', '.buildbot-ssh@@@')
+        temp_dir_path = os.path.join('basedir', 'gitpoller-work', '.buildbot-ssh@@@')
         self.assertEqual(temp_dir_mock.dirs,
                          [(temp_dir_path, 0o700),
                           (temp_dir_path, 0o700)])
@@ -1793,55 +1780,80 @@ class TestGitPollerWithSshKnownHosts(TestGitPollerBase):
                          write_local_file_mock.call_args_list)
 
 
-class TestGitPollerConstructor(unittest.TestCase, config.ConfigErrorsMixin):
+class TestGitPollerConstructor(unittest.TestCase, TestReactorMixin, changesource.ChangeSourceMixin,
+                               config.ConfigErrorsMixin):
 
+    @defer.inlineCallbacks
+    def setUp(self):
+        self.setUpTestReactor()
+        yield self.setUpChangeSource()
+        yield self.master.startService()
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.master.stopService()
+        yield self.tearDownChangeSource()
+
+    @defer.inlineCallbacks
     def test_deprecatedFetchRefspec(self):
         with self.assertRaisesConfigError(
                 "fetch_refspec is no longer supported"):
-            gitpoller.GitPoller("/tmp/git.git", fetch_refspec='not-supported')
+            yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git",
+                                          fetch_refspec='not-supported'))
 
+    @defer.inlineCallbacks
     def test_oldPollInterval(self):
-        poller = gitpoller.GitPoller("/tmp/git.git", pollinterval=10)
+        poller = yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git", pollinterval=10))
         self.assertEqual(poller.pollInterval, 10)
 
+    @defer.inlineCallbacks
     def test_branches_default(self):
-        poller = gitpoller.GitPoller("/tmp/git.git")
+        poller = yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git"))
         self.assertEqual(poller.branches, ["master"])
 
+    @defer.inlineCallbacks
     def test_branches_oldBranch(self):
-        poller = gitpoller.GitPoller("/tmp/git.git", branch='magic')
+        poller = yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git", branch='magic'))
         self.assertEqual(poller.branches, ["magic"])
 
+    @defer.inlineCallbacks
     def test_branches(self):
-        poller = gitpoller.GitPoller("/tmp/git.git",
-                                     branches=['magic', 'marker'])
+        poller = yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git",
+                                                                   branches=['magic', 'marker']))
         self.assertEqual(poller.branches, ["magic", "marker"])
 
+    @defer.inlineCallbacks
     def test_branches_True(self):
-        poller = gitpoller.GitPoller("/tmp/git.git", branches=True)
+        poller = yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git", branches=True))
         self.assertEqual(poller.branches, True)
 
+    @defer.inlineCallbacks
     def test_only_tags_True(self):
-        poller = gitpoller.GitPoller("/tmp/git.git", only_tags=True)
+        poller = yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git", only_tags=True))
         self.assertIsNotNone(poller.branches)
 
+    @defer.inlineCallbacks
     def test_branches_andBranch(self):
         with self.assertRaisesConfigError(
                 "can't specify both branch and branches"):
-            gitpoller.GitPoller("/tmp/git.git", branch='bad',
-                                branches=['listy'])
+            yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git", branch='bad',
+                                                              branches=['listy']))
 
+    @defer.inlineCallbacks
     def test_branches_and_only_tags(self):
         with self.assertRaisesConfigError(
                 "can't specify only_tags and branch/branches"):
-            gitpoller.GitPoller("/tmp/git.git", only_tags=True,
-                                branches=['listy'])
+            yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git", only_tags=True,
+                                                              branches=['listy']))
 
+    @defer.inlineCallbacks
     def test_branch_and_only_tags(self):
         with self.assertRaisesConfigError(
                 "can't specify only_tags and branch/branches"):
-            gitpoller.GitPoller("/tmp/git.git", only_tags=True, branch='bad')
+            yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git", only_tags=True,
+                                                              branch='bad'))
 
+    @defer.inlineCallbacks
     def test_gitbin_default(self):
-        poller = gitpoller.GitPoller("/tmp/git.git")
+        poller = yield self.attachChangeSource(gitpoller.GitPoller("/tmp/git.git"))
         self.assertEqual(poller.gitbin, "git")

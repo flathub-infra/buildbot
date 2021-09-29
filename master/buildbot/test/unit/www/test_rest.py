@@ -21,23 +21,25 @@ import mock
 from twisted.internet import defer
 from twisted.trial import unittest
 
+from buildbot.data.exceptions import InvalidQueryParameter
 from buildbot.test.fake import endpoint
 from buildbot.test.util import www
 from buildbot.test.util.misc import TestReactorMixin
 from buildbot.util import bytes2unicode
 from buildbot.util import unicode2bytes
 from buildbot.www import authz
+from buildbot.www import graphql
 from buildbot.www import rest
 from buildbot.www.rest import JSONRPC_CODES
-from buildbot.www.rest import BadRequest
 
 
 class RestRootResource(TestReactorMixin, www.WwwTestMixin, unittest.TestCase):
 
-    maxVersion = 2
+    maxVersion = 3
 
     def setUp(self):
         self.setUpTestReactor()
+        [graphql]  # used for import side effect
 
     @defer.inlineCallbacks
     def test_render(self):
@@ -547,7 +549,7 @@ class V2RootResource_REST(TestReactorMixin, www.WwwTestMixin,
         yield self.render_resource(self.rsrc, b'/test/0')
         self.assertRequest(
             contentJson={'error': "not found while getting from endpoint for "
-                                  "/test/n:testid with arguments"
+                                  "/tests/n:testid,/test/n:testid with arguments"
                                   " ResultSpec(**{'filters': [], 'fields': None, "
                                   "'properties': [], "
                                   "'order': None, 'limit': None, 'offset': None}) "
@@ -588,7 +590,7 @@ class V2RootResource_REST(TestReactorMixin, www.WwwTestMixin,
         expected_props = [None, 'test2']
         self.make_request(b'/test')
         self.request.args = {b'property': expected_props}
-        with self.assertRaises(BadRequest):
+        with self.assertRaises(InvalidQueryParameter):
             self.rsrc.decodeResultSpec(self.request, endpoint.TestsEndpoint)
 
     def test_decode_result_spec_limit(self):
@@ -620,31 +622,31 @@ class V2RootResource_REST(TestReactorMixin, www.WwwTestMixin,
         self.assertEqual(spec.properties[0].values, expected_props)
 
     def test_decode_result_spec_not_a_collection_limit(self):
-        def expectRaiseBadRequest():
+        def expectRaiseInvalidQueryParameter():
             limit = 5
             self.make_request(b'/test')
             self.request.args = {b'limit': limit}
             self.rsrc.decodeResultSpec(self.request, endpoint.TestEndpoint)
-        with self.assertRaises(rest.BadRequest):
-            expectRaiseBadRequest()
+        with self.assertRaises(InvalidQueryParameter):
+            expectRaiseInvalidQueryParameter()
 
     def test_decode_result_spec_not_a_collection_order(self):
-        def expectRaiseBadRequest():
+        def expectRaiseInvalidQueryParameter():
             order = ('info',)
             self.make_request(b'/test')
             self.request.args = {b'order': order}
             self.rsrc.decodeResultSpec(self.request, endpoint.TestEndpoint)
-        with self.assertRaises(rest.BadRequest):
-            expectRaiseBadRequest()
+        with self.assertRaises(InvalidQueryParameter):
+            expectRaiseInvalidQueryParameter()
 
     def test_decode_result_spec_not_a_collection_offset(self):
-        def expectRaiseBadRequest():
+        def expectRaiseInvalidQueryParameter():
             offset = 0
             self.make_request(b'/test')
             self.request.args = {b'offset': offset}
             self.rsrc.decodeResultSpec(self.request, endpoint.TestEndpoint)
-        with self.assertRaises(rest.BadRequest):
-            expectRaiseBadRequest()
+        with self.assertRaises(InvalidQueryParameter):
+            expectRaiseInvalidQueryParameter()
 
     def test_decode_result_spec_not_a_collection_properties(self):
         expected_props = ['test1', 'test2']
@@ -896,6 +898,72 @@ class V2RootResource_JSONRPC2(TestReactorMixin, www.WwwTestMixin,
             message=re.compile('no no'),
             jsonrpccode=JSONRPC_CODES['invalid_request'],
             responseCode=403)
+
+    @defer.inlineCallbacks
+    def test_owner_without_email(self):
+        self.master.session.user_info = {
+            "username": "defunkt",
+            "full_name": "Defunkt user",
+        }
+
+        yield self.render_control_resource(self.rsrc, b'/test/13',
+                                           action="testy")
+        self.assertRequest(
+            contentJson={
+                'id': self.UUID,
+                'jsonrpc': '2.0',
+                'result': {
+                    'action': 'testy',
+                    'args': {'owner': 'defunkt'},
+                    'kwargs': {'testid': 13},
+                },
+            },
+            contentType=b'application/json',
+            responseCode=200)
+
+    @defer.inlineCallbacks
+    def test_owner_with_only_full_name(self):
+        self.master.session.user_info = {
+            "full_name": "Defunkt user",
+        }
+
+        yield self.render_control_resource(self.rsrc, b'/test/13',
+                                           action="testy")
+        self.assertRequest(
+            contentJson={
+                'id': self.UUID,
+                'jsonrpc': '2.0',
+                'result': {
+                    'action': 'testy',
+                    'args': {'owner': 'Defunkt user'},
+                    'kwargs': {'testid': 13},
+                },
+            },
+            contentType=b'application/json',
+            responseCode=200)
+
+    @defer.inlineCallbacks
+    def test_owner_with_email(self):
+        self.master.session.user_info = {
+            "email": "defunkt@example.org",
+            "username": "defunkt",
+            "full_name": "Defunkt user",
+        }
+
+        yield self.render_control_resource(self.rsrc, b'/test/13',
+                                           action="testy")
+        self.assertRequest(
+            contentJson={
+                'id': self.UUID,
+                'jsonrpc': '2.0',
+                'result': {
+                    'action': 'testy',
+                    'args': {'owner': 'defunkt@example.org'},
+                    'kwargs': {'testid': 13},
+                },
+            },
+            contentType=b'application/json',
+            responseCode=200)
 
 
 class ContentTypeParser(unittest.TestCase):

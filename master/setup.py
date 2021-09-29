@@ -150,8 +150,9 @@ setup_args = {
         'Topic :: Software Development :: Build Tools',
         'Topic :: Software Development :: Testing',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
-        'Programming Language :: Python :: 3.6'
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
     ],
 
     'packages': [
@@ -179,7 +180,6 @@ setup_args = {
         "buildbot.secrets.providers",
         "buildbot.statistics",
         "buildbot.statistics.storage_backends",
-        "buildbot.status",
         "buildbot.steps",
         "buildbot.steps.package",
         "buildbot.steps.package.deb",
@@ -231,7 +231,6 @@ setup_args = {
                 'BzrLaunchpadEmailMaildirSource']),
             ('buildbot.changes.bitbucket', ['BitbucketPullrequestPoller']),
             ('buildbot.changes.github', ['GitHubPullrequestPoller']),
-            ('buildbot.changes.bonsaipoller', ['BonsaiPoller']),
             ('buildbot.changes.gerritchangesource', [
                 'GerritChangeSource', 'GerritEventLogPoller']),
             ('buildbot.changes.gitpoller', ['GitPoller']),
@@ -272,17 +271,13 @@ setup_args = {
             ('buildbot.process.buildstep', ['BuildStep']),
             ('buildbot.steps.cmake', ['CMake']),
             ('buildbot.steps.cppcheck', ['Cppcheck']),
+            ('buildbot.steps.gitdiffinfo', ['GitDiffInfo']),
             ('buildbot.steps.http', [
-                'HTTPStep', 'POST', 'GET', 'PUT', 'DELETE', 'HEAD',
-                'OPTIONS',
-                'HTTPStepNewStyle', 'POSTNewStyle', 'GETNewStyle', 'PUTNewStyle', 'DELETENewStyle',
-                'HEADNewStyle', 'OPTIONSNewStyle']),
+                'HTTPStep', 'POST', 'GET', 'PUT', 'DELETE', 'HEAD', 'OPTIONS']),
             ('buildbot.steps.master', [
-                'MasterShellCommand', 'MasterShellCommandNewStyle',
-                'SetProperty', 'SetProperties', 'LogRenderable', "Assert"]),
+                'MasterShellCommand', 'SetProperty', 'SetProperties', 'LogRenderable', "Assert"]),
             ('buildbot.steps.maxq', ['MaxQ']),
             ('buildbot.steps.mswin', ['Robocopy']),
-            ('buildbot.steps.mtrlogobserver', ['MTR']),
             ('buildbot.steps.package.deb.lintian', ['DebLintian']),
             ('buildbot.steps.package.deb.pbuilder', [
                 'DebPbuilder', 'DebCowbuilder', 'UbuPbuilder',
@@ -296,12 +291,8 @@ setup_args = {
             ('buildbot.steps.python_twisted', [
                 'HLint', 'Trial', 'RemovePYCs']),
             ('buildbot.steps.shell', [
-                'ShellCommand', 'ShellCommandNewStyle', 'TreeSize',
-                'SetPropertyFromCommand', 'SetPropertyFromCommandNewStyle',
-                'Configure', 'ConfigureNewStyle',
-                'WarningCountingShellCommand', 'WarningCountingShellCommandNewStyle',
-                'Compile', 'CompileNewStyle',
-                'Test', 'TestNewStyle', 'PerlModuleTest']),
+                'ShellCommand', 'TreeSize', 'SetPropertyFromCommand', 'Configure',
+                'WarningCountingShellCommand', 'Compile', 'Test', 'PerlModuleTest']),
             ('buildbot.steps.shellsequence', ['ShellSequence']),
             ('buildbot.steps.source.bzr', ['Bzr']),
             ('buildbot.steps.source.cvs', ['CVS']),
@@ -331,18 +322,31 @@ setup_args = {
                 'RemoveDirectory', 'MakeDirectory']),
         ]),
         ('buildbot.reporters', [
+            ('buildbot.reporters.generators.build', [
+                'BuildStatusGenerator',
+                'BuildStartEndStatusGenerator'
+            ]),
+            ('buildbot.reporters.generators.buildrequest', [
+                'BuildRequestGenerator'
+            ]),
+            ('buildbot.reporters.generators.buildset', ['BuildSetStatusGenerator']),
+            ('buildbot.reporters.generators.worker', ['WorkerMissingGenerator']),
             ('buildbot.reporters.mail', ['MailNotifier']),
             ('buildbot.reporters.pushjet', ['PushjetNotifier']),
             ('buildbot.reporters.pushover', ['PushoverNotifier']),
-            ('buildbot.reporters.message', ['MessageFormatter']),
+            ('buildbot.reporters.message', [
+                'MessageFormatter',
+                'MessageFormatterEmpty',
+                'MessageFormatterFunction',
+                'MessageFormatterMissingWorker',
+                'MessageFormatterRenderable',
+            ]),
             ('buildbot.reporters.gerrit', ['GerritStatusPush']),
             ('buildbot.reporters.gerrit_verify_status',
              ['GerritVerifyStatusPush']),
-            ('buildbot.reporters.hipchat', ['HipChatStatusPush']),
             ('buildbot.reporters.http', ['HttpStatusPush']),
             ('buildbot.reporters.github', ['GitHubStatusPush', 'GitHubCommentPush']),
             ('buildbot.reporters.gitlab', ['GitLabStatusPush']),
-            ('buildbot.reporters.stash', ['StashStatusPush']),
             ('buildbot.reporters.bitbucketserver', [
                 'BitbucketServerStatusPush',
                 'BitbucketServerCoreAPIStatusPush',
@@ -381,10 +385,12 @@ setup_args = {
             ('buildbot.process.properties', [
                 'FlattenList', 'Interpolate', 'Property', 'Transform',
                 'WithProperties', 'renderer', 'Secret']),
-            ('buildbot.process.properties', [
+            ('buildbot.process.users.manual', [
                 'CommandlineUserManager']),
             ('buildbot.revlinks', ['RevlinkMatch']),
             ('buildbot.reporters.utils', ['URLForBuild']),
+            ('buildbot.schedulers.canceller', ['OldBuildCanceller']),
+            ('buildbot.schedulers.canceller_buildset', ['FailingBuildsetCanceller']),
             ('buildbot.schedulers.forcesched', [
                 'AnyPropertyParameter', 'BooleanParameter',
                 'ChoiceStringParameter',
@@ -397,7 +403,6 @@ setup_args = {
             ('buildbot.process.results', [
                 'Results', 'SUCCESS', 'WARNINGS', 'FAILURE', 'SKIPPED',
                 'EXCEPTION', 'RETRY', 'CANCELLED']),
-            ('buildbot.steps.mtrlogobserver', ['EqConnectionPool']),
             ('buildbot.steps.source.repo', [
                 ('repo.DownloadsFromChangeSource',
                  'RepoDownloadsFromChangeSource'),
@@ -407,6 +412,7 @@ setup_args = {
             ('buildbot.util.kubeclientservice', [
                 'KubeHardcodedConfig', 'KubeCtlProxyConfigLoader', 'KubeInClusterConfigLoader'
             ]),
+            ('buildbot.util.ssfilter', ['SourceStampFilter']),
             ('buildbot.www.avatar', ['AvatarGravatar', 'AvatarGitHub']),
             ('buildbot.www.auth', [
                 'UserPasswordAuth', 'HTPasswdAuth', 'RemoteUserAuth', 'CustomAuth']),
@@ -451,10 +457,10 @@ setup_args = {
 if sys.platform == "win32":
     setup_args['zip_safe'] = False
 
-py_35 = sys.version_info[0] > 3 or (
-    sys.version_info[0] == 3 and sys.version_info[1] >= 5)
-if not py_35:
-    raise RuntimeError("Buildbot master requires at least Python-3.5")
+py_36 = sys.version_info[0] > 3 or (
+    sys.version_info[0] == 3 and sys.version_info[1] >= 6)
+if not py_36:
+    raise RuntimeError("Buildbot master requires at least Python-3.6")
 
 # pip<1.4 doesn't have the --pre flag, and will thus attempt to install alpha
 # and beta versions of Buildbot.  Prevent that from happening.
@@ -487,7 +493,7 @@ setup_args['install_requires'] = [
     'Jinja2 >= 2.1',
     # required for tests, but Twisted requires this anyway
     'zope.interface >= 4.1.1',
-    'sqlalchemy>=1.2.0',
+    'sqlalchemy >= 1.2.0, < 1.5',
     'sqlalchemy-migrate>=0.13',
     'python-dateutil>=1.5',
     'txaio ' + txaio_ver,

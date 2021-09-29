@@ -212,7 +212,8 @@ class Properties(util.ComparableMixin):
     # in the log of state strings
     # so we have the renderable record here which secrets are used that we must remove
     def useSecret(self, secret_value, secret_name):
-        self._used_secrets[secret_value] = "<" + secret_name + ">"
+        if secret_value.strip():
+            self._used_secrets[secret_value] = "<" + secret_name + ">"
 
     # This method shall then be called to remove secrets from any text that could be logged
     # somewhere and that could contain secrets
@@ -231,7 +232,7 @@ class PropertiesMixin:
     the full interface, only getProperties() function.
 
     This is useful because L{IProperties} methods are often called on L{Build}
-    and L{BuildStatus} objects without first coercing them.
+    objects without first coercing them.
 
     @ivar set_runtime_properties: the default value for the C{runtime}
     parameter of L{setProperty}.

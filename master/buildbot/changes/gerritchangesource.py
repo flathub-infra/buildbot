@@ -19,7 +19,6 @@ import json
 
 from twisted.internet import defer
 from twisted.internet import reactor
-from twisted.internet import utils
 from twisted.python import log
 
 from buildbot import config
@@ -28,7 +27,9 @@ from buildbot.changes import base
 from buildbot.changes.filter import ChangeFilter
 from buildbot.util import bytes2unicode
 from buildbot.util import httpclientservice
+from buildbot.util import runprocess
 from buildbot.util.protocol import LineProcessProtocol
+from buildbot.util.pullrequest import PullRequestMixin
 
 
 def _canonicalize_event(event):
@@ -92,7 +93,7 @@ def _gerrit_user_to_author(props, username="unknown"):
     return username
 
 
-class GerritChangeSourceBase(base.ChangeSource):
+class GerritChangeSourceBase(base.ChangeSource, PullRequestMixin):
 
     """This source will maintain a connection to gerrit ssh server
     that will provide us gerrit events in json format."""
@@ -100,7 +101,9 @@ class GerritChangeSourceBase(base.ChangeSource):
     compare_attrs = ("gerritserver", "gerritport")
     name = None
     # list of properties that are no of no use to be put in the event dict
-    EVENT_PROPERTY_BLACKLIST = ["event.eventCreatedOn"]
+    external_property_denylist = ["event.eventCreatedOn"]
+    external_property_whitelist = ['*']
+    property_basename = 'event'
 
     def checkConfig(self,
                     gitBaseURL=None,
@@ -135,26 +138,20 @@ class GerritChangeSourceBase(base.ChangeSource):
 
         return self.eventReceived(event)
 
+    def build_properties(self, event):
+        properties = self.extractProperties(event)
+        properties["event.source"] = self.__class__.__name__
+        if event['type'] in ('patchset-created', 'comment-added') and 'change' in event:
+            properties['target_branch'] = event["change"]["branch"]
+        return properties
+
     def eventReceived(self, event):
         if not (event['type'] in self.handled_events):
             if self.debug:
                 log.msg("the event type '{}' is not setup to handle".format(event['type']))
             return defer.succeed(None)
 
-        # flatten the event dictionary, for easy access with WithProperties
-        def flatten(properties, base, event):
-            for k, v in event.items():
-                name = "{}.{}".format(base, k)
-                if name in self.EVENT_PROPERTY_BLACKLIST:
-                    continue
-                if isinstance(v, dict):
-                    flatten(properties, name, v)
-                else:  # already there
-                    properties[name] = v
-
-        properties = {}
-        flatten(properties, "event", event)
-        properties["event.source"] = self.__class__.__name__
+        properties = self.build_properties(event)
         func_name = "eventReceived_{}".format(event["type"].replace("-", "_"))
         func = getattr(self, func_name, None)
         if func is None:
@@ -163,7 +160,7 @@ class GerritChangeSourceBase(base.ChangeSource):
         return func(properties, event)
 
     @defer.inlineCallbacks
-    def addChange(self, chdict):
+    def addChange(self, event_type, chdict):
         stampdict = {
             "branch": chdict["branch"],
             "revision": chdict["revision"],
@@ -177,8 +174,8 @@ class GerritChangeSourceBase(base.ChangeSource):
         stampid, found_existing = yield(
              self.master.db.sourcestamps.findOrCreateId(**stampdict))
 
-        if found_existing:
-            if self.debug or True:
+        if found_existing and event_type in ("patchset-created", "ref-updated"):
+            if self.debug:
                 eventstr = "{}/{} -- {}:{}".format(
                     self.gitBaseURL, chdict["project"], chdict["branch"],
                     chdict["revision"])
@@ -202,17 +199,10 @@ class GerritChangeSourceBase(base.ChangeSource):
             # eat failures..
             log.err('error adding change from GerritChangeSource')
 
-    def getGroupingPolicyFromEvent(self, event):
-        # At the moment, buildbot's change grouping strategy is hardcoded at various place
-        # to be the 'branch' of an event.
-        # With gerrit, you usually want to group by branch on post commit, and by changeid
-        # on pre-commit.
-        # we keep this customization point here, waiting to have a better grouping strategy support
-        # in the core
-        event_change = event["change"]
-        if event['type'] in ('patchset-created',):
-            return "{}/{}".format(event_change["branch"], event_change['number'])
-        return event_change["branch"]
+    def get_branch_from_event(self, event):
+        if event['type'] in ('patchset-created', 'comment-added'):
+            return event["patchSet"]["ref"]
+        return event["change"]["branch"]
 
     @defer.inlineCallbacks
     def addChangeFromEvent(self, properties, event):
@@ -236,12 +226,12 @@ class GerritChangeSourceBase(base.ChangeSource):
                 patchset=event["patchSet"]["number"]
             )
 
-        yield self.addChange({
+        yield self.addChange(event['type'], {
             'author': _gerrit_user_to_author(event_change["owner"]),
             'project': util.bytes2unicode(event_change["project"]),
             'repository': "{}/{}".format(
                 self.gitBaseURL, event_change["project"]),
-            'branch': self.getGroupingPolicyFromEvent(event),
+            'branch': self.get_branch_from_event(event),
             'revision': event["patchSet"]["revision"],
             'revlink': event_change["url"],
             'comments': event_change["subject"],
@@ -257,7 +247,7 @@ class GerritChangeSourceBase(base.ChangeSource):
         if "submitter" in event:
             author = _gerrit_user_to_author(event["submitter"], author)
 
-        return self.addChange(dict(
+        return self.addChange(event['type'], dict(
             author=author,
             project=ref["project"],
             repository="{}/{}".format(self.gitBaseURL, ref["project"]),
@@ -376,6 +366,7 @@ class GerritChangeSource(GerritChangeSourceBase):
 
         cmd = [
             "ssh",
+            "-o", "BatchMode=yes",
             "{}@{}".format(self.username, self.gerritserver),
             "-p", str(self.gerritport)
         ]
@@ -404,7 +395,11 @@ class GerritChangeSource(GerritChangeSourceBase):
             log.msg("querying gerrit for changed files in change {}/{}: {}".format(change, patchset,
                                                                                    cmd))
 
-        out = yield utils.getProcessOutput(cmd[0], cmd[1:], env=None)
+        rc, out = yield runprocess.run_process(self.master.reactor, cmd, env=None,
+                                               collect_stderr=False)
+        if rc != 0:
+            return ["unknown"]
+
         out = out.splitlines()[0]
         res = json.loads(bytes2unicode(out))
 

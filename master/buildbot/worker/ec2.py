@@ -29,7 +29,6 @@ from twisted.python import log
 
 from buildbot import config
 from buildbot.interfaces import LatentWorkerFailedToSubstantiate
-from buildbot.warnings import warn_deprecated
 from buildbot.worker import AbstractLatentWorker
 
 try:
@@ -268,42 +267,14 @@ class EC2LatentWorker(AbstractLatentWorker):
             block_device_map) if block_device_map else None
 
     def create_block_device_mapping(self, mapping_definitions):
-        if isinstance(mapping_definitions, list):
-            for mapping_definition in mapping_definitions:
-                ebs = mapping_definition.get('Ebs')
-                if ebs:
-                    ebs.setdefault('DeleteOnTermination', True)
-            return mapping_definitions
+        if not isinstance(mapping_definitions, list):
+            config.error("EC2LatentWorker: 'block_device_map' must be a list")
 
-        warn_deprecated(
-            '0.9.0',
-            "Use of dict value to 'block_device_map' of EC2LatentWorker "
-            "constructor is deprecated. Please use a list matching the AWS API "
-            "https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_BlockDeviceMapping.html"
-        )
-        return self._convert_deprecated_block_device_mapping(mapping_definitions)
-
-    def _convert_deprecated_block_device_mapping(self, mapping_definitions):
-        new_mapping_definitions = []
-        for dev_name, dev_config in mapping_definitions.items():
-            new_dev_config = {}
-            new_dev_config['DeviceName'] = dev_name
-            if dev_config:
-                new_dev_config['Ebs'] = {}
-                new_dev_config['Ebs']['DeleteOnTermination'] = dev_config.get(
-                    'delete_on_termination', True)
-                new_dev_config['Ebs'][
-                    'Encrypted'] = dev_config.get('encrypted')
-                new_dev_config['Ebs']['Iops'] = dev_config.get('iops')
-                new_dev_config['Ebs'][
-                    'SnapshotId'] = dev_config.get('snapshot_id')
-                new_dev_config['Ebs']['VolumeSize'] = dev_config.get('size')
-                new_dev_config['Ebs'][
-                    'VolumeType'] = dev_config.get('volume_type')
-                new_dev_config['Ebs'] = self._remove_none_opts(
-                    new_dev_config['Ebs'])
-            new_mapping_definitions.append(new_dev_config)
-        return new_mapping_definitions
+        for mapping_definition in mapping_definitions:
+            ebs = mapping_definition.get('Ebs')
+            if ebs:
+                ebs.setdefault('DeleteOnTermination', True)
+        return mapping_definitions
 
     def get_image(self):
         # pylint: disable=too-many-nested-blocks
@@ -476,6 +447,7 @@ class EC2LatentWorker(AbstractLatentWorker):
                 bid_price = self.max_spot_price
         log.msg('%s %s requesting spot instance with price %0.4f' %
                 (self.__class__.__name__, self.workername, bid_price))
+
         reservations = self.ec2.meta.client.request_spot_instances(
             SpotPrice=str(bid_price),
             LaunchSpecification=self._remove_none_opts(
@@ -495,7 +467,7 @@ class EC2LatentWorker(AbstractLatentWorker):
                 )
             )
         )
-        request, success = self._wait_for_request(
+        request, success = self._thd_wait_for_request(
             reservations['SpotInstanceRequests'][0])
         if not success:
             raise LatentWorkerFailedToSubstantiate()
@@ -539,24 +511,36 @@ class EC2LatentWorker(AbstractLatentWorker):
         else:
             self.failed_to_start(self.instance.id, self.instance.state['Name'])
 
-    def _wait_for_request(self, reservation):
+    def _thd_wait_for_request(self, reservation):
         duration = 0
         interval = self._poll_resolution
-        requests = self.ec2.meta.client.describe_spot_instance_requests(
-            SpotInstanceRequestIds=[reservation['SpotInstanceRequestId']])
-        request = requests['SpotInstanceRequests'][0]
-        request_status = request['Status']['Code']
-        while request_status in SPOT_REQUEST_PENDING_STATES:
+
+        while True:
+            # Sometimes it can take a second or so for the spot request to be
+            # ready.  If it isn't ready, you will get a "Spot instance request
+            # ID 'sir-abcd1234' does not exist" exception.
+            try:
+                requests = self.ec2.meta.client.describe_spot_instance_requests(
+                    SpotInstanceRequestIds=[reservation['SpotInstanceRequestId']])
+            except ClientError as e:
+                if 'InvalidSpotInstanceRequestID.NotFound' in str(e):
+                    requests = None
+                else:
+                    raise
+
+            if requests is not None:
+                request = requests['SpotInstanceRequests'][0]
+                request_status = request['Status']['Code']
+                if request_status not in SPOT_REQUEST_PENDING_STATES:
+                    break
+
             time.sleep(interval)
             duration += interval
-            if duration % 60 == 0:
-                log.msg('{} {} has waited {} minutes for spot request {}'.format(
-                        self.__class__.__name__, self.workername, duration // 60,
-                        request['SpotInstanceRequestId']))
-            requests = self.ec2.meta.client.describe_spot_instance_requests(
-                SpotInstanceRequestIds=[reservation['SpotInstanceRequestId']])
-            request = requests['SpotInstanceRequests'][0]
-            request_status = request['Status']['Code']
+            if duration % 10 == 0:
+                log.msg('{} {} has waited {} seconds for spot request {}'.format(
+                        self.__class__.__name__, self.workername, duration,
+                        reservation['SpotInstanceRequestId']))
+
         if request_status == FULFILLED:
             minutes = duration // 60
             seconds = duration % 60

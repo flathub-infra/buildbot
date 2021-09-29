@@ -22,8 +22,12 @@ from buildbot.interfaces import IBuildStepFactory
 from buildbot.machine.base import Machine
 from buildbot.process.buildstep import BuildStep
 from buildbot.process.factory import BuildFactory
+from buildbot.process.properties import Interpolate
 from buildbot.process.results import CANCELLED
+from buildbot.process.results import RETRY
 from buildbot.test.fake.latent import LatentController
+from buildbot.test.fake.step import BuildStepController
+from buildbot.test.fake.worker import WorkerController
 from buildbot.test.util.integration import RunFakeMasterTestCase
 
 try:
@@ -111,7 +115,7 @@ class Tests(RunFakeMasterTestCase):
         # The worker fails to substantiate.
         controller.start_instance(True)
 
-        controller.connect_worker()
+        yield controller.connect_worker()
 
         self.assertEqual(len(started_builds), 1)
         yield controller.auto_stop(True)
@@ -215,6 +219,37 @@ class Tests(RunFakeMasterTestCase):
         yield self.reconfig_master(config_dict)
 
     @defer.inlineCallbacks
+    def test_step_with_worker_build_props_during_worker_disconnect(self):
+        """
+        We need to handle worker disconnection and steps with worker build properties gracefully
+        """
+        controller = WorkerController(self, 'local')
+
+        stepcontroller = BuildStepController()
+
+        config_dict = {
+            'builders': [
+                BuilderConfig(name="builder", workernames=['local'],
+                              properties={'worker': Interpolate("%(worker:numcpus)s")},
+                              factory=BuildFactory([stepcontroller.step])),
+            ],
+            'workers': [controller.worker],
+            'protocols': {'null': {}},
+            'multiMaster': True,
+        }
+
+        yield self.setup_master(config_dict)
+
+        builder_id = yield self.master.data.updates.findBuilderId('builder')
+        yield self.create_build_request([builder_id])
+
+        yield controller.connect_worker()
+        self.reactor.advance(1)
+        yield controller.disconnect_worker()
+        self.reactor.advance(1)
+        yield self.assertBuildResults(1, RETRY)
+
+    @defer.inlineCallbacks
     def test_worker_os_release_info_roundtrip(self):
         """
         Checks if we can successfully get information about the platform the worker is running on.
@@ -236,7 +271,7 @@ class Tests(RunFakeMasterTestCase):
         }
         yield self.setup_master(config_dict)
 
-        props = worker.worker_status.info
+        props = worker.info
 
         from buildbot_worker.base import BotBase
 

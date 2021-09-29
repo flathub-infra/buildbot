@@ -56,7 +56,7 @@ class BuildRequestCollapser:
 
     @defer.inlineCallbacks
     def collapse(self):
-        brids = set()
+        brids_to_collapse = set()
 
         for brid in self.brids:
             # Get the BuildRequest object
@@ -80,23 +80,30 @@ class BuildRequestCollapser:
 
                 canCollapse = yield collapseRequestsFn(self.master, bldr, br, unclaim_br)
                 if canCollapse is True:
-                    brids.add(unclaim_br['buildrequestid'])
+                    brids_to_collapse.add(unclaim_br['buildrequestid'])
 
-        brids = list(brids)
-        if brids:
-            # Claim the buildrequests
-            yield self.master.data.updates.claimBuildRequests(brids)
-            # complete the buildrequest with result SKIPPED.
-            yield self.master.data.updates.completeBuildRequests(brids,
-                                                                 SKIPPED)
+        collapsed_brids = []
+        for brid in brids_to_collapse:
+            claimed = yield self.master.data.updates.claimBuildRequests([brid])
+            if claimed:
+                yield self.master.data.updates.completeBuildRequests([brid], SKIPPED)
+                collapsed_brids.append(brid)
 
-        return brids
+        return collapsed_brids
 
 
 class TempSourceStamp:
     # temporary fake sourcestamp
 
     ATTRS = ('branch', 'revision', 'repository', 'project', 'codebase')
+
+    PATCH_ATTRS = (
+        ('patch_level', 'level'),
+        ('patch_body', 'body'),
+        ('patch_subdir', 'subdir'),
+        ('patch_author', 'author'),
+        ('patch_comment', 'comment')
+    )
 
     def __init__(self, ssdict):
         self._ssdict = ssdict
@@ -118,8 +125,6 @@ class TempSourceStamp:
     def asSSDict(self):
         return self._ssdict
 
-    PATCH_ATTRS = ('level', 'body', 'subdir', 'author', 'comment')
-
     def asDict(self):
         # This return value should match the kwargs to
         # SourceStampsConnectorComponent.findSourceStampId
@@ -128,11 +133,11 @@ class TempSourceStamp:
             result[attr] = self._ssdict.get(attr)
 
         patch = self._ssdict.get('patch') or {}
-        for attr in self.PATCH_ATTRS:
-            result['patch_{}'.format(attr)] = patch.get(attr)
+        for patch_attr, attr in self.PATCH_ATTRS:
+            result[patch_attr] = patch.get(attr)
 
         assert all(
-            isinstance(val, (str, int, type(None)))
+            isinstance(val, (str, int, bytes, type(None)))
             for attr, val in result.items()
         ), result
         return result
@@ -249,22 +254,31 @@ class BuildRequest:
         return buildrequest
 
     @staticmethod
+    def filter_buildset_props_for_collapsing(bs_props):
+        return {name: value for name, (value, source) in bs_props.items()
+                if name != 'scheduler' and source == 'Scheduler'}
+
+    @staticmethod
     @defer.inlineCallbacks
-    def canBeCollapsed(master, br1, br2):
+    def canBeCollapsed(master, new_br, old_br):
         """
         Returns true if both buildrequest can be merged, via Deferred.
 
         This implements Buildbot's default collapse strategy.
         """
         # short-circuit: if these are for the same buildset, collapse away
-        if br1['buildsetid'] == br2['buildsetid']:
+        if new_br['buildsetid'] == old_br['buildsetid']:
             return True
 
-        # get the buidlsets for each buildrequest
-        selfBuildsets = yield master.data.get(
-            ('buildsets', str(br1['buildsetid'])))
-        otherBuildsets = yield master.data.get(
-            ('buildsets', str(br2['buildsetid'])))
+        # the new buildrequest must actually be newer than the old build request, otherwise we
+        # may end up with situations where two build requests submitted at the same time will
+        # cancel each other.
+        if new_br['buildrequestid'] < old_br['buildrequestid']:
+            return False
+
+        # get the buildsets for each buildrequest
+        selfBuildsets = yield master.data.get(('buildsets', str(new_br['buildsetid'])))
+        otherBuildsets = yield master.data.get(('buildsets', str(old_br['buildsetid'])))
 
         # extract sourcestamps, as dictionaries by codebase
         selfSources = dict((ss['codebase'], ss)
@@ -306,6 +320,15 @@ class BuildRequest:
             # else check revisions
             if selfSS['revision'] != otherSS['revision']:
                 return False
+
+        # don't collapse build requests if the properties injected by the scheduler differ
+        new_bs_props = yield master.data.get(('buildsets', str(new_br['buildsetid']), 'properties'))
+        old_bs_props = yield master.data.get(('buildsets', str(old_br['buildsetid']), 'properties'))
+
+        new_bs_props = BuildRequest.filter_buildset_props_for_collapsing(new_bs_props)
+        old_bs_props = BuildRequest.filter_buildset_props_for_collapsing(old_bs_props)
+        if new_bs_props != old_bs_props:
+            return False
 
         return True
 

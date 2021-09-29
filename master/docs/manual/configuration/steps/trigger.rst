@@ -25,14 +25,14 @@ The SourceStamps to use for the triggered build are controlled by the arguments 
 Hyperlinks are added to the build detail web pages for each triggered build.
 
 ``schedulerNames``
-    lists the :bb:sched:`Triggerable` schedulers that should be triggered when this step is executed.
+    Lists the :bb:sched:`Triggerable` schedulers that should be triggered when this step is executed.
 
     .. note::
 
         It is possible, but not advisable, to create a cycle where a build continually triggers itself, because the schedulers are specified by name.
 
 ``unimportantSchedulerNames``
-    When ``waitForFinish`` is ``True``, all schedulers in this list will not cause the trigger step to fail. unimportantSchedulerNames must be a subset of schedulerNames
+    When ``waitForFinish`` is ``True``, all schedulers in this list will not cause the trigger step to fail. unimportantSchedulerNames must be a subset of schedulerNames.
     If ``waitForFinish`` is ``False``, unimportantSchedulerNames will simply be ignored.
 
 ``waitForFinish``
@@ -41,7 +41,7 @@ Hyperlinks are added to the build detail web pages for each triggered build.
     If ``False`` (the default) or not given, then the buildstep succeeds immediately after triggering the schedulers.
 
 ``updateSourceStamp``
-    If ``True`` (the default), then step updates the source stamps given to the :bb:sched:`Triggerable` schedulers to include ``got_revision`` (the revision actually used in this build) as ``revision`` (the revision to use in the triggered builds).
+    If ``True`` (the default), then the step updates the source stamps given to the :bb:sched:`Triggerable` schedulers to include ``got_revision`` (the revision actually used in this build) as ``revision`` (the revision to use in the triggered builds).
     This is useful to ensure that all of the builds use exactly the same source stamps, even if other :class:`Change`\s have occurred while the build was running.
 
     If ``False`` (and neither of the other arguments are specified), then the exact same SourceStamps are used.
@@ -56,7 +56,7 @@ Hyperlinks are added to the build detail web pages for each triggered build.
     The arguments ``updateSourceStamp``, ``alwaysUseLatest``, and ``sourceStamp`` can be specified using properties.
 
 ``set_properties``
-    allows control of the properties that are passed to the triggered scheduler.
+    Allows control of the properties that are passed to the triggered scheduler.
     The parameter takes a dictionary mapping property names to values.
     You may use :ref:`Interpolate` here to dynamically construct new property values.
     For the simple case of copying a property, this might look like:
@@ -66,7 +66,7 @@ Hyperlinks are added to the build detail web pages for each triggered build.
         set_properties={"my_prop1" : Property("my_prop1"),
                         "my_prop2" : Property("my_prop2")}
 
-    where ``Property`` is an instance of ``buildbot.process.properties.Property``
+    where ``Property`` is an instance of ``buildbot.process.properties.Property``.
 
     .. note::
 
@@ -78,11 +78,11 @@ Dynamic Trigger
 +++++++++++++++
 
 Sometimes it is desirable to select which scheduler to trigger, and which properties to set dynamically, at the time of the build.
-For this purpose, Trigger step supports a method that you can customize in order to override statically defined ``schedulernames``, ``set_properties`` and optionally ``unimportant``.
+For this purpose, the Trigger step supports a method that you can customize in order to override statically defined ``schedulernames``, ``set_properties`` and optionally ``unimportant``.
 
 .. py:method:: getSchedulersAndProperties()
 
-    :returns: list of dictionaries containing the keys 'sched_name', 'props_to_set' and 'unimportant' optionally via deferred
+    :returns: list of dictionaries containing the keys 'sched_name', 'props_to_set' and 'unimportant' optionally via deferred.
 
     This method returns a list of dictionaries describing what scheduler to trigger, with which properties and if the scheduler is unimportant.
     Old style list of tuples is still supported, in which case unimportant is considered ``False``.

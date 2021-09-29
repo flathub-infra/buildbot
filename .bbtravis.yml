@@ -19,7 +19,7 @@ env:
   - BUILDBOT_TEST_DB_URL=sqlite://
   - NUM_CPU=700m
   - MEMORY_SIZE=1G
-  - CHROME_BIN=/usr/bin/chromium-browser
+  - CHROME_BIN=/usr/bin/google-chrome
   matrix:
   # include "ci" string into the name of the status that is eventually submitted to Github, so
   # that the codecov.io service would wait until this build is finished before creating report.
@@ -32,9 +32,9 @@ env:
 
   - TWISTED=17.9.0 SQLALCHEMY=latest TESTS=trial
 
+  - TWISTED=latest SQLALCHEMY=latest TESTS=interop WORKER_PYTHON=3.8
   - TWISTED=latest SQLALCHEMY=latest TESTS=interop WORKER_PYTHON=3.7
   - TWISTED=latest SQLALCHEMY=latest TESTS=interop WORKER_PYTHON=3.6
-  - TWISTED=latest SQLALCHEMY=latest TESTS=interop WORKER_PYTHON=3.5
 
   # Configuration when SQLite database is persistent between running tests
   # (by default in other tests in-memory SQLite database is used which is
@@ -56,6 +56,7 @@ env:
 
   # Test different versions of SQLAlchemy
   - TWISTED=17.9.0 SQLALCHEMY=1.2.0 TESTS=trial
+  - TWISTED=17.9.0 SQLALCHEMY=1.3.0 TESTS=trial
   - TWISTED=17.9.0 SQLALCHEMY=latest TESTS=trial
 
   # Tests for the worker on old versions of twisted.
@@ -75,11 +76,16 @@ matrix:
       env: TWISTED=latest SQLALCHEMY=latest TESTS=docs
 
     - python: "3.6"
-      env: TWISTED=latest SQLALCHEMY=latest TESTS=trial
+      env: TWISTED=latest SQLALCHEMY=latest TESTS=ci/coverage
     - python: "3.7"
       env: TWISTED=latest SQLALCHEMY=latest TESTS=trial
     - python: "3.8"
       env: TWISTED=latest SQLALCHEMY=latest TESTS=trial
+    - python: "3.9"
+      env: TWISTED=latest SQLALCHEMY=latest TESTS=trial
+
+    - python: "3.9"
+      env: TWISTED=latest SQLALCHEMY=latest TESTS=minimal_install
 
     - python: "3.8"
       env: TWISTED=latest SQLALCHEMY=latest TESTS=interop WORKER_PYTHON=2.7
@@ -92,8 +98,10 @@ matrix:
 # Dependencies installation commands
 install:
   - pip install -U pip
-  - condition: TESTS not in ("smokes", "trial_worker")
+  - condition: TESTS not in ("minimal_install", "smokes", "trial_worker")
     cmd: pip install -r requirements-ci.txt
+  - condition: TESTS == "minimal_install"
+    cmd: pip install -r requirements-minimal.txt
   - condition: TESTS == "trial_worker"
     cmd: pip install -r requirements-ciworker.txt
   - condition: TESTS == "docs"
@@ -113,7 +121,7 @@ install:
       if [ $TWISTED != latest -a  $TWISTED != trunk ]; then pip install Twisted==$TWISTED ; fi
       if [ $SQLALCHEMY != latest ]; then pip install sqlalchemy==$SQLALCHEMY; fi
   - step: !ShellCommand
-        command: "pip check"
+        command: "/buildbot/buildbot-job/build/sandbox/bin/pip check"
         warnOnFailure: True
         flunkOnFailure: False
         haltOnFailure: False
@@ -123,10 +131,10 @@ install:
 before_script:
   # create real database for tests
   - condition: '"mysql" in BUILDBOT_TEST_DB_URL'
-    cmd: sudo /etc/init.d/mysql start
+    cmd: sudo /prepare_mysql
   - condition: '"postgresql" in BUILDBOT_TEST_DB_URL'
     cmd: |
-        sudo /etc/init.d/postgresql start
+        sudo /prepare_postgres
         # for pg8000 driver we can't use peer authentication or empty password, so set a dummy password
         # This also serves as a way to wait that the database is ready
         while ! psql -d bbtest -c 'ALTER USER "buildbot" WITH PASSWORD '"'x'"';' ; do sleep 1 ; done
@@ -147,7 +155,7 @@ script:
     cmd: make frontend_tests_headless
 
   - title: master and worker tests
-    condition: TESTS == "trial"
+    condition: TESTS in ("minimal_install", "trial")
     cmd: trial  --reporter=text --rterrors buildbot.test buildbot_worker.test
 
   - title: interop tests

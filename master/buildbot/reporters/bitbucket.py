@@ -16,16 +16,15 @@
 from urllib.parse import urlparse
 
 from twisted.internet import defer
+from twisted.python import log
 
-from buildbot import config
+from buildbot.process.properties import Properties
+from buildbot.process.properties import Property
 from buildbot.process.results import SUCCESS
 from buildbot.reporters.base import ReporterBase
 from buildbot.reporters.generators.build import BuildStartEndStatusGenerator
+from buildbot.reporters.message import MessageFormatter
 from buildbot.util import httpclientservice
-from buildbot.util.logger import Logger
-from buildbot.warnings import warn_deprecated
-
-log = Logger()
 
 # Magic words understood by Butbucket REST API
 BITBUCKET_INPROGRESS = 'INPROGRESS'
@@ -43,55 +42,32 @@ class BitbucketStatusPush(ReporterBase):
     name = "BitbucketStatusPush"
 
     def checkConfig(self, oauth_key, oauth_secret, base_url=_BASE_URL, oauth_url=_OAUTH_URL,
-                    builders=None, debug=None, verify=None, wantProperties=False,
-                    wantSteps=False, wantPreviousBuild=False, wantLogs=False, generators=None,
-                    **kwargs):
-
-        old_arg_names = {
-            'wantProperties': wantProperties is not False,
-            'builders': builders is not None,
-            'wantSteps': wantSteps is not False,
-            'wantPreviousBuild': wantPreviousBuild is not False,
-            'wantLogs': wantLogs is not False,
-        }
-
-        passed_old_arg_names = [k for k, v in old_arg_names.items() if v]
-
-        if passed_old_arg_names:
-
-            old_arg_names_msg = ', '.join(passed_old_arg_names)
-            if generators is not None:
-                print(generators is not None)
-                config.error(("can't specify generators and deprecated {} arguments ({}) at the "
-                              "same time").format(self.__class__.__name__, old_arg_names_msg))
-            warn_deprecated('2.10.0',
-                            ('The arguments {} passed to {} have been deprecated. Use generators '
-                             'instead').format(old_arg_names_msg, self.__class__.__name__))
+                    debug=None, verify=None, status_key=None, status_name=None,
+                    generators=None, **kwargs):
 
         if generators is None:
-            generators = self._create_generators_from_old_args(builders, wantProperties, wantSteps,
-                                                               wantPreviousBuild, wantLogs)
+            generators = self._create_default_generators()
 
         super().checkConfig(generators=generators, **kwargs)
         httpclientservice.HTTPClientService.checkAvailable(self.__class__.__name__)
 
     @defer.inlineCallbacks
     def reconfigService(self, oauth_key, oauth_secret, base_url=_BASE_URL, oauth_url=_OAUTH_URL,
-                        builders=None, debug=None, verify=None, wantProperties=False,
-                        wantSteps=False, wantPreviousBuild=False, wantLogs=False, generators=None,
-                        **kwargs):
+                        debug=None, verify=None, status_key=None, status_name=None,
+                        generators=None, **kwargs):
         oauth_key, oauth_secret = yield self.renderSecrets(oauth_key, oauth_secret)
+        self.base_url = base_url
         self.debug = debug
         self.verify = verify
+        self.status_key = status_key or Property('buildername')
+        self.status_name = status_name or Property('buildername')
 
         if generators is None:
-            generators = self._create_generators_from_old_args(builders, wantProperties, wantSteps,
-                                                               wantPreviousBuild, wantLogs)
+            generators = self._create_default_generators()
 
         yield super().reconfigService(generators=generators, **kwargs)
 
-        if base_url.endswith('/'):
-            base_url = base_url[:-1]
+        base_url = base_url.rstrip('/')
 
         self._http = yield httpclientservice.HTTPClientService.getService(
             self.master, base_url,
@@ -101,91 +77,84 @@ class BitbucketStatusPush(ReporterBase):
             self.master, oauth_url, auth=(oauth_key, oauth_secret),
             debug=self.debug, verify=self.verify)
 
-    def _create_generators_from_old_args(self, builders, wantProperties, wantSteps,
-                                         wantPreviousBuild, wantLogs):
-        # wantProperties, wantLogs, wantSteps and wantPreviousBuild are ignored, because they are
-        # not used in this reporter.
-        return [BuildStartEndStatusGenerator(builders=builders)]
-
-    @defer.inlineCallbacks
-    def send(self, build):
-        # the only case when this function is called is when the user derives this class, overrides
-        # send() and calls super().send(build) from there.
-        yield self._send_impl(build)
+    def _create_default_generators(self):
+        return [
+            BuildStartEndStatusGenerator(
+                start_formatter=MessageFormatter(subject=""),
+                end_formatter=MessageFormatter(subject="")
+            )
+        ]
 
     @defer.inlineCallbacks
     def sendMessage(self, reports):
-        build = reports[0]['builds'][0]
-        if self.send.__func__ is not BitbucketStatusPush.send:
-            warn_deprecated('2.9.0', 'send() in reporters has been deprecated. Use sendMessage()')
-            yield self.send(build)
-        else:
-            yield self._send_impl(build)
-
-    @defer.inlineCallbacks
-    def _send_impl(self, build):
-        results = build['results']
-        oauth_request = yield self.oauthhttp.post("",
-                                                  data=_GET_TOKEN_DATA)
-        if oauth_request.code == 200:
-            content_json = yield oauth_request.json()
-            token = content_json['access_token']
-        else:
-            content = yield oauth_request.content()
-            log.error("{code}: unable to authenticate to Bitbucket {content}",
-                      code=oauth_request.code, content=content)
+        request = yield self.oauthhttp.post("", data=_GET_TOKEN_DATA)
+        if request.code != 200:
+            content = yield request.content()
+            log.msg(f"{request.code}: unable to authenticate to Bitbucket {content}")
             return
+        token = (yield request.json())['access_token']
+        self._http.updateHeaders({'Authorization': f'Bearer {token}'})
 
+        build = reports[0]['builds'][0]
         if build['complete']:
-            status = BITBUCKET_SUCCESSFUL if results == SUCCESS else BITBUCKET_FAILED
+            status = BITBUCKET_SUCCESSFUL if build['results'] == SUCCESS else BITBUCKET_FAILED
         else:
             status = BITBUCKET_INPROGRESS
 
-        for sourcestamp in build['buildset']['sourcestamps']:
-            sha = sourcestamp['revision']
-            body = {
-                'state': status,
-                'key': build['builder']['name'],
-                'name': build['builder']['name'],
-                'url': build['url']
-            }
+        props = Properties.fromDict(build['properties'])
+        props.master = self.master
 
+        body = {
+            'state': status,
+            'key': (yield props.render(self.status_key)),
+            'name': (yield props.render(self.status_name)),
+            'description': reports[0]['subject'],
+            'url': build['url']
+        }
+
+        for sourcestamp in build['buildset']['sourcestamps']:
+            if not sourcestamp['repository']:
+                log.msg(f"Empty repository URL for Bitbucket status {body}")
+                continue
             owner, repo = self.get_owner_and_repo(sourcestamp['repository'])
 
-            self._http.updateHeaders({'Authorization': 'Bearer ' + token})
+            endpoint = (owner, repo, 'commit', sourcestamp['revision'], 'statuses', 'build')
+            bitbucket_uri = f"/{'/'.join(endpoint)}"
 
-            bitbucket_uri = '/' + \
-                '/'.join([owner, repo, 'commit', sha, 'statuses', 'build'])
+            if self.debug:
+                log.msg(f"Bitbucket status {bitbucket_uri} {body}")
 
             response = yield self._http.post(bitbucket_uri, json=body)
             if response.code != 200 and response.code != 201:
                 content = yield response.content()
-                log.error("{code}: unable to upload Bitbucket status {content}",
-                          code=response.code, content=content)
+                log.msg(f"{response.code}: unable to upload Bitbucket status {content}")
 
-    @staticmethod
-    def get_owner_and_repo(repourl):
+    def get_owner_and_repo(self, repourl):
         """
         Takes a git repository URL from Bitbucket and tries to determine the owner and repository
         name
         :param repourl: Bitbucket git repo in the form of
-                    git@bitbucket.com:OWNER/REPONAME.git
-                    https://bitbucket.com/OWNER/REPONAME.git
-                    ssh://git@bitbucket.com/OWNER/REPONAME.git
+                    git@bitbucket.org:OWNER/REPONAME.git
+                    https://bitbucket.org/OWNER/REPONAME.git
+                    ssh://git@bitbucket.org/OWNER/REPONAME.git
+                    https://api.bitbucket.org/2.0/repositories/OWNER/REPONAME
         :return: owner, repo: The owner of the repository and the repository name
         """
         parsed = urlparse(repourl)
 
-        if parsed.scheme:
-            path = parsed.path[1:]
+        base_parsed = urlparse(self.base_url)
+        if parsed.path.startswith(base_parsed.path):
+            path = parsed.path.replace(base_parsed.path, "")
+        elif parsed.scheme:
+            path = parsed.path
         else:
             # we assume git@host:owner/repo.git here
             path = parsed.path.split(':', 1)[-1]
 
+        path = path.lstrip('/')
         if path.endswith('.git'):
             path = path[:-4]
-        while path.endswith('/'):
-            path = path[:-1]
+        path = path.rstrip('/')
 
         parts = path.split('/')
 

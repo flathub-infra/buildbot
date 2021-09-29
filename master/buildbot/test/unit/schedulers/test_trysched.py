@@ -44,12 +44,8 @@ class TryBase(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
         self.tearDownScheduler()
 
     def makeScheduler(self, **kwargs):
-        sched = self.attachScheduler(trysched.Try_Userpass(**kwargs),
-                                     self.OBJECTID, self.SCHEDULERID)
-        # Try will return a remote version of master.status, so give it
-        # something to return
-        sched.master.status = mock.Mock()
-        return sched
+        return self.attachScheduler(trysched.Try_Userpass(**kwargs),
+                                    self.OBJECTID, self.SCHEDULERID)
 
     def test_filterBuilderList_ok(self):
         sched = trysched.TryBase(
@@ -267,7 +263,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
             'branch': 'trunk',
             'builderNames': ['buildera', 'builderc'],
             'jobid': 'extid',
-            'patch_body': 'this is my diff, -- ++, etc.',
+            'patch_body': b'this is my diff, -- ++, etc.',
             'patch_level': 1,
             'project': '',
             'who': '',
@@ -320,7 +316,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
             'branch': 'trunk',
             'builderNames': ['buildera', 'builderc'],
             'jobid': 'extid',
-            'patch_body': 'this is my diff, -- ++, etc.',
+            'patch_body': b'this is my diff, -- ++, etc.',
             'patch_level': 1,
             'project': 'proj',
             'who': '',
@@ -376,7 +372,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
             'branch': 'trunk',
             'builderNames': ['buildera', 'builderc'],
             'jobid': 'extid',
-            'patch_body': 'this is my diff, -- ++, etc.',
+            'patch_body': b'this is my diff, -- ++, etc.',
             'patch_level': 1,
             'project': 'proj',
             'who': 'who',
@@ -432,7 +428,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
             'branch': 'trunk',
             'builderNames': ['buildera', 'builderc'],
             'jobid': 'extid',
-            'patch_body': 'this is my diff, -- ++, etc.',
+            'patch_body': b'this is my diff, -- ++, etc.',
             'patch_level': 1,
             'project': 'proj',
             'who': 'who',
@@ -492,7 +488,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
             'branch': 'trunk',
             'builderNames': ['buildera', 'builderc'],
             'jobid': 'extid',
-            'patch_body': 'this is my diff, -- ++, etc.',
+            'patch_body': b'this is my diff, -- ++, etc.',
             'patch_level': 1,
             'project': 'proj',
             'who': 'who',
@@ -521,7 +517,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
             '5',
             json.dumps({
                 'jobid': 'extid', 'branch': 'trunk', 'baserev': '1234',
-                'patch_level': '1', 'diff': 'this is my diff, -- ++, etc.',
+                'patch_level': '1', 'patch_body': 'this is my diff, -- ++, etc.',
                 'repository': 'repo', 'project': 'proj', 'who': 'who',
                 'comment': 'comment', 'builderNames': [],
                 'properties': {'foo': 'bar'},
@@ -536,7 +532,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
             '5',
             json.dumps({
                 'jobid': 'extid', 'branch': 'trunk', 'baserev': '1234',
-                'patch_level': '1', 'diff': 'this is my diff, -- ++, etc.',
+                'patch_level': '1', 'patch_body': 'this is my diff, -- ++, etc.',
                 'repository': 'repo', 'project': 'proj', 'who': 'who',
                 'comment': 'comment', 'builderNames': ['buildera', 'builderb'],
                 'properties': {},
@@ -571,7 +567,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
     def makeSampleParsedJob(self, **overrides):
         pj = dict(baserev='1234', branch='trunk',
                   builderNames=['buildera', 'builderb'],
-                  jobid='extid', patch_body='this is my diff, -- ++, etc.',
+                  jobid='extid', patch_body=b'this is my diff, -- ++, etc.',
                   patch_level=1, project='proj', repository='repo', who='who',
                   comment='comment', properties={})
         pj.update(overrides)
@@ -592,7 +588,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
                         branch='trunk',
                         codebase='',
                         patch_author='who',
-                        patch_body='this is my diff, -- ++, etc.',
+                        patch_body=b'this is my diff, -- ++, etc.',
                         patch_comment='comment',
                         patch_level=1,
                         patch_subdir='',
@@ -639,7 +635,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
                         branch='trunk',
                         codebase='',
                         patch_author='who',
-                        patch_body='this is my diff, -- ++, etc.',
+                        patch_body=b'this is my diff, -- ++, etc.',
                         patch_comment='comment',
                         patch_level=1,
                         patch_subdir='',
@@ -665,7 +661,7 @@ class Try_Jobdir(scheduler.SchedulerMixin, TestReactorMixin, unittest.TestCase):
                         branch='trunk',
                         codebase='',
                         patch_author='who',
-                        patch_body='this is my diff, -- ++, etc.',
+                        patch_body=b'this is my diff, -- ++, etc.',
                         patch_comment='comment',
                         patch_level=1,
                         patch_subdir='',
@@ -695,14 +691,10 @@ class Try_Userpass_Perspective(scheduler.SchedulerMixin, TestReactorMixin,
         self.tearDownScheduler()
 
     def makeScheduler(self, **kwargs):
-        sched = self.attachScheduler(trysched.Try_Userpass(**kwargs),
-                                     self.OBJECTID, self.SCHEDULERID,
-                                     overrideBuildsetMethods=True,
-                                     createBuilderDB=True)
-        # Try will return a remote version of master.status, so give it
-        # something to return
-        sched.master.status = mock.Mock()
-        return sched
+        return self.attachScheduler(trysched.Try_Userpass(**kwargs),
+                                    self.OBJECTID, self.SCHEDULERID,
+                                    overrideBuildsetMethods=True,
+                                    createBuilderDB=True)
 
     @defer.inlineCallbacks
     def call_perspective_try(self, *args, **kwargs):
@@ -728,6 +720,7 @@ class Try_Userpass_Perspective(scheduler.SchedulerMixin, TestReactorMixin,
             'default', 'abcdef', (1, '-- ++'), 'repo', 'proj', ['a'],
             properties={'pr': 'op'})
 
+        self.maxDiff = None
         self.assertEqual(self.addBuildsetCalls, [
             ('addBuildsetForSourceStamps', dict(
                 builderNames=['a'],
@@ -739,7 +732,7 @@ class Try_Userpass_Perspective(scheduler.SchedulerMixin, TestReactorMixin,
                         branch='default',
                         codebase='',
                         patch_author='',
-                        patch_body='-- ++',
+                        patch_body=b'-- ++',
                         patch_comment='',
                         patch_level=1,
                         patch_subdir='',
@@ -747,6 +740,35 @@ class Try_Userpass_Perspective(scheduler.SchedulerMixin, TestReactorMixin,
                         repository='repo',
                         revision='abcdef'),
                 ])),
+        ])
+
+    @defer.inlineCallbacks
+    def test_perspective_try_bytes(self):
+        yield self.call_perspective_try(
+            'default', 'abcdef', (1, b'-- ++\xf8'), 'repo', 'proj', ['a'],
+            properties={'pr': 'op'})
+
+        self.assertEqual(self.addBuildsetCalls, [
+            ('addBuildsetForSourceStamps', {
+                'builderNames': ['a'],
+                'external_idstring': None,
+                'properties': {'pr': ('op', 'try build')},
+                'reason': "'try' job",
+                'sourcestamps': [
+                    {
+                        'branch': 'default',
+                        'codebase': '',
+                        'patch_author': '',
+                        'patch_body': b'-- ++\xf8',
+                        'patch_comment': '',
+                        'patch_level': 1,
+                        'patch_subdir': '',
+                        'project': 'proj',
+                        'repository': 'repo',
+                        'revision': 'abcdef',
+                    }
+                ]
+            }),
         ])
 
     @defer.inlineCallbacks
@@ -766,7 +788,7 @@ class Try_Userpass_Perspective(scheduler.SchedulerMixin, TestReactorMixin,
                         branch='default',
                         codebase='',
                         patch_author='who',
-                        patch_body='-- ++',
+                        patch_body=b'-- ++',
                         patch_comment='comment',
                         patch_level=1,
                         patch_subdir='',

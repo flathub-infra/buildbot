@@ -43,9 +43,9 @@ def listdir(path):
 os.listdir = listdir
 
 
-def check_output(cmd):
+def check_output(cmd, shell):
     """Version of check_output which does not throw error"""
-    popen = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    popen = subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE)
     out = popen.communicate()[0].strip()
     if not isinstance(out, str):
         out = out.decode(sys.stdout.encoding)
@@ -202,21 +202,24 @@ class BuildJsCommand(distutils.cmd.Command):
         if self.already_run:
             return
         package = self.distribution.packages[0]
-        if os.path.exists("gulpfile.js") or os.path.exists("webpack.config.js"):
-            yarn_version = check_output("yarn --version")
-            assert yarn_version != "", "need nodejs and yarn installed in current PATH"
-            yarn_bin = check_output("yarn bin").strip()
-
-            commands = []
-
-            commands.append(['yarn', 'install', '--pure-lockfile'])
-
-            if os.path.exists("gulpfile.js"):
-                commands.append([os.path.join(yarn_bin, "gulp"), 'prod', '--notests'])
-            elif os.path.exists("webpack.config.js"):
-                commands.append(['yarn', 'run', 'build'])
+        if os.path.exists("webpack.config.js"):
 
             shell = bool(os.name == 'nt')
+
+            yarn_program = None
+            for program in ["yarnpkg", "yarn"]:
+                yarn_version = check_output([program, "--version"], shell=shell)
+                if yarn_version != "":
+                    yarn_program = program
+
+            assert yarn_program is not None, "need nodejs and yarn installed in current PATH"
+
+            yarn_bin = check_output([yarn_program, "bin"], shell=shell).strip()
+
+            commands = [
+                [yarn_program, 'install', '--pure-lockfile'],
+                [yarn_program, 'run', 'build'],
+            ]
 
             for command in commands:
                 self.announce('Running command: {}'.format(str(" ".join(command))),

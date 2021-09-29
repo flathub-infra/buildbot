@@ -20,6 +20,7 @@ from twisted.python import log
 from buildbot import config as bbconfig
 from buildbot.interfaces import WorkerSetupError
 from buildbot.process import buildstep
+from buildbot.process import remotecommand
 from buildbot.steps.source.base import Source
 from buildbot.steps.worker import CompositeStepMixin
 from buildbot.util.git import RC_SUCCESS
@@ -246,11 +247,11 @@ class Git(Source, GitStepMixin):
 
         try:
             yield self.mode_incremental()
-            cmd = buildstep.RemoteCommand('cpdir',
-                                          {'fromdir': self.srcdir,
-                                           'todir': old_workdir,
-                                           'logEnviron': self.logEnviron,
-                                           'timeout': self.timeout, })
+            cmd = remotecommand.RemoteCommand('cpdir',
+                                              {'fromdir': self.srcdir,
+                                               'todir': old_workdir,
+                                               'logEnviron': self.logEnviron,
+                                               'timeout': self.timeout, })
             cmd.useLog(self.stdio_log, False)
             yield self.runCommand(cmd)
             if cmd.didFail():
@@ -331,7 +332,7 @@ class Git(Source, GitStepMixin):
             rev = self.revision
         else:
             rev = 'FETCH_HEAD'
-        command = ['reset', '--hard', rev, '--']
+        command = ['checkout', '-f', rev]
         abandonOnFailure = not self.retryFetch and not self.clobberOnFailure
         res = yield self._dovccmd(command, abandonOnFailure)
 
@@ -423,9 +424,8 @@ class Git(Source, GitStepMixin):
 
         # If revision specified checkout that revision
         if self.revision:
-            res = yield self._dovccmd(['reset', '--hard',
-                                       self.revision, '--'],
-                                      shallowClone)
+            res = yield self._dovccmd(['checkout', '-f', self.revision], shallowClone)
+
         # init and update submodules, recursively. If there's not recursion
         # it will not do it.
         if self.submodules:
@@ -522,10 +522,10 @@ class Git(Source, GitStepMixin):
 
             return "clone"
 
-        cmd = buildstep.RemoteCommand('listdir',
-                                      {'dir': self.workdir,
-                                       'logEnviron': self.logEnviron,
-                                       'timeout': self.timeout, })
+        cmd = remotecommand.RemoteCommand('listdir',
+                                          {'dir': self.workdir,
+                                           'logEnviron': self.logEnviron,
+                                           'timeout': self.timeout, })
         cmd.useLog(self.stdio_log, False)
         yield self.runCommand(cmd)
 
