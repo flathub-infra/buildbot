@@ -1076,6 +1076,8 @@ def create_build_factory():
             doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
             haltOnFailure=False,
             logEnviron=False,
+            warnOnFailure=True,
+            flunkOnFailure=False,
             command=util.Interpolate('flatpak run org.flathub.flatpak-external-data-checker %(prop:flathub_manifest)s')),
         steps.ShellCommand(
             name='Check that the right branch was built',
