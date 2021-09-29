@@ -1071,7 +1071,7 @@ def create_build_factory():
             doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
             haltOnFailure=True,
             logEnviron=False,
-            command=util.Interpolate('flatpak run org.freedesktop.appstream-glib validate builddir/*/share/appdata/%(prop:flathub_id)s.appdata.xml')),
+            command=util.Interpolate('flatpak run --env=G_DEBUG=fatal-criticals org.freedesktop.appstream-glib validate builddir/*/share/appdata/%(prop:flathub_id)s.appdata.xml')),
         steps.ShellCommand(
             name='Check that the right branch was built',
             doStepIf=build_is_official,
