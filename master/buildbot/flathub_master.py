@@ -1187,7 +1187,7 @@ class FlatpakDownloadStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep
 
             command = ['./flathub-download.sh', config.upstream_sources_path]
         else:
-            command = ['flatpak-builder', '--download-only', '--no-shallow-clone', '--allow-missing-runtimes',
+            command = ['timeout', '1h', 'flatpak-builder', '--download-only', '--no-shallow-clone', '--allow-missing-runtimes',
                        '--state-dir=' + config.upstream_sources_path,
                        config.upstream_sources_path + '/.builddir', util.Interpolate('%(prop:flathub_manifest)s')]
 
