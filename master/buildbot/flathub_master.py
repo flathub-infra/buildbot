@@ -1074,9 +1074,9 @@ def create_build_factory():
         steps.ShellCommand(
             name='Validate external-data-checker',
             doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
-            haltOnFailure=True,
+            haltOnFailure=False,
             logEnviron=False,
-            command=util.Interpolate('flatpak run org.flathub.flatpak-external-data-checker %(prop:flathub_manifest)s.appdata.xml')),
+            command=util.Interpolate('flatpak run org.flathub.flatpak-external-data-checker %(prop:flathub_manifest)s')),
         )
         steps.ShellCommand(
             name='Check that the right branch was built',
