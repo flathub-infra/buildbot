@@ -25,8 +25,10 @@ from twisted.python import failure
 from twisted.python import log
 from twisted.python import util as twutil
 from twisted.python import versions
+from twisted.python.deprecate import deprecatedModuleAttribute
 from twisted.python.failure import Failure
 from twisted.python.reflect import accumulateClassList
+from twisted.python.versions import Version
 from twisted.web.util import formatFailure
 from zope.interface import implementer
 
@@ -75,14 +77,52 @@ class CallableAttributeError(Exception):
 
 # old import paths for these classes
 RemoteCommand = remotecommand.RemoteCommand
+deprecatedModuleAttribute(
+    Version("buildbot", 2, 10, 1),
+    message="Use buildbot.process.remotecommand.RemoteCommand instead.",
+    moduleName="buildbot.process.buildstep",
+    name="RemoteCommand",
+)
+
 LoggedRemoteCommand = remotecommand.LoggedRemoteCommand
+deprecatedModuleAttribute(
+    Version("buildbot", 2, 10, 1),
+    message="Use buildbot.process.remotecommand.LoggedRemoteCommand instead.",
+    moduleName="buildbot.process.buildstep",
+    name="LoggedRemoteCommand",
+)
+
 RemoteShellCommand = remotecommand.RemoteShellCommand
+deprecatedModuleAttribute(
+    Version("buildbot", 2, 10, 1),
+    message="Use buildbot.process.remotecommand.RemoteShellCommand instead.",
+    moduleName="buildbot.process.buildstep",
+    name="RemoteShellCommand",
+)
+
 LogObserver = logobserver.LogObserver
+deprecatedModuleAttribute(
+    Version("buildbot", 2, 10, 1),
+    message="Use buildbot.process.logobserver.LogObserver instead.",
+    moduleName="buildbot.process.buildstep",
+    name="LogObserver",
+)
+
 LogLineObserver = logobserver.LogLineObserver
+deprecatedModuleAttribute(
+    Version("buildbot", 2, 10, 1),
+    message="Use buildbot.util.LogLineObserver instead.",
+    moduleName="buildbot.process.buildstep",
+    name="LogLineObserver",
+)
+
 OutputProgressObserver = logobserver.OutputProgressObserver
-_hush_pyflakes = [
-    RemoteCommand, LoggedRemoteCommand, RemoteShellCommand,
-    LogObserver, LogLineObserver, OutputProgressObserver]
+deprecatedModuleAttribute(
+    Version("buildbot", 2, 10, 1),
+    message="Use buildbot.process.logobserver.OutputProgressObserver instead.",
+    moduleName="buildbot.process.buildstep",
+    name="OutputProgressObserver",
+)
 
 
 @implementer(interfaces.IBuildStepFactory)
@@ -629,8 +669,6 @@ class BuildStep(results.ResultComputingConfigMixin,
                 self.results = EXCEPTION
                 hidden = False
 
-        yield self.master.data.updates.finishStep(self.stepid, self.results,
-                                                  hidden)
         # perform final clean ups
         success = yield self._cleanup_logs()
         if not success:
@@ -645,6 +683,9 @@ class BuildStep(results.ResultComputingConfigMixin,
             yield sub.finish()
 
         self.releaseLocks()
+
+        yield self.master.data.updates.finishStep(self.stepid, self.results,
+                                                  hidden)
 
         return self.results
 
@@ -792,7 +833,10 @@ class BuildStep(results.ResultComputingConfigMixin,
         # instead.
         raise NotImplementedError("your subclass must implement run()")
 
+    @defer.inlineCallbacks
     def interrupt(self, reason):
+        if self.stopped:
+            return
         self.stopped = True
         if self._acquiringLocks:
             for (lock, access, d) in self._acquiringLocks:
@@ -800,14 +844,15 @@ class BuildStep(results.ResultComputingConfigMixin,
             self._acquiringLocks = []
 
         if self._waitingForLocks:
-            self.addCompleteLog(
+            yield self.addCompleteLog(
                 'cancelled while waiting for locks', str(reason))
         else:
-            self.addCompleteLog('cancelled', str(reason))
+            yield self.addCompleteLog('cancelled', str(reason))
 
         if self.cmd:
             d = self.cmd.interrupt(reason)
             d.addErrback(log.err, 'while cancelling command')
+            yield d
 
     def releaseLocks(self):
         log.msg("releaseLocks({}): {}".format(self, self.locks))
@@ -934,6 +979,9 @@ class BuildStep(results.ResultComputingConfigMixin,
 
     @defer.inlineCallbacks
     def runCommand(self, command):
+        if self.stopped:
+            return CANCELLED
+
         self.cmd = command
         command.worker = self.worker
         try:

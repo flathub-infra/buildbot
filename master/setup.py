@@ -331,10 +331,22 @@ setup_args = {
                 'RemoveDirectory', 'MakeDirectory']),
         ]),
         ('buildbot.reporters', [
+            ('buildbot.reporters.generators.build', [
+                'BuildStatusGenerator',
+                'BuildStartEndStatusGenerator',
+            ]),
+            ('buildbot.reporters.generators.buildset', ['BuildSetStatusGenerator']),
+            ('buildbot.reporters.generators.worker', ['WorkerMissingGenerator']),
             ('buildbot.reporters.mail', ['MailNotifier']),
             ('buildbot.reporters.pushjet', ['PushjetNotifier']),
             ('buildbot.reporters.pushover', ['PushoverNotifier']),
-            ('buildbot.reporters.message', ['MessageFormatter']),
+            ('buildbot.reporters.message', [
+                'MessageFormatter',
+                'MessageFormatterEmpty',
+                'MessageFormatterFunction',
+                'MessageFormatterMissingWorker',
+                'MessageFormatterRenderable',
+            ]),
             ('buildbot.reporters.gerrit', ['GerritStatusPush']),
             ('buildbot.reporters.gerrit_verify_status',
              ['GerritVerifyStatusPush']),
@@ -487,7 +499,7 @@ setup_args['install_requires'] = [
     'Jinja2 >= 2.1',
     # required for tests, but Twisted requires this anyway
     'zope.interface >= 4.1.1',
-    'sqlalchemy>=1.2.0',
+    'sqlalchemy >= 1.2.0, < 1.4',
     'sqlalchemy-migrate>=0.13',
     'python-dateutil>=1.5',
     'txaio ' + txaio_ver,

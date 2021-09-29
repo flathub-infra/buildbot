@@ -15,6 +15,8 @@
 
 import random
 
+from parameterized import parameterized
+
 import mock
 
 from twisted.internet import defer
@@ -46,10 +48,16 @@ class BuilderMixin:
                     **config_kwargs):
         """Set up C{self.bldr}"""
         # only include the necessary required config, plus user-requested
-        config_args = dict(name=name, workername="wrk", builddir="bdir",
-                           workerbuilddir="wbdir", factory=self.factory)
-        config_args.update(config_kwargs)
-        self.builder_config = config.BuilderConfig(**config_args)
+        self.config_args = {
+            'name': name,
+            'workername': 'wrk',
+            'builddir': 'bdir',
+            'workerbuilddir': "wbdir",
+            'factory': self.factory
+        }
+        self.config_args.update(config_kwargs)
+        self.builder_config = config.BuilderConfig(**self.config_args)
+
         self.bldr = builder.Builder(
             self.builder_config.name)
         self.bldr.master = self.master
@@ -82,6 +90,22 @@ class FakeWorker:
 
     def __init__(self, workername):
         self.workername = workername
+
+
+class FakeLatentWorker(AbstractLatentWorker):
+    builds_may_be_incompatible = True
+
+    def __init__(self, is_compatible_with_build):
+        self.is_compatible_with_build = is_compatible_with_build
+
+    def isCompatibleWithBuild(self, build_props):
+        return defer.succeed(self.is_compatible_with_build)
+
+    def checkConfig(self, name, _, **kwargs):
+        pass
+
+    def reconfigService(self, name, _, **kwargs):
+        pass
 
 
 class TestBuilder(TestReactorMixin, BuilderMixin, unittest.TestCase):
@@ -337,29 +361,43 @@ class TestBuilder(TestReactorMixin, BuilderMixin, unittest.TestCase):
     def test_canStartBuild_with_incompatible_latent_worker(self):
         yield self.makeBuilder()
 
-        class FakeLatentWorker(AbstractLatentWorker):
-            builds_may_be_incompatible = True
-
-            def __init__(self):
-                pass
-
-            def isCompatibleWithBuild(self, build_props):
-                return defer.succeed(False)
-
-            def checkConfig(self, name, _, **kwargs):
-                pass
-
-            def reconfigService(self, name, _, **kwargs):
-                pass
-
         wfb = mock.Mock()
-        wfb.worker = FakeLatentWorker()
+        wfb.worker = FakeLatentWorker(is_compatible_with_build=False)
 
         with mock.patch(
                 'buildbot.process.build.Build.setupPropertiesKnownBeforeBuildStarts',
                 mock.Mock()):
             startable = yield self.bldr.canStartBuild(wfb, 100)
         self.assertFalse(startable)
+
+    @defer.inlineCallbacks
+    def test_canStartBuild_with_renderable_locks_with_compatible_latent_worker(self):
+        yield self.makeBuilder()
+
+        self.bldr.botmaster.getLockFromLockAccesses = mock.Mock(return_value=[mock.Mock()])
+
+        rendered_locks = [False]
+
+        @renderer
+        def locks_renderer(props):
+            rendered_locks[0] = True
+            return [mock.Mock()]
+
+        self.bldr.config.locks = locks_renderer
+
+        wfb = mock.Mock()
+        wfb.worker = FakeLatentWorker(is_compatible_with_build=True)
+
+        with mock.patch(
+                'buildbot.process.build.Build._canAcquireLocks',
+                mock.Mock(return_value=False)):
+            with mock.patch(
+                    'buildbot.process.build.Build.setupPropertiesKnownBeforeBuildStarts',
+                    mock.Mock()):
+                startable = yield self.bldr.canStartBuild(wfb, 100)
+                self.assertEqual(startable, False)
+        self.assertFalse(startable)
+        self.assertTrue(rendered_locks[0])
 
     @defer.inlineCallbacks
     def test_canStartBuild_enforceChosenWorker(self):
@@ -568,10 +606,7 @@ class TestReconfig(TestReactorMixin, BuilderMixin, unittest.TestCase):
     @defer.inlineCallbacks
     def test_reconfig(self):
         yield self.makeBuilder(description="Old", tags=["OldTag"])
-        config_args = dict(name='bldr', workername="wrk", builddir="bdir",
-                           workerbuilddir="wbdir", factory=self.factory,
-                           description='Noe', tags=['NewTag'])
-        new_builder_config = config.BuilderConfig(**config_args)
+        new_builder_config = config.BuilderConfig(**self.config_args)
         new_builder_config.description = "New"
         new_builder_config.tags = ["NewTag"]
 
@@ -585,5 +620,38 @@ class TestReconfig(TestReactorMixin, BuilderMixin, unittest.TestCase):
                  tags=["NewTag"]))
         self.assertIdentical(self.bldr.config, new_builder_config)
 
-        # check that the reconfig grabbed a buliderid
-        self.assertNotEqual(self.bldr._builderid, None)
+    @parameterized.expand([
+        ('only_description', 'New', ['OldTag']),
+        ('only_tags', 'Old', ['NewTag']),
+    ])
+    @defer.inlineCallbacks
+    def test_reconfig_changed(self, name, new_desc, new_tags):
+        yield self.makeBuilder(description="Old", tags=["OldTag"])
+        new_builder_config = config.BuilderConfig(**self.config_args)
+        new_builder_config.description = new_desc
+        new_builder_config.tags = new_tags
+
+        mastercfg = config.MasterConfig()
+        mastercfg.builders = [new_builder_config]
+
+        builder_updates = []
+        self.master.data.updates.updateBuilderInfo = \
+            lambda builderid, desc, tags: builder_updates.append((builderid, desc, tags))
+
+        yield self.bldr.reconfigServiceWithBuildbotConfig(mastercfg)
+        self.assertEqual(builder_updates, [(1, new_desc, new_tags)])
+
+    @defer.inlineCallbacks
+    def test_does_not_reconfig_identical(self):
+        yield self.makeBuilder(description="Old", tags=["OldTag"])
+        new_builder_config = config.BuilderConfig(**self.config_args)
+
+        mastercfg = config.MasterConfig()
+        mastercfg.builders = [new_builder_config]
+
+        builder_updates = []
+        self.master.data.updates.updateBuilderInfo = \
+            lambda builderid, desc, tags: builder_updates.append((builderid, desc, tags))
+
+        yield self.bldr.reconfigServiceWithBuildbotConfig(mastercfg)
+        self.assertEqual(builder_updates, [])
