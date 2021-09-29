@@ -1077,7 +1077,6 @@ def create_build_factory():
             haltOnFailure=False,
             logEnviron=False,
             command=util.Interpolate('flatpak run org.flathub.flatpak-external-data-checker %(prop:flathub_manifest)s')),
-        )
         steps.ShellCommand(
             name='Check that the right branch was built',
             doStepIf=build_is_official,
@@ -1093,7 +1092,7 @@ def create_build_factory():
         steps.ShellCommand(
             name='Generate deltas',
             haltOnFailure=True,
-            timeout=7200
+            timeout=7200,
             logEnviron=False,
             command=util.Interpolate('flatpak build-update-repo --generate-static-deltas --static-delta-ignore-ref=*.Debug  --static-delta-ignore-ref=*.Sources repo')),
         steps.ShellSequence(
