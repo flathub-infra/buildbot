@@ -1045,10 +1045,9 @@ def create_build_factory():
                 shellArg(['flatpak', '--user', 'remote-add', '--if-not-exists', '--gpg-import=flathub.gpg',
                           'flathub-beta', config.upstream_beta_repo]),
                 shellArg(['flatpak', '--user', 'remote-modify', '--url='+ config.upstream_beta_repo, 'flathub-beta']),
-                # Install org.freedesktop.appstream-glib
                 shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.freedesktop.appstream-glib']),
-                # Install org.flatpak.flat-manager-client
                 shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flatpak.flat-manager-client']),
+                shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flathub.flatpak-external-data-checker']),
             ]),
         FlatpakBuildStep(name='Build'),
         steps.SetPropertyFromCommand(name='Extract built tags',
@@ -1072,6 +1071,13 @@ def create_build_factory():
             haltOnFailure=True,
             logEnviron=False,
             command=util.Interpolate('flatpak run --env=G_DEBUG=fatal-criticals org.freedesktop.appstream-glib validate builddir/*/share/appdata/%(prop:flathub_id)s.appdata.xml')),
+        steps.ShellCommand(
+            name='Validate external-data-checker',
+            doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
+            haltOnFailure=True,
+            logEnviron=False,
+            command=util.Interpolate('flatpak run org.flathub.flatpak-external-data-checker %(prop:flathub_manifest)s.appdata.xml')),
+        )
         steps.ShellCommand(
             name='Check that the right branch was built',
             doStepIf=build_is_official,
