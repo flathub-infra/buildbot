@@ -1510,7 +1510,7 @@ def create_build_app_factory():
                               haltOnFailure=True,
                               hideStepIf=hide_on_success),
         steps.Trigger(name='Download sources',
-                      haltOnFailure=True,
+                      haltOnFailure=False,
                       schedulerNames=['download-sources'],
                       updateSourceStamp=True,
                       waitForFinish=True,
