@@ -1282,6 +1282,9 @@ def create_periodic_purge_factory():
     ])
     return periodic_purge_factory
 
+
+# Map available architectures of refs possible to use as SDKs. This is needed
+# to dynamically detect what architectures are available to build against.
 def get_sdks(remote):
     runtimes_command = "flatpak remote-ls --user --runtime --columns=ref --arch='*' --all {}"
     runtimes_run = subprocess.Popen(runtimes_command.format(remote), shell=True, stdout=subprocess.PIPE, universal_newlines=True)
