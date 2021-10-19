@@ -1188,7 +1188,7 @@ class FlatpakDownloadStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep
 
             command = ['./flathub-download.sh', config.upstream_sources_path]
         else:
-            command = ['timeout', '1h', 'flatpak-builder', '--download-only', '--no-shallow-clone', '--allow-missing-runtimes',
+            command = ['timeout', '3h', 'flatpak-builder', '--download-only', '--no-shallow-clone', '--allow-missing-runtimes',
                        '--state-dir=' + config.upstream_sources_path,
                        config.upstream_sources_path + '/.builddir', util.Interpolate('%(prop:flathub_manifest)s')]
 
@@ -1518,6 +1518,8 @@ def create_build_app_factory():
                               hideStepIf=hide_on_success),
         steps.Trigger(name='Download sources',
                       haltOnFailure=False,
+                      warnOnFailure=True,
+                      flunkOnFailure=False,
                       schedulerNames=['download-sources'],
                       updateSourceStamp=True,
                       waitForFinish=True,
