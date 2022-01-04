@@ -10,6 +10,7 @@ from buildbot.process import logobserver
 from buildbot.process import remotecommand
 from buildbot.process.buildstep import FAILURE
 from buildbot.process.buildstep import SUCCESS
+from buildbot.process.buildstep import WARNINGS
 from buildbot.process.buildstep import CANCELLED
 from buildbot.process.buildstep import EXCEPTION
 from buildbot.process.buildstep import BuildStep
@@ -309,7 +310,7 @@ def hide_on_success_or_skipped(results, s):
 
 # Triggers stop working on shutdown, so don't use them then
 def do_if_failed_except_shutdown(step):
-    return not step.master.botmaster.shuttingDown and not step.build.results == SUCCESS
+    return not step.master.botmaster.shuttingDown and not (step.build.results in (SUCCESS, WARNINGS))
 
 # Official builds are master branch on the canonical flathub git repo
 def build_is_official(step):
