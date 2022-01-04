@@ -956,7 +956,7 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
                        util.Interpolate('--sandbox --delete-build-dirs --user ' + ' '.join(fb_deps_args) + ' --extra-sources=%(prop:builddir)s/../downloads '),
                        util.Property('flathub_subject')]
         else:
-            command = ['flatpak', 'run', 'org.flatpak.Builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
+            command = ['dbus-run-session', 'flatpak', 'run', 'org.flatpak.Builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
                        '--user', fb_deps_args,
                        util.Property('extra_fb_args'),
                        '--mirror-screenshots-url=https://dl.flathub.org/repo/screenshots', '--repo', 'repo',
