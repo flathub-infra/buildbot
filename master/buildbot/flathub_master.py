@@ -1440,8 +1440,7 @@ def create_build_app_factory():
             workdir=computeMasterBaseDir,
             commands=[
                 shellArg(['flatpak', '--user', 'remote-add', '--if-not-exists', '--gpg-import=flathub.gpg', 'flathub', 'https://flathub.org/repo/flathub.flatpakrepo']),
-                shellArg(['flatpak', '--user', 'install', '--noninteractive', 'flathub', 'org.flatpak.flat-manager-client']),
-                shellArg(['flatpak', '--user', 'update', '--noninteractive', 'org.flatpak.flat-manager-client']),
+                shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flatpak.flat-manager-client']),
             ]
         ),
         steps.ShellCommand(name='Update build config',
