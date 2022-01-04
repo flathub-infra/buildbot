@@ -57,7 +57,6 @@ flathub_workers = []                    # All workers configured
 flathub_worker_names = []               # All workers configured
 flathub_arches = []                     # Calculated from the arch key on the builders
 flathub_arch_workers = {}               # Map from arch to list of worker names from flathub_workers
-flathub_download_sources_workers = []   # Worker names for source downloaders
 
 # These keeps track of subset tokens for uploads by the workers
 flathub_upload_tokens = {}
@@ -199,7 +198,6 @@ def load_config():
     global flathub_worker_names
     global flathub_arches
     global flathub_arch_workers
-    global flathub_download_sources_workers
 
     config = new_config
     builds_mtime = new_builds_mtime
@@ -208,7 +206,6 @@ def load_config():
     flathub_worker_names = []
     flathub_arches = []
     flathub_arch_workers = {}
-    flathub_download_sources_workers = []
 
     for w in worker_config.keys():
         wc = worker_config[w]
@@ -228,8 +225,6 @@ def load_config():
                     flathub_arches.append(a)
                     flathub_arch_workers[a] = []
                 flathub_arch_workers[a].append(w)
-        if 'download-sources' in wc:
-            flathub_download_sources_workers.append(w)
 
 ####### Custom renderers and helper functions
 
@@ -255,8 +250,6 @@ def computeMasterBaseDir(props):
 @util.renderer
 def computeStatusContext(props):
     buildername = props.getProperty ('buildername')
-    if buildername == "download-sources":
-        return "download-sources"
     arch = props.getProperty ('flathub_arch')
     return "builds/%s" % (arch)
 
@@ -960,14 +953,13 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
                        util.Property('flathub_arch'),
                        'repo',
                        '',
-                       util.Interpolate('--sandbox --delete-build-dirs --user ' + ' '.join(fb_deps_args) + ' --extra-sources-url='+ config.upstream_sources_uri +' --extra-sources=%(prop:builddir)s/../downloads '),
+                       util.Interpolate('--sandbox --delete-build-dirs --user ' + ' '.join(fb_deps_args) + ' --extra-sources=%(prop:builddir)s/../downloads '),
                        util.Property('flathub_subject')]
         else:
             command = ['flatpak-builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
                        '--user', fb_deps_args,
                        util.Property('extra_fb_args'),
                        '--mirror-screenshots-url=https://dl.flathub.org/repo/screenshots', '--repo', 'repo',
-                       '--extra-sources-url=' + config.upstream_sources_uri,
                        util.Interpolate('--extra-sources=%(prop:builddir)s/../downloads'),
                        '--default-branch', util.Property('flathub_default_branch'),
                        '--subject', util.Property('flathub_subject'),
@@ -1162,51 +1154,6 @@ class BuildDependenciesSteps(steps.BuildStep):
         log.finish()
 
         defer.returnValue(buildbot.process.results.SUCCESS)
-
-class FlatpakDownloadStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
-    def __init__(self, **kwargs):
-        self.setupShellMixin({'logEnviron': False,
-                              'timeout': 3600,
-                              'usePTY': True})
-        steps.BuildStep.__init__(self, haltOnFailure = True, **kwargs)
-        self.title = u"Building"
-
-    @defer.inlineCallbacks
-    def run(self):
-        props = self.build.properties
-        id = props.getProperty("flathub_id")
-        self.title = u"Downloading sources for %s" % id
-        self.result_title = u"Failed to download sources for %s" % id
-        self.updateSummary()
-        if props.getProperty("flathub_custom_buildcmd", False):
-            # Check for flathub-download.sh and only run if it exists
-            statCmd = remotecommand.RemoteCommand('stat', {'file': 'build/flathub-download.sh'})
-            yield self.runCommand(statCmd)
-            if statCmd.didFail():
-                self.result_title = u"Skipping download due to missing flathub-download.sh"
-                defer.returnValue(buildbot.process.results.SKIPPED)
-                return
-
-            command = ['./flathub-download.sh', config.upstream_sources_path]
-        else:
-            command = ['timeout', '3h', 'flatpak-builder', '--download-only', '--no-shallow-clone', '--allow-missing-runtimes',
-                       '--state-dir=' + config.upstream_sources_path,
-                       config.upstream_sources_path + '/.builddir', util.Interpolate('%(prop:flathub_manifest)s')]
-
-        rendered=yield self.build.properties.render(command)
-        cmd = yield self.makeRemoteShellCommand(command=rendered)
-        yield self.runCommand(cmd)
-
-        if not cmd.didFail():
-            self.result_title = u"Downloaded sources for %s" % id
-
-        defer.returnValue(cmd.results())
-
-    def getCurrentSummary(self):
-        return {u'step': self.title}
-
-    def getResultSummary(self):
-        return {u'step': self.result_title}
 
 def create_download_sources_factory():
     download_sources_factory = util.BuildFactory()
@@ -1517,14 +1464,6 @@ def create_build_app_factory():
         FlathubPropertiesStep(name="Set flathub properties",
                               haltOnFailure=True,
                               hideStepIf=hide_on_success),
-        steps.Trigger(name='Download sources',
-                      haltOnFailure=False,
-                      warnOnFailure=True,
-                      flunkOnFailure=False,
-                      schedulerNames=['download-sources'],
-                      updateSourceStamp=True,
-                      waitForFinish=True,
-                      set_properties=inherit_properties(inherited_properties)),
         CreateRepoBuildStep(name='Creating build on repo manager'),
         CreateUploadToken(name='Creating upload token',
                           hideStepIf=hide_on_success),
@@ -1937,8 +1876,6 @@ def computeConfig():
                                             builderNames=["Builds"])
     build = schedulers.Triggerable(name="build-all-platforms",
                                    builderNames=computeBuildArches)
-    download_sources = schedulers.Triggerable(name="download-sources",
-                                              builderNames=["download-sources"])
     force_build = create_build_app_force_scheduler()
     publish = schedulers.Triggerable(name="publish",
                                      builderNames=["publish"])
@@ -1989,12 +1926,6 @@ def computeConfig():
                                    workernames=flathub_arch_workers[arch],
                                    properties={'flathub_arch': arch, 'extra_fb_args': extra_fb_args },
                                    factory=build_factory))
-
-    c['builders'].append(
-        util.BuilderConfig(name='download-sources',
-                           workernames=flathub_download_sources_workers,
-                           factory=create_download_sources_factory()))
-    status_builders.append('download-sources')
 
     c['builders'].append(
         util.BuilderConfig(name='Builds',
