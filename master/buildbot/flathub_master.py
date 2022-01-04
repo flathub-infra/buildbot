@@ -956,7 +956,7 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
                        util.Interpolate('--sandbox --delete-build-dirs --user ' + ' '.join(fb_deps_args) + ' --extra-sources=%(prop:builddir)s/../downloads '),
                        util.Property('flathub_subject')]
         else:
-            command = ['flatpak-builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
+            command = ['flatpak', 'run', 'org.flatpak.Builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
                        '--user', fb_deps_args,
                        util.Property('extra_fb_args'),
                        '--mirror-screenshots-url=https://dl.flathub.org/repo/screenshots', '--repo', 'repo',
@@ -1041,6 +1041,7 @@ def create_build_factory():
                 shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.freedesktop.appstream-glib']),
                 shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flatpak.flat-manager-client']),
                 shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flathub.flatpak-external-data-checker']),
+                shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flatpak.Builder']),
             ]),
         FlatpakBuildStep(name='Build'),
         steps.SetPropertyFromCommand(name='Extract built tags',
