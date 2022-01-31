@@ -1800,9 +1800,9 @@ def computeConfig():
     c['logMaxTailSize'] = 32768
 
     c['caches'] = {
-        'Changes': 30,
-        'Builds': 50,
-        'chdicts': 30,
+        'Changes': 500,
+        'Builds': 150,
+        'chdicts': 500,
         'BuildRequests': 20,
         'SourceStamps': 20,
         'ssdicts': 20,
