@@ -444,7 +444,7 @@ class RepoRequestStep(steps.BuildStep):
                 return
             session.close()
 
-            if response.status_code == requests.codes.service_unavailable:
+            if response.status_code in (408, 503):
                 retries = retries + 1
                 if retries < 5:
                     log.addStderr('Got 503, retrying in 10 sec...')
