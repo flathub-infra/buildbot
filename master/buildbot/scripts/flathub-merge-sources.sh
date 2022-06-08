@@ -12,7 +12,7 @@ fi
 
 for vcs in git bzr svn; do
     mkdir -p $SOURCEDIR/$vcs
-    for repo in .flatpak-builder/git/*; do
+    for repo in .flatpak-builder/$vcs/*; do
         mv -nvT $repo $SOURCEDIR/$vcs/`basename $repo`
     done
 done
