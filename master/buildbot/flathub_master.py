@@ -61,7 +61,7 @@ flathub_arch_workers = {}               # Map from arch to list of worker names 
 # These keeps track of subset tokens for uploads by the workers
 flathub_upload_tokens = {}
 
-flatmgr_client = ["flatpak", "run", "org.flatpak.flat-manager-client"]
+flatmgr_client = ["flatpak", "run", "--command=flat-manager-client", "org.flatpak.Builder"]
 
 adminsGithubGroup='flathub'
 
@@ -1039,11 +1039,19 @@ def create_build_factory():
                 shellArg(['flatpak', '--user', 'remote-add', '--if-not-exists', '--gpg-import=flathub.gpg',
                           'flathub-beta', config.upstream_beta_repo]),
                 shellArg(['flatpak', '--user', 'remote-modify', '--url='+ config.upstream_beta_repo, 'flathub-beta']),
-                shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.freedesktop.appstream-glib']),
-                shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flatpak.flat-manager-client']),
                 shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flathub.flatpak-external-data-checker']),
                 shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flatpak.Builder']),
             ]),
+        steps.ShellCommand(
+            name='Validate manifest',
+            haltOnFailure=True,
+            logEnviron=False,
+            command=util.Interpolate('flatpak run --command=flatpak-builder-lint org.flatpak.Builder --exceptions %(prop:flathub_manifest)s')),
+        steps.ShellCommand(
+            name='Validate flatpak-external-data-checker settings',
+            haltOnFailure=True,
+            logEnviron=False,
+            command=util.Interpolate('flatpak run org.flathub.flatpak-external-data-checker %(prop:flathub_manifest)s')),
         FlatpakBuildStep(name='Build'),
         steps.SetPropertyFromCommand(name='Extract built tags',
                                      command="grep -s ^tags= builddir/metadata || true",
@@ -1065,15 +1073,7 @@ def create_build_factory():
             doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
             haltOnFailure=True,
             logEnviron=False,
-            command=util.Interpolate('flatpak run --env=G_DEBUG=fatal-criticals org.freedesktop.appstream-glib validate builddir/*/share/appdata/%(prop:flathub_id)s.appdata.xml')),
-        steps.ShellCommand(
-            name='Validate external-data-checker',
-            doStepIf=lambda step: not step.build.getProperty('flathub_config', {}).get("skip-appstream-check"),
-            haltOnFailure=False,
-            logEnviron=False,
-            warnOnFailure=True,
-            flunkOnFailure=False,
-            command=util.Interpolate('flatpak run org.flathub.flatpak-external-data-checker %(prop:flathub_manifest)s')),
+            command=util.Interpolate('flatpak run --env=G_DEBUG=fatal-criticals --command=appstream-util org.flatpak.Builder validate builddir/*/share/appdata/%(prop:flathub_id)s.appdata.xml')),
         steps.ShellCommand(
             name='Check that the right branch was built',
             doStepIf=build_is_official,
@@ -1104,7 +1104,7 @@ def create_build_factory():
                 shellArg(['mkdir', '-p', 'builddir/screenshots']),
                 shellArg(['ostree', 'commit', '--repo=repo', '--canonical-permissions', util.Interpolate('--branch=screenshots/%(prop:flathub_arch)s'), 'builddir/screenshots']),
                 # Push to repo
-                shellArg(util.FlattenList(['flatpak', 'run', 'org.flatpak.flat-manager-client', 'push', computeExtraIdArgs,
+                shellArg(util.FlattenList(['flatpak', 'run', '--command=flat-manager-client', 'org.flatpak.Builder', 'push', computeExtraIdArgs,
                                            util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri),
                                            "repo"]))
             ]),
