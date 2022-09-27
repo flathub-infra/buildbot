@@ -1044,11 +1044,13 @@ def create_build_factory():
             ]),
         steps.ShellCommand(
             name='Validate manifest',
+            doStepIf=lambda step: not step.build.getProperty('flathub_custom_buildcmd', False),
             haltOnFailure=True,
             logEnviron=False,
             command=util.Interpolate('flatpak run --command=flatpak-builder-lint org.flatpak.Builder --exceptions %(prop:flathub_manifest)s')),
         steps.ShellCommand(
             name='Validate flatpak-external-data-checker settings',
+            doStepIf=lambda step: not step.build.getProperty('flathub_custom_buildcmd', False),
             haltOnFailure=True,
             logEnviron=False,
             command=util.Interpolate('flatpak run org.flathub.flatpak-external-data-checker %(prop:flathub_manifest)s')),
