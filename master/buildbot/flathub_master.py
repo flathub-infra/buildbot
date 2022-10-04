@@ -1442,7 +1442,7 @@ def create_build_app_factory():
             logEnviron=False,
             workdir=computeMasterBaseDir,
             commands=[
-                shellArg(['flatpak', '--user', 'remote-add', '--if-not-exists', '--gpg-import=flathub.gpg', 'flathub', 'https://flathub.org/repo/flathub.flatpakrepo']),
+                shellArg(['flatpak', '--user', 'remote-add', '--if-not-exists', '--gpg-import=flathub.gpg', 'flathub', 'https://dl.flathub.org/repo/flathub.flatpakrepo']),
                 shellArg(['flatpak', '--user', 'install', '--or-update', '--noninteractive', 'flathub', 'org.flatpak.flat-manager-client']),
             ]
         ),
