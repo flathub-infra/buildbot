@@ -960,7 +960,7 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
             command = ['dbus-run-session', 'flatpak', 'run', 'org.flatpak.Builder', '-v', '--force-clean', '--sandbox', '--delete-build-dirs',
                        '--user', fb_deps_args,
                        util.Property('extra_fb_args'),
-                       '--mirror-screenshots-url=https://dl.flathub.org/repo/screenshots', '--repo', 'repo',
+                       '--mirror-screenshots-url=https://dl.flathub.org/media', '--repo', 'repo',
                        util.Interpolate('--extra-sources=%(prop:builddir)s/../downloads'),
                        '--default-branch', util.Property('flathub_default_branch'),
                        '--subject', util.Property('flathub_subject'),
