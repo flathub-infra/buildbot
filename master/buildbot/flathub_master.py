@@ -964,7 +964,6 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
                        util.Interpolate('--extra-sources=%(prop:builddir)s/../downloads'),
                        '--default-branch', util.Property('flathub_default_branch'),
                        '--subject', util.Property('flathub_subject'),
-                       '--add-tag=upstream-maintained' if builds.is_upstream_maintained(id) else '--remove-tag=upstream-maintained',
                        'builddir', util.Interpolate('%(prop:flathub_manifest)s')]
 
         rendered=yield self.build.properties.render(command)
