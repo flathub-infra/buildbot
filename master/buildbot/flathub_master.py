@@ -1102,8 +1102,8 @@ def create_build_factory():
             env={"REPO_TOKEN": computeUploadToken},
             commands=[
                 # Commit screenshots
-                shellArg(['mkdir', '-p', 'builddir/screenshots']),
-                shellArg(['ostree', 'commit', '--repo=repo', '--canonical-permissions', util.Interpolate('--branch=screenshots/%(prop:flathub_arch)s'), 'builddir/screenshots']),
+                shellArg(['mkdir', '-p', 'builddir/files/share/app-info/media/']),
+                shellArg(['ostree', 'commit', '--repo=repo', '--canonical-permissions', util.Interpolate('--branch=screenshots/%(prop:flathub_arch)s'), 'builddir/files/share/app-info/media/']),
                 # Push to repo
                 shellArg(util.FlattenList(['flatpak', 'run', '--command=flat-manager-client', 'org.flatpak.Builder', 'push', computeExtraIdArgs,
                                            util.Interpolate("%(kw:url)s/api/v1/build/%(prop:flathub_repo_id)s", url=config.repo_manager_uri),
