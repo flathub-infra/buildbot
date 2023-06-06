@@ -1086,7 +1086,7 @@ def create_build_factory():
             doStepIf=should_skip_icons_check,
             haltOnFailure=True,
             logEnviron=False,
-            command=util.Interpolate('zgrep "<icon type=\\"remote\\">" builddir/*/share/app-info/xmls/%(prop:flathub_id)s.xml.gz || test -f builddir/*/share/app-info/icons/flatpak/128x128/%(prop:flathub_id)s.png')),
+            command=util.Interpolate('zgrep "<icon type=\\"remote" builddir/*/share/app-info/xmls/%(prop:flathub_id)s.xml.gz')),
         steps.ShellCommand(
             name='Generate deltas',
             haltOnFailure=True,
