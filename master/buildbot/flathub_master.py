@@ -966,7 +966,17 @@ class FlatpakBuildStep(buildbot.process.buildstep.ShellMixin, steps.BuildStep):
                        '--subject', util.Property('flathub_subject'),
                        'builddir', util.Interpolate('%(prop:flathub_manifest)s')]
 
-        rendered=yield self.build.properties.render(command)
+            download_command = command + ["--download-only"]
+            command = command + ["--disable-download"]
+
+            download_rendered = yield self.build.properties.render(download_command)
+            download_cmd = yield self.makeRemoteShellCommand(command=download_rendered)
+            yield self.runCommand(download_cmd)
+
+            if download_cmd.didFail():
+                defer.returnValue(cmd.results())
+
+        rendered = yield self.build.properties.render(command)
         cmd = yield self.makeRemoteShellCommand(command=rendered)
         yield self.runCommand(cmd)
 
