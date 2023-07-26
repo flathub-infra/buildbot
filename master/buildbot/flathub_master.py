@@ -482,11 +482,19 @@ class CreateRepoBuildStep(RepoRequestStep):
 
     def initRequest(self):
         props = self.build.properties
+
         repo = 'stable'
         fp_branch = props.getProperty("flathub_branch")
         if fp_branch == "beta":
             repo = "beta"
-        self.json = { 'repo': repo }
+
+        buildnumber = props.getProperty("buildnumber")
+        build_log_url = "https://buildbot.flathub.org/#/builders/6/builds/{}".format(buildnumber)
+
+        self.json = {
+            'repo': repo,
+            'build-log-url': build_log_url
+        }
 
     @defer.inlineCallbacks
     def gotOk(self, response, log):
