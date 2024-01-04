@@ -467,7 +467,7 @@ class Git(Source, GitStepMixin):
     def _syncSubmodule(self, _=None):
         rc = RC_SUCCESS
         if self.submodules:
-            rc = yield self._dovccmd(['submodule', 'sync'])
+            rc = yield self._dovccmd(['submodule', 'sync', '--recursive'])
         return rc
 
     @defer.inlineCallbacks
